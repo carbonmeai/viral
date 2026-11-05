@@ -29,16 +29,50 @@ const SCHEMA = `
   );
   CREATE UNIQUE INDEX presets_one_default ON presets (is_default) WHERE is_default = 1;
 
-  CREATE TABLE music_tracks (
-    id           TEXT PRIMARY KEY,
-    title        TEXT NOT NULL,
-    path         TEXT NOT NULL,                   -- relative to ~/.viral/music/
-    duration_s   REAL,
-    bpm          REAL,                            -- filled by analysis; null until analysed
-    drop_s       REAL,                            -- where the drop hits inside the track
-    analyzed_at  TEXT,
-    created_at   TEXT NOT NULL
+  CREATE TABLE reference_videos (
+    id          TEXT PRIMARY KEY,
+    url         TEXT NOT NULL,                    -- the viral video you want to learn from
+    platform    TEXT,                             -- tiktok | youtube | instagram | …
+    title       TEXT,
+    creator     TEXT,
+    duration_s  REAL,
+    notes       TEXT,                             -- why you saved it
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
   );
+
+  CREATE TABLE music_tracks (
+    id            TEXT PRIMARY KEY,
+    title         TEXT NOT NULL,
+    path          TEXT NOT NULL,                  -- relative to ~/.viral/music/
+    origin        TEXT NOT NULL,                  -- JSON: {"_tag":"Upload","file":…} | {"_tag":"Url","url":…}
+                                                  --   | {"_tag":"Bundled","plan":…}
+    rights        TEXT NOT NULL DEFAULT 'unconfirmed'
+                    CHECK (rights IN ('unconfirmed', 'owned', 'licensed')),
+    reference_id  TEXT REFERENCES reference_videos (id) ON DELETE SET NULL,  -- imported from a reference video
+    duration_s    REAL,
+    bpm           REAL,                           -- filled by analysis; null until analysed
+    drop_s        REAL,                           -- where the drop hits inside the track
+    loudness_lufs REAL,
+    analyzed_at   TEXT,
+    created_at    TEXT NOT NULL
+  );
+
+  CREATE TABLE sound_effects (
+    id            TEXT PRIMARY KEY,
+    category      TEXT NOT NULL,                  -- whoosh | pop | riser | impact | … (validated in contracts)
+    name          TEXT NOT NULL,                  -- "whoosh-soft-02"
+    path          TEXT NOT NULL,                  -- relative to ~/.viral/sounds/
+    duration_s    REAL NOT NULL,
+    loudness_lufs REAL,
+    origin        TEXT NOT NULL,                  -- JSON: {"_tag":"Bundled"} | {"_tag":"Upload","file":…}
+                                                  --   | {"_tag":"Generated","prompt":…,"settings":…}
+    rights        TEXT NOT NULL DEFAULT 'licensed'
+                    CHECK (rights IN ('unconfirmed', 'owned', 'licensed')),
+    created_at    TEXT NOT NULL,
+    UNIQUE (category, name)
+  );
+  CREATE INDEX sound_effects_by_category ON sound_effects (category);
 
   CREATE TABLE projects (
     id              TEXT PRIMARY KEY,
@@ -70,7 +104,7 @@ const SCHEMA = `
     id               TEXT PRIMARY KEY,
     run_id           TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
     stage            TEXT NOT NULL,               -- source | transcribe | contact-sheet | ads | story | script | sections
-                                                  --   | voice | shots | music | render | metadata | thumbnail
+                                                  --   | voice | shots | music | sound | render | metadata | thumbnail
     attempt          INTEGER NOT NULL DEFAULT 1,
     status           TEXT NOT NULL
                        CHECK (status IN ('running', 'waiting', 'succeeded', 'failed', 'cancelled', 'skipped', 'reused')),
@@ -93,22 +127,26 @@ const SCHEMA = `
     id           TEXT PRIMARY KEY,
     source_id    TEXT REFERENCES sources (id) ON DELETE CASCADE,   -- video-level artifacts
     project_id   TEXT REFERENCES projects (id) ON DELETE CASCADE,  -- short-level artifacts
+    reference_id TEXT REFERENCES reference_videos (id) ON DELETE CASCADE,  -- reference-video analysis
     stage_run_id TEXT REFERENCES stage_runs (id) ON DELETE SET NULL,
     kind         TEXT NOT NULL,
                   -- source-level:  source-video | transcript | contact-sheet | ad-ranges
                   -- project-level: story-map | script | cut-plan | voiceover | voiceover-transcript
                   --                | narrated-plan | music-config | render | captions | metadata
-                  --                | thumb-config | thumbnail
+                  --                | thumb-config | thumbnail | sound-cues
+                  -- reference:     reference-video | reference-analysis
     version      INTEGER NOT NULL,                -- 1, 2, 3… per owner and kind; regenerating adds a version
     data         TEXT,                            -- JSON for structured artifacts, decoded with the kind's schema
     path         TEXT,                            -- file artifacts: relative to the owner's folder
     created_at   TEXT NOT NULL,
-    CHECK ((source_id IS NULL) <> (project_id IS NULL)),          -- exactly one owner
+    -- exactly one owner
+    CHECK ((source_id IS NOT NULL) + (project_id IS NOT NULL) + (reference_id IS NOT NULL) = 1),
     CHECK (data IS NOT NULL OR path IS NOT NULL)
   );
   -- "current" artifact of a kind = highest version
   CREATE UNIQUE INDEX artifacts_source_versions  ON artifacts (source_id, kind, version)  WHERE source_id IS NOT NULL;
   CREATE UNIQUE INDEX artifacts_project_versions ON artifacts (project_id, kind, version) WHERE project_id IS NOT NULL;
+  CREATE UNIQUE INDEX artifacts_reference_versions ON artifacts (reference_id, kind, version) WHERE reference_id IS NOT NULL;
 
   CREATE TABLE requests (
     id           TEXT PRIMARY KEY,

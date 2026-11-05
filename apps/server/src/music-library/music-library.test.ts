@@ -21,13 +21,15 @@ test("copies a track into the library and removes it again", async () => {
   writeFileSync(original, "fake audio")
 
   const track = await run(Effect.gen(function*() {
-    return yield* (yield* MusicLibrary).add(original, null)
+    return yield* (yield* MusicLibrary).add(original, null, "owned")
   }))
   const stored = join(home, "music", track.path)
   assert.equal(track.title, "Viral Drop Song")
   assert.equal(track.path, `${track.id}.wav`)
   assert.equal(readFileSync(stored, "utf8"), "fake audio")
   assert.equal(track.bpm, null)
+  assert.equal(track.rights, "owned")
+  assert.deepEqual(track.origin, { _tag: "Upload", file: original })
 
   // The library copy is independent of the original.
   rmSync(original)
@@ -42,7 +44,7 @@ test("copies a track into the library and removes it again", async () => {
 
 test("reports a file that can't be read", async () => {
   const exit = await run(Effect.exit(Effect.gen(function*() {
-    return yield* (yield* MusicLibrary).add(join(home, "missing.mp3"), "Missing")
+    return yield* (yield* MusicLibrary).add(join(home, "missing.mp3"), "Missing", "unconfirmed")
   })))
   assert.ok(Exit.isFailure(exit))
   assert.match(JSON.stringify(exit), /MusicFileUnreadable/)

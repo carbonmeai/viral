@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { JobEvent } from "./pipeline.ts"
+import { Rights } from "./rights.ts"
 
 export const SourceId = Schema.String.pipe(Schema.brand("SourceId"))
 export type SourceId = typeof SourceId.Type
@@ -12,8 +13,8 @@ export const SourceOrigin = Schema.Union([
 ])
 export type SourceOrigin = typeof SourceOrigin.Type
 
-export const SourceRights = Schema.Literals(["unconfirmed", "owned", "licensed"])
-export type SourceRights = typeof SourceRights.Type
+export const SourceRights = Rights
+export type SourceRights = Rights
 
 // One long video. Its download, transcript, contact sheets and ad ranges are shared by every short made from it.
 export const Source = Schema.Struct({

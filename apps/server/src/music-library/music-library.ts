@@ -1,18 +1,32 @@
 import { NodeServices } from "@effect/platform-node"
-import { type MusicTrack, MusicFileUnreadable, MusicTrackId, MusicTrackNotFound } from "@viral/contracts"
+import {
+  type MusicTrack,
+  MusicFileUnreadable,
+  MusicTrackId,
+  MusicTrackNotFound,
+  MusicTrackOrigin,
+  ReferenceVideoId,
+  Rights
+} from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { ViralHome } from "../home/viral-home.ts"
 import { DatabaseLive } from "../persistence/database.ts"
 
+const OriginJson = Schema.fromJsonString(MusicTrackOrigin)
+
 const TrackRow = Schema.Struct({
   id: MusicTrackId,
   title: Schema.String,
   path: Schema.String,
+  origin: OriginJson,
+  rights: Rights,
+  reference_id: Schema.NullOr(ReferenceVideoId),
   duration_s: Schema.NullOr(Schema.Finite),
   bpm: Schema.NullOr(Schema.Finite),
   drop_s: Schema.NullOr(Schema.Finite),
+  loudness_lufs: Schema.NullOr(Schema.Finite),
   analyzed_at: Schema.NullOr(Schema.DateTimeUtcFromString),
   created_at: Schema.DateTimeUtcFromString
 })
@@ -20,9 +34,13 @@ const toTrack = (row: typeof TrackRow.Type): MusicTrack => ({
   id: row.id,
   title: row.title,
   path: row.path,
+  origin: row.origin,
+  rights: row.rights,
+  referenceId: row.reference_id,
   durationS: row.duration_s,
   bpm: row.bpm,
   dropS: row.drop_s,
+  loudnessLufs: row.loudness_lufs,
   analyzedAt: row.analyzed_at,
   createdAt: row.created_at
 })
@@ -30,7 +48,8 @@ const toTrack = (row: typeof TrackRow.Type): MusicTrack => ({
 // Tracks you supply. Each file is copied into ~/.viral/music/<id><ext> so a short never depends on the
 // original location. BPM and drop are filled in later by the music stage's analysis.
 export class MusicLibrary extends Context.Service<MusicLibrary, {
-  add(file: string, title: string | null): Effect.Effect<MusicTrack, MusicFileUnreadable>
+  add(file: string, title: string | null, rights: Rights): Effect.Effect<MusicTrack, MusicFileUnreadable>
+  setRights(id: MusicTrackId, rights: Rights): Effect.Effect<MusicTrack, MusicTrackNotFound>
   readonly list: Effect.Effect<ReadonlyArray<MusicTrack>>
   get(id: MusicTrackId): Effect.Effect<MusicTrack, MusicTrackNotFound>
   remove(id: MusicTrackId): Effect.Effect<boolean>
@@ -61,7 +80,7 @@ export class MusicLibrary extends Context.Service<MusicLibrary, {
         return toTrack(row.value)
       })
 
-      const add = Effect.fn("MusicLibrary.add")(function*(file: string, title: string | null) {
+      const add = Effect.fn("MusicLibrary.add")(function*(file: string, title: string | null, rights: Rights) {
         const unreadable = (message: string) => new MusicFileUnreadable({ file, message })
         const info = yield* fs.stat(file).pipe(Effect.mapError((error) => unreadable(error.message)))
         if (info.type !== "File") return yield* unreadable("not a file")
@@ -70,9 +89,10 @@ export class MusicLibrary extends Context.Service<MusicLibrary, {
         const stored = `${id}${path.extname(file).toLowerCase()}`
         yield* fs.copyFile(file, path.join(home.music, stored)).pipe(Effect.mapError((error) => unreadable(error.message)))
         const now = DateTime.formatIso(yield* DateTime.now)
+        const origin = yield* Schema.encodeEffect(OriginJson)({ _tag: "Upload", file }).pipe(Effect.orDie)
         yield* sql`
-          INSERT INTO music_tracks (id, title, path, created_at)
-          VALUES (${id}, ${title ?? path.basename(file, path.extname(file))}, ${stored}, ${now})
+          INSERT INTO music_tracks (id, title, path, origin, rights, created_at)
+          VALUES (${id}, ${title ?? path.basename(file, path.extname(file))}, ${stored}, ${origin}, ${rights}, ${now})
         `.pipe(Effect.orDie)
         return yield* get(id).pipe(Effect.orDie)
       })
@@ -91,7 +111,12 @@ export class MusicLibrary extends Context.Service<MusicLibrary, {
         return true
       }, Effect.orDie)
 
-      return MusicLibrary.of({ add, list, get, remove })
+      const setRights = Effect.fn("MusicLibrary.setRights")(function*(id: MusicTrackId, rights: Rights) {
+        yield* sql`UPDATE music_tracks SET rights = ${rights} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
+      return MusicLibrary.of({ add, setRights, list, get, remove })
     })
   ).pipe(Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto]))
 }

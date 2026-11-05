@@ -2,10 +2,10 @@ import { NodeServices } from "@effect/platform-node"
 import {
   type Artifact,
   ArtifactId,
+  ArtifactKind,
   type ArtifactOwner,
-  ProjectArtifactKind,
   ProjectId,
-  SourceArtifactKind,
+  ReferenceVideoId,
   SourceId
 } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
@@ -14,7 +14,7 @@ import { SqlClient, SqlSchema } from "effect/sql"
 import { ViralHome } from "../home/viral-home.ts"
 import { DatabaseLive } from "../persistence/database.ts"
 
-type Kind = Artifact["kind"]
+type Kind = ArtifactKind
 
 // Where a new artifact version's files go, before it is recorded.
 export interface ArtifactSlot {
@@ -33,15 +33,24 @@ const ArtifactRow = Schema.Struct({
   id: ArtifactId,
   source_id: Schema.NullOr(SourceId),
   project_id: Schema.NullOr(ProjectId),
-  kind: Schema.Union([SourceArtifactKind, ProjectArtifactKind]),
+  reference_id: Schema.NullOr(ReferenceVideoId),
+  kind: ArtifactKind,
   version: Schema.Int,
   data: Schema.NullOr(DataJson),
   path: Schema.NullOr(Schema.String),
   created_at: Schema.DateTimeUtcFromString
 })
+// The one-owner CHECK guarantees exactly one of the three ids is set.
+const ownerOf = (row: typeof ArtifactRow.Type): ArtifactOwner =>
+  row.source_id !== null
+    ? { _tag: "Source", id: row.source_id }
+    : row.project_id !== null
+    ? { _tag: "Project", id: row.project_id }
+    : { _tag: "Reference", id: row.reference_id! }
+
 const toArtifact = (row: typeof ArtifactRow.Type): Artifact => ({
   id: row.id,
-  owner: row.source_id !== null ? { _tag: "Source", id: row.source_id } : { _tag: "Project", id: row.project_id! },
+  owner: ownerOf(row),
   kind: row.kind,
   version: row.version,
   data: row.data,
@@ -51,7 +60,7 @@ const toArtifact = (row: typeof ArtifactRow.Type): Artifact => ({
 
 // Stage outputs, versioned and never overwritten: regenerating adds version N+1 in its own folder, and
 // the current artifact of a kind is the highest version. Owned by a source (video-level work) or a
-// project (one short).
+// project (one short), or a reference video (its analysis).
 export class Artifacts extends Context.Service<Artifacts, {
   // Reserves the next version and creates its folder.
   allocate(owner: ArtifactOwner, kind: Kind): Effect.Effect<ArtifactSlot>
@@ -70,9 +79,18 @@ export class Artifacts extends Context.Service<Artifacts, {
       const random = yield* SecureRandom.SecureRandom
       const home = yield* ViralHome
 
-      const ownerDir = (owner: ArtifactOwner) =>
-        owner._tag === "Source" ? home.sourceDir(owner.id) : home.projectDir(owner.id)
-      const ownerColumn = (owner: ArtifactOwner) => owner._tag === "Source" ? "source_id" : "project_id"
+      const ownerDir = (owner: ArtifactOwner) => {
+        switch (owner._tag) {
+          case "Source":
+            return home.sourceDir(owner.id)
+          case "Project":
+            return home.projectDir(owner.id)
+          case "Reference":
+            return home.referenceDir(owner.id)
+        }
+      }
+      const ownerColumn = (owner: ArtifactOwner) =>
+        owner._tag === "Source" ? "source_id" : owner._tag === "Project" ? "project_id" : "reference_id"
 
       const findLatest = SqlSchema.findOneOption({
         Request: Schema.Struct({ column: Schema.String, id: Schema.String, kind: Schema.String }),
@@ -110,9 +128,11 @@ export class Artifacts extends Context.Service<Artifacts, {
             : yield* Schema.encodeEffect(DataJson)(output.data)
           const sourceId = slot.owner._tag === "Source" ? slot.owner.id : null
           const projectId = slot.owner._tag === "Project" ? slot.owner.id : null
+          const referenceId = slot.owner._tag === "Reference" ? slot.owner.id : null
           yield* sql`
-            INSERT INTO artifacts (id, source_id, project_id, kind, version, data, path, created_at)
-            VALUES (${id}, ${sourceId}, ${projectId}, ${slot.kind}, ${slot.version}, ${data}, ${output.path}, ${now})
+            INSERT INTO artifacts (id, source_id, project_id, reference_id, kind, version, data, path, created_at)
+            VALUES (${id}, ${sourceId}, ${projectId}, ${referenceId}, ${slot.kind}, ${slot.version}, ${data},
+                    ${output.path}, ${now})
           `
           const row = yield* findLatest({ column: ownerColumn(slot.owner), id: slot.owner.id, kind: slot.kind })
           return toArtifact(Option.getOrThrow(row))

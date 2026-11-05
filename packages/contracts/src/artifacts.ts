@@ -1,12 +1,14 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { ProjectId } from "./projects.ts"
+import { ReferenceVideoId } from "./references.ts"
 import { SourceId } from "./sources.ts"
 
 export const ArtifactId = Schema.String.pipe(Schema.brand("ArtifactId"))
 export type ArtifactId = typeof ArtifactId.Type
 
-// Source-level artifacts are made once per long video; project-level ones per short.
+// Source-level artifacts are made once per long video, project-level ones per short, reference-level ones
+// per reference video.
 export const SourceArtifactKind = Schema.Literals(["source-video", "transcript", "contact-sheet", "ad-ranges"])
 export type SourceArtifactKind = typeof SourceArtifactKind.Type
 
@@ -22,13 +24,22 @@ export const ProjectArtifactKind = Schema.Literals([
   "captions",
   "metadata",
   "thumb-config",
-  "thumbnail"
+  "thumbnail",
+  "sound-cues"
 ])
 export type ProjectArtifactKind = typeof ProjectArtifactKind.Type
 
+// A reference video's own download and its analysis.
+export const ReferenceArtifactKind = Schema.Literals(["reference-video", "reference-analysis"])
+export type ReferenceArtifactKind = typeof ReferenceArtifactKind.Type
+
+export const ArtifactKind = Schema.Union([SourceArtifactKind, ProjectArtifactKind, ReferenceArtifactKind])
+export type ArtifactKind = typeof ArtifactKind.Type
+
 export const ArtifactOwner = Schema.Union([
   Schema.TaggedStruct("Source", { id: SourceId }),
-  Schema.TaggedStruct("Project", { id: ProjectId })
+  Schema.TaggedStruct("Project", { id: ProjectId }),
+  Schema.TaggedStruct("Reference", { id: ReferenceVideoId })
 ])
 export type ArtifactOwner = typeof ArtifactOwner.Type
 
@@ -37,7 +48,7 @@ export type ArtifactOwner = typeof ArtifactOwner.Type
 export const Artifact = Schema.Struct({
   id: ArtifactId,
   owner: ArtifactOwner,
-  kind: Schema.Union([SourceArtifactKind, ProjectArtifactKind]),
+  kind: ArtifactKind,
   version: Schema.Int,
   data: Schema.NullOr(Schema.Unknown),
   path: Schema.NullOr(Schema.String),

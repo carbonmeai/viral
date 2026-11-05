@@ -25,7 +25,9 @@ apps/server/src/
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
   presets/             style profiles; one default, seeded on first start
-  music-library/       user-supplied tracks, copied into ~/.viral/music/
+  music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/
+  sound-library/       sound-effect samples by category, with variants, in ~/.viral/sounds/
+  references/          viral videos kept to learn from; their analyses are reference-owned artifacts
   jobs/                running jobs, approvals, cancel        (jobs.ts, jobs-rpc.ts)
   pipeline/            orders the stages, StartJob stream     (pipeline.ts, pipeline-rpc.ts)
   script/              script agent, its prompt and MCP tool  (script-agent.ts, script-prompt.ts)

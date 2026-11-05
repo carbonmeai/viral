@@ -85,6 +85,16 @@ export const MusicConfig = Schema.Struct({
 })
 export type MusicConfig = typeof MusicConfig.Type
 
+// A sound effect laid over the short. Anchored like shots (`at` or a voiceover `word`); the sound stage
+// resolves shot and drop anchors into these before rendering. `file` is absolute or relative to the plan.
+export const SfxCue = Schema.Struct({
+  file: Schema.String,
+  ...WordAnchor,
+  gain: Schema.optionalKey(Schema.Finite),
+  note: Schema.optionalKey(Schema.String)
+})
+export type SfxCue = typeof SfxCue.Type
+
 export const NarratedPlan = Schema.Struct({
   slug: Schema.String,
   title: Schema.optionalKey(Schema.String),
@@ -106,6 +116,9 @@ export const NarratedPlan = Schema.Struct({
   shots: Schema.Array(NarratedShot),
   outro: Schema.optionalKey(Schema.Array(NarratedOutro)),
   annotations: Schema.optionalKey(Schema.Array(NarratedAnnotation)),
+  // absent = no sound effects, and the render is exactly as before
+  sfx: Schema.optionalKey(Schema.Array(SfxCue)),
+  sfx_gain: Schema.optionalKey(Schema.Finite),
   music: Schema.optionalKey(Schema.Union([Schema.String, MusicConfig])),
   music_gain: Schema.optionalKey(Schema.Finite),
   music_start: Schema.optionalKey(Seconds),

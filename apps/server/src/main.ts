@@ -17,8 +17,12 @@ import { Presets } from "./presets/presets.ts"
 import { PresetsRpcLive } from "./presets/presets-rpc.ts"
 import { Projects } from "./projects/projects.ts"
 import { ProjectsRpcLive } from "./projects/projects-rpc.ts"
+import { References } from "./references/references.ts"
+import { ReferencesRpcLive } from "./references/references-rpc.ts"
 import { RenderEngine } from "./render/render-engine.ts"
 import { ScriptAgent } from "./script/script-agent.ts"
+import { SoundLibrary } from "./sound-library/sound-library.ts"
+import { SoundLibraryRpcLive } from "./sound-library/sound-library-rpc.ts"
 import { SourceStages } from "./sources/source-stages.ts"
 import { Sources } from "./sources/sources.ts"
 import { SourcesRpcLive } from "./sources/sources-rpc.ts"
@@ -26,7 +30,7 @@ import { SourcesRpcLive } from "./sources/sources-rpc.ts"
 const PORT = 3410
 
 const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: "websocket" }).pipe(
-  Layer.provide([JobsRpcLive, PipelineRpcLive, SourcesRpcLive, ProjectsRpcLive, PresetsRpcLive, MusicLibraryRpcLive, ArtifactsRpcLive]),
+  Layer.provide([JobsRpcLive, PipelineRpcLive, SourcesRpcLive, ProjectsRpcLive, PresetsRpcLive, MusicLibraryRpcLive, ArtifactsRpcLive, SoundLibraryRpcLive, ReferencesRpcLive]),
   Layer.provide(Pipeline.layer),
   Layer.provide(Layer.mergeAll(
     Jobs.layer,
@@ -36,6 +40,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     Projects.layer,
     Presets.layer,
     MusicLibrary.layer,
+    SoundLibrary.layer,
+    References.layer,
     ScriptAgent.layer,
     RenderEngine.layer
   )),
