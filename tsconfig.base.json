@@ -150,11 +150,13 @@
           {
             "include": [
               "**/*.test.ts",
+              "**/*.golden.ts",
               "**/testing/**/*"
             ],
             "options": {
               "diagnosticSeverity": {
-                "nodeBuiltinImport": "off"
+                "nodeBuiltinImport": "off",
+                "globalConsole": "off"
               }
             }
           }

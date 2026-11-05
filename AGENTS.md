@@ -23,7 +23,8 @@ apps/server/src/
   jobs/                running jobs, approvals, cancel        (jobs.ts, jobs-rpc.ts)
   pipeline/            orders the stages, StartJob stream     (pipeline.ts, pipeline-rpc.ts)
   script/              script agent, its prompt and MCP tool  (script-agent.ts, script-prompt.ts)
-  render/              render engine + its Python script      (render-engine.ts, render-probe.py)
+  render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
+                       ported with JSON-line reporting; its golden test must keep matching the candy short)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
 packages/contracts/    wire schemas + RpcGroups, one file per domain
 repos/                 gitignored reference source checkouts — read-only
@@ -63,7 +64,8 @@ bun run typecheck     # effect-tsgo tsc (TS7 + Effect diagnostics)
 bun run dev:server    # node --watch apps/server/src/main.ts  (port 3410)
 bun run cli run job-1 # dev client
 bun run test          # node --test over apps and packages
-bun run fixtures:sync # copy candy fixtures from ~/Apps/youtube into ~/.viral/fixtures (not in git)
+bun run test:golden   # full candy render vs the original short (slow; needs fixtures:sync)
+bun run fixtures:sync # copy the candy project (plans, media, golden outputs) into ~/.viral/fixtures (not in git)
 ```
 
 Runtime is Node 24, which runs `.ts` directly via type stripping — use only erasable TS syntax (no

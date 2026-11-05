@@ -13,7 +13,8 @@
     "test": "node --test \"apps/**/*.test.ts\" \"packages/**/*.test.ts\"",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
     "repos:sync": "node scripts/sync-repos.ts",
-    "fixtures:sync": "node scripts/sync-fixtures.ts"
+    "fixtures:sync": "node scripts/sync-fixtures.ts",
+    "test:golden": "node --test apps/server/src/render/render-narrated.golden.ts"
   },
   "devDependencies": {
     "@types/node": "^24",
