@@ -1,7 +1,8 @@
 import { NodeServices } from "@effect/platform-node"
 import type { JobEvent } from "@viral/contracts"
-import { Clock, Config, Context, Effect, FileSystem, Layer, Path, Schema, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Path, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { ViralHome } from "../home/viral-home.ts"
 
 export class RenderError extends Schema.TaggedError<RenderError>()("RenderError", {
   message: Schema.String
@@ -23,15 +24,12 @@ export class RenderEngine extends Context.Service<RenderEngine, {
     RenderEngine,
     Effect.gen(function*() {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-      const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
-      const home = yield* Config.String("HOME").pipe(Effect.orDie)
-      const rendersDir = path.join(home, ".viral", "renders")
-      yield* fs.makeDirectory(rendersDir, { recursive: true }).pipe(Effect.orDie)
+      const home = yield* ViralHome
       const probeScript = path.join(import.meta.dirname, "render-probe.py")
 
       const renderProbe = Effect.fn("RenderEngine.renderProbe")(function*(seconds: number, emit: Emit) {
-        const out = path.join(rendersDir, `probe-${yield* Clock.currentTimeMillis}.mp4`)
+        const out = path.join(home.renders, `probe-${yield* Clock.currentTimeMillis}.mp4`)
         const handle = yield* spawner.spawn(
           ChildProcess.make("uv", ["run", "--script", probeScript, "--seconds", String(seconds), "--out", out])
         ).pipe(Effect.mapError((cause) => new RenderError({ message: cause.message })))
@@ -68,5 +66,5 @@ export class RenderEngine extends Context.Service<RenderEngine, {
 
       return RenderEngine.of({ renderProbe })
     })
-  ).pipe(Layer.provide(NodeServices.layer))
+  ).pipe(Layer.provide([NodeServices.layer, ViralHome.layer]))
 }

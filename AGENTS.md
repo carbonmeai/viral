@@ -14,11 +14,17 @@ directly.
 ```
 apps/server/src/
   main.ts              wires domain layers + the RPC server
+  home/                ~/.viral paths ($VIRAL_HOME overrides; tests use a temp dir)
+  persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one)
+  sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short from them
+  projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
+  presets/             style profiles; one default, seeded on first start
+  music-library/       user-supplied tracks, copied into ~/.viral/music/
   jobs/                running jobs, approvals, cancel        (jobs.ts, jobs-rpc.ts)
   pipeline/            orders the stages, StartJob stream     (pipeline.ts, pipeline-rpc.ts)
   script/              script agent, its prompt and MCP tool  (script-agent.ts, script-prompt.ts)
   render/              render engine + its Python script      (render-engine.ts, render-probe.py)
-apps/cli/              dev client over RPC (stand-in until apps/web exists)
+apps/cli/              dev client over RPC, one <domain>-command.ts per command group
 packages/contracts/    wire schemas + RpcGroups, one file per domain
 repos/                 gitignored reference source checkouts — read-only
 scripts/               repo tooling (sync-repos.ts)
@@ -29,6 +35,9 @@ scripts/               repo tooling (sync-repos.ts)
 - Tests sit next to the file they cover (`script-prompt.test.ts`).
 - A package exists only when it stands alone and is named for its purpose (`contracts`). Never add a
   generic `shared`/`utils`/`common` package or folder.
+
+The database schema is designed up front in `docs/plans/database-schema.md` (local, gitignored) and
+the migration matches it statement for statement. Change the design first, then the migration.
 
 ## Reference repos
 
@@ -54,6 +63,7 @@ bun run typecheck     # effect-tsgo tsc (TS7 + Effect diagnostics)
 bun run dev:server    # node --watch apps/server/src/main.ts  (port 3410)
 bun run cli run job-1 # dev client
 bun run test          # node --test over apps and packages
+bun run fixtures:sync # copy candy fixtures from ~/Apps/youtube into ~/.viral/fixtures (not in git)
 ```
 
 Runtime is Node 24, which runs `.ts` directly via type stripping — use only erasable TS syntax (no
@@ -66,4 +76,7 @@ enums, namespaces or parameter properties). bun is the package manager.
   as the `deterministicKeys` diagnostic expects, processes via `effect/process`, RPC via `effect/rpc`. Wrap SDK
   promises once at the seam; no raw Promises in server logic.
 - Anything crossing a boundary (RPC, child-process JSON, agent tool input) is an Effect `Schema`.
+  Schemas for files the Python scripts read (`narrated-plan.ts`, `thumb-config.ts`, `transcript.ts`)
+  keep the scripts' snake_case keys, and their tests decode the candy fixtures with
+  `onExcessProperty: "error"` so a key the schema doesn't model fails loudly.
 - Commits follow Conventional Commits v1.0.0. No AI attribution lines in commits or PRs.

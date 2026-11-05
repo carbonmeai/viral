@@ -1,63 +1,46 @@
-import { NodeRuntime, NodeSocket } from "@effect/platform-node"
-import { type JobEvent, ViralRpcs } from "@viral/contracts"
-import { Console, Effect, Layer, Stream } from "effect"
-import { RpcClient, RpcSerialization } from "effect/rpc"
-import * as readline from "node:readline/promises"
+import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import { Console, Effect } from "effect"
+import { positionals } from "./args.ts"
+import { Client } from "./client.ts"
+import { JOB_USAGE, jobCommand } from "./job-command.ts"
+import { MUSIC_USAGE, musicCommand } from "./music-command.ts"
+import { PRESET_USAGE, presetCommand } from "./preset-command.ts"
+import { PROJECT_USAGE, projectCommand } from "./project-command.ts"
+import { SOURCE_USAGE, sourceCommand } from "./source-command.ts"
 
-// Dev client:
-//   node apps/cli/src/main.ts run <jobId> [--approve|--reject] [--seconds N]
-//   node apps/cli/src/main.ts approve <requestId> | reject <requestId>
-//   node apps/cli/src/main.ts cancel <jobId>
-const [command = "run", target = "job-1", ...flags] = process.argv.slice(2)
-const flag = (name: string) => flags.includes(name)
-const secondsIndex = flags.indexOf("--seconds")
-const renderSeconds = secondsIndex >= 0 ? Number(flags[secondsIndex + 1]) : 20
-
-const ProtocolLive = RpcClient.layerProtocolSocket().pipe(
-  Layer.provide([NodeSocket.layerWebSocket("ws://127.0.0.1:3410/rpc"), RpcSerialization.layerJson])
-)
-
-const ask = (question: string) =>
-  Effect.acquireUseRelease(
-    Effect.sync(() => readline.createInterface({ input: process.stdin, output: process.stdout })),
-    (rl) => Effect.promise(() => rl.question(question)),
-    (rl) => Effect.sync(() => rl.close())
-  )
+// Dev client for the local Viral server (ws://127.0.0.1:3410/rpc).
+const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, JOB_USAGE].join("\n")
 
 const program = Effect.gen(function*() {
-  const client = yield* RpcClient.make(ViralRpcs)
-
-  const answer = Effect.fn("answer")(function*(requestId: string) {
-    const approved = flag("--approve") ? true : flag("--reject") ? false : (yield* ask("approve? [y/N] ")) === "y"
-    yield* client.Respond({ requestId, approved })
-  })
-
-  const print = (event: JobEvent) => {
-    switch (event._tag) {
-      case "AgentText":
-        return Console.log(`  claude: ${event.text}`)
-      case "ScriptProposed":
-        return Console.log(`  script:\n    ${[event.script.hook, ...event.script.lines].join("\n    ")}`)
-      case "ApprovalRequested":
-        return Console.log(`? ${event.title} (${event.requestId})`).pipe(Effect.andThen(answer(event.requestId)))
-      case "Progress":
-        return Console.log(`  ${event.stage} ${event.pct.toFixed(1)}%`)
-      default:
-        return Console.log(`[${event._tag}] ${JSON.stringify({ ...event, _tag: undefined })}`)
-    }
-  }
-
-  switch (command) {
+  switch (positionals[0]) {
+    case "source":
+      return yield* sourceCommand()
+    case "project":
+      return yield* projectCommand()
+    case "preset":
+      return yield* presetCommand()
+    case "music":
+      return yield* musicCommand()
     case "run":
-      return yield* client.StartJob({ jobId: target, renderSeconds }).pipe(Stream.runForEach(print))
     case "approve":
     case "reject":
-      return yield* Console.log(yield* client.Respond({ requestId: target, approved: command === "approve" }))
     case "cancel":
-      return yield* Console.log(`cancelled: ${yield* client.CancelJob({ jobId: target })}`)
+      return yield* jobCommand()
     default:
-      return yield* Console.error(`unknown command ${command}`)
+      return yield* Console.log(USAGE)
   }
-}).pipe(Effect.scoped, Effect.provide(ProtocolLive))
+}).pipe(
+  // Domain errors print as one line instead of a stack trace.
+  Effect.catchTags({
+    SourceNotFound: (e) => Console.error(`no source ${e.id}`),
+    ProjectNotFound: (e) => Console.error(`no project ${e.id}`),
+    PresetNotFound: (e) => Console.error(`no preset ${e.id}`),
+    PresetIsDefault: (e) => Console.error(`preset ${e.id} is the default; make another one the default first`),
+    MusicTrackNotFound: (e) => Console.error(`no music track ${e.id}`),
+    MusicFileUnreadable: (e) => Console.error(`can't read ${e.file}: ${e.message}`),
+    SchemaError: (e) => Console.error(e.message)
+  }),
+  Effect.provide([Client.layer, NodeServices.layer])
+)
 
 NodeRuntime.runMain(program)

@@ -1,0 +1,13 @@
+import { ProjectsRpcs } from "@viral/contracts"
+import { Effect } from "effect"
+import { Projects } from "./projects.ts"
+
+export const ProjectsRpcLive = ProjectsRpcs.toLayer(Effect.gen(function*() {
+  const projects = yield* Projects
+  return ProjectsRpcs.of({
+    CreateProject: (input) => projects.create(input),
+    ListProjects: ({ sourceId }) => projects.list(sourceId),
+    GetProject: ({ id }) => projects.get(id),
+    DeleteProject: ({ id }) => projects.remove(id)
+  })
+}))

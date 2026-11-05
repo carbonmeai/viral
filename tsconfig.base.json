@@ -146,6 +146,17 @@
                 "effectFnOpportunity": "off"
               }
             }
+          },
+          {
+            "include": [
+              "**/*.test.ts",
+              "**/testing/**/*"
+            ],
+            "options": {
+              "diagnosticSeverity": {
+                "nodeBuiltinImport": "off"
+              }
+            }
           }
         ]
       }
