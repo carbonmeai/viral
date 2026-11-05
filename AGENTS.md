@@ -60,6 +60,11 @@ dependency versions in package.json). `repos/effect` is Effect v4 — start with
   a lot from v3 — check `repos/effect/packages/effect/src` first.
 - Do not edit files under `repos/` and do not import from `repos/`.
 
+ElevenLabs' agent skills (`sound-effects`, `music`, `text-to-speech`, `speech-to-text`, `voice-isolator`)
+are installed for coding agents in `.agents/skills/` (symlinked into `.claude/skills/`, pinned in
+`skills-lock.json`). Read the relevant one before calling an ElevenLabs API. They are coding-time help only:
+the app's own agents load the app's skill pack, never these. Restore with `npx skills experimental_install`.
+
 T3 Code (whose architecture we follow) is not included; if a local clone exists at
 `~/Apps/Opensource/t3code`, read it there for reference.
 
