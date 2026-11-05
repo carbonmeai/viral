@@ -29,6 +29,7 @@ apps/server/src/
   jobs/                running jobs, approvals, cancel        (jobs.ts, jobs-rpc.ts)
   pipeline/            orders the stages, StartJob stream     (pipeline.ts, pipeline-rpc.ts)
   script/              script agent, its prompt and MCP tool  (script-agent.ts, script-prompt.ts)
+  agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
                        ported with JSON-line reporting; its golden test must keep matching the candy short)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
@@ -37,7 +38,11 @@ repos/                 gitignored reference source checkouts — read-only
 scripts/               repo tooling (sync-repos.ts)
 ```
 
-- Prompts are TypeScript modules in the domain that uses them (`script/script-prompt.ts`).
+- Agent stages: a small TypeScript prompt in the stage's domain (`script/script-prompt.ts`) holds the stage's
+  job and tool contract; the domain knowledge lives in the app's skill pack, `apps/server/src/agent-skills/`
+  (a Claude Code plugin layout: `skills/<name>/SKILL.md`). `SkillPack` loads it at startup and appends a
+  stage's skills to its system prompt. Skills are injected, not left to the Skill tool: the SDK's skill
+  "preload" doesn't put content in a main-thread session, and a model that skips the lookup ignores the rules.
 - Python scripts are standalone uv scripts (PEP 723 inline deps) next to the code that runs them. They
   write one JSON object per stdout line and report failure as `{"type":"error","code","message"}`;
   run them through `ScriptRunner`.

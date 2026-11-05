@@ -3,8 +3,9 @@ import { NodeServices } from "@effect/platform-node"
 import { type JobEvent, Script } from "@viral/contracts"
 import { Context, Effect, Layer, Schema, Stream, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { SkillPack, type StageAgent } from "../agent-skills/skill-pack.ts"
 import { makeProposeScriptServer, PROPOSE_SCRIPT_TOOL } from "./propose-script-tool.ts"
-import { buildScriptPrompt, SCRIPT_WRITER_SYSTEM_PROMPT } from "./script-prompt.ts"
+import { buildScriptPrompt, SCRIPT_WRITER_PROMPT } from "./script-prompt.ts"
 
 export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   message: Schema.String
@@ -12,8 +13,13 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
 
 type Emit = (event: JobEvent) => Effect.Effect<void>
 
-// Drives the user's installed Claude CLI through the Agent SDK. The agent hands
-// its result back through an in-process MCP tool so the server can validate it.
+const SCRIPT_WRITER: StageAgent = {
+  prompt: SCRIPT_WRITER_PROMPT,
+  skills: ["story-arc", "narrated-recap"]
+}
+
+// Drives the user's installed Claude CLI through the Agent SDK, with the stage's skills in its system
+// prompt. The agent hands its result back through an in-process MCP tool so the server can validate it.
 export class ScriptAgent extends Context.Service<ScriptAgent, {
   writeScript(transcript: string, emit: Emit): Effect.Effect<Script, AgentError>
 }>()("@viral/server/script/script-agent/ScriptAgent") {
@@ -21,6 +27,8 @@ export class ScriptAgent extends Context.Service<ScriptAgent, {
     ScriptAgent,
     Effect.gen(function*() {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+      const skillPack = yield* SkillPack
+      const systemPrompt = skillPack.systemPrompt(SCRIPT_WRITER)
       const claudePath = yield* spawner.string(ChildProcess.make("which", ["claude"])).pipe(
         Effect.map(Str.trim),
         Effect.orDie
@@ -42,15 +50,15 @@ export class ScriptAgent extends Context.Service<ScriptAgent, {
                 abortController,
                 pathToClaudeCodeExecutable: claudePath,
                 model: "haiku",
-                systemPrompt: SCRIPT_WRITER_SYSTEM_PROMPT,
+                systemPrompt,
                 tools: [],
-                // Isolate the session from the user's own MCP servers and claude.ai
-                // connectors: only our app tools should reach the model.
+                // Isolated from the user's settings, skills, MCP servers and claude.ai connectors: only
+                // our app tools and the stage's skills reach the model.
+                settingSources: [],
                 mcpServers: { viral: server },
                 strictMcpConfig: true,
                 settings: { disableClaudeAiConnectors: true },
                 allowedTools: [PROPOSE_SCRIPT_TOOL],
-                settingSources: [],
                 persistSession: false,
                 maxTurns: 4
               }
@@ -61,6 +69,9 @@ export class ScriptAgent extends Context.Service<ScriptAgent, {
         )
 
         const onMessage = (message: SDKMessage): Effect.Effect<void, AgentError> => {
+          if (message.type === "system" && message.subtype === "init") {
+            return Effect.logInfo("script agent session", { model: message.model })
+          }
           if (message.type === "assistant") {
             return Effect.forEach(message.message.content, (block) =>
               block.type === "text"
@@ -86,5 +97,5 @@ export class ScriptAgent extends Context.Service<ScriptAgent, {
 
       return ScriptAgent.of({ writeScript })
     })
-  ).pipe(Layer.provide(NodeServices.layer))
+  ).pipe(Layer.provide([NodeServices.layer, SkillPack.layer]))
 }
