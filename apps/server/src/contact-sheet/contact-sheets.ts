@@ -1,0 +1,76 @@
+import { NodeServices } from "@effect/platform-node"
+import type { JobEvent } from "@viral/contracts"
+import { Context, Effect, Layer, Path, Schema } from "effect"
+import { ScriptRunner } from "../script-runner/script-runner.ts"
+
+export class ContactSheetError extends Schema.TaggedError<ContactSheetError>()("ContactSheetError", {
+  code: Schema.String,
+  message: Schema.String
+}) {}
+
+type Emit = (event: JobEvent) => Effect.Effect<void>
+
+export interface ContactSheetOptions {
+  // seconds between tiles
+  readonly every: number
+  readonly cols: number
+  readonly rows: number
+  readonly start?: number
+  readonly end?: number
+}
+
+// The overview grid the skill uses to read a long video: a tile every 5s, 8×8 tiles per sheet.
+export const OVERVIEW: ContactSheetOptions = { every: 5, cols: 8, rows: 8 }
+
+export const ContactSheetSet = Schema.Struct({
+  every: Schema.Finite,
+  cols: Schema.Int,
+  rows: Schema.Int,
+  frames: Schema.Int,
+  // each sheet's file (relative to the artifact folder) and the source seconds of its first/last tile
+  sheets: Schema.Array(Schema.Struct({ file: Schema.String, start: Schema.Finite, end: Schema.Finite }))
+})
+export type ContactSheetSet = typeof ContactSheetSet.Type
+
+const Line = Schema.fromJsonString(Schema.Union([
+  Schema.Struct({ type: Schema.Literal("progress"), done: Schema.Int, total: Schema.Int }),
+  Schema.Struct({
+    type: Schema.Literal("done"),
+    frames: Schema.Int,
+    sheets: ContactSheetSet.fields.sheets
+  })
+]))
+
+// Timestamped frame grids of a video, so an agent (or a person) can pick b-roll by eye.
+export class ContactSheets extends Context.Service<ContactSheets, {
+  make(video: string, outDir: string, options: ContactSheetOptions, emit: Emit): Effect.Effect<ContactSheetSet, ContactSheetError>
+}>()("@viral/server/contact-sheet/contact-sheets/ContactSheets") {
+  static readonly layer = Layer.effect(
+    ContactSheets,
+    Effect.gen(function*() {
+      const scripts = yield* ScriptRunner
+      const path = yield* Path.Path
+
+      const make = Effect.fn("ContactSheets.make")(
+        function*(video: string, outDir: string, options: ContactSheetOptions, emit: Emit) {
+          const args = [
+            path.join(import.meta.dirname, "contact-sheet.py"), video, outDir,
+            "--every", String(options.every), "--cols", String(options.cols), "--rows", String(options.rows),
+            ...(options.start === undefined ? [] : ["--start", String(options.start)]),
+            ...(options.end === undefined ? [] : ["--end", String(options.end)])
+          ]
+          return yield* scripts.run(
+            args,
+            Schema.decodeEffect(Line),
+            (line): Effect.Effect<ContactSheetSet | undefined> =>
+              line.type === "progress"
+                ? emit({ _tag: "Progress", stage: "contact-sheet", pct: 100 * line.done / line.total }).pipe(Effect.as(undefined))
+                : Effect.succeed({ every: options.every, cols: options.cols, rows: options.rows, frames: line.frames, sheets: line.sheets })
+          ).pipe(Effect.mapError((error) => new ContactSheetError({ code: error.code, message: error.message })))
+        }
+      )
+
+      return ContactSheets.of({ make })
+    })
+  ).pipe(Layer.provide([ScriptRunner.layer, NodeServices.layer]))
+}

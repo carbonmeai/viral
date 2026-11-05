@@ -1,12 +1,15 @@
-import { Source, SourceId, SourceRights } from "@viral/contracts"
-import { Console, Effect, Path, Schema } from "effect"
-import { option, positionals } from "./args.ts"
+import { type Artifact, Source, SourceId, SourceRights, SourceStage } from "@viral/contracts"
+import { Console, Effect, Path, Schema, Stream } from "effect"
+import { flag, option, positionals } from "./args.ts"
 import { Client } from "./client.ts"
+import { printEvent } from "./print-event.ts"
 import { show } from "./show.ts"
 
 export const SOURCE_USAGE = `  source add (--url <url> | --file <path>) [--rights owned|licensed] [--note <text>]
   source list | show <id> | delete <id>
-  source rights <id> <unconfirmed|owned|licensed> [--note <text>]`
+  source rights <id> <unconfirmed|owned|licensed> [--note <text>]
+  source run <id> <source|transcribe|contact-sheet|all> [--force]
+  source artifacts <id>`
 
 const describe = (source: Source) => {
   const origin = source.origin._tag === "Url" ? source.origin.url : source.origin.path
@@ -14,6 +17,9 @@ const describe = (source: Source) => {
 }
 
 const decodeRights = Schema.decodeUnknownEffect(SourceRights)
+const decodeStage = Schema.decodeUnknownEffect(SourceStage)
+
+const describeArtifact = (artifact: Artifact) => `${artifact.kind.padEnd(14)} v${artifact.version}  ${artifact.path ?? ""}`
 
 export const sourceCommand = Effect.fn("sourceCommand")(function*() {
   const client = yield* Client
@@ -44,6 +50,17 @@ export const sourceCommand = Effect.fn("sourceCommand")(function*() {
         rightsNote: note
       })
       return yield* Console.log(describe(source))
+    }
+    case "run": {
+      const stages = value === "all" ? (["source", "transcribe", "contact-sheet"] as const) : [yield* decodeStage(value)]
+      const print = printEvent()
+      return yield* Effect.forEach(stages, (stage) =>
+        client.RunSourceStage({ id: SourceId.make(id ?? ""), stage, force: flag("--force") }).pipe(Stream.runForEach(print)),
+        { discard: true })
+    }
+    case "artifacts": {
+      const artifacts = yield* client.ListArtifacts({ owner: { _tag: "Source", id: SourceId.make(id ?? "") } })
+      return yield* Effect.forEach(artifacts, (a) => Console.log(describeArtifact(a)), { discard: true })
     }
     case "delete":
       return yield* Console.log(`deleted: ${yield* client.DeleteSource({ id: SourceId.make(id ?? "") })}`)

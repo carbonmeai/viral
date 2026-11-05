@@ -5,6 +5,8 @@ import { HttpRouter } from "effect/http"
 import { RpcSerialization, RpcServer } from "effect/rpc"
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer needs a node:http server factory
 import { createServer } from "node:http"
+import { Artifacts } from "./artifacts/artifacts.ts"
+import { ArtifactsRpcLive } from "./artifacts/artifacts-rpc.ts"
 import { Jobs } from "./jobs/jobs.ts"
 import { JobsRpcLive } from "./jobs/jobs-rpc.ts"
 import { MusicLibrary } from "./music-library/music-library.ts"
@@ -17,17 +19,20 @@ import { Projects } from "./projects/projects.ts"
 import { ProjectsRpcLive } from "./projects/projects-rpc.ts"
 import { RenderEngine } from "./render/render-engine.ts"
 import { ScriptAgent } from "./script/script-agent.ts"
+import { SourceStages } from "./sources/source-stages.ts"
 import { Sources } from "./sources/sources.ts"
 import { SourcesRpcLive } from "./sources/sources-rpc.ts"
 
 const PORT = 3410
 
 const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: "websocket" }).pipe(
-  Layer.provide([JobsRpcLive, PipelineRpcLive, SourcesRpcLive, ProjectsRpcLive, PresetsRpcLive, MusicLibraryRpcLive]),
+  Layer.provide([JobsRpcLive, PipelineRpcLive, SourcesRpcLive, ProjectsRpcLive, PresetsRpcLive, MusicLibraryRpcLive, ArtifactsRpcLive]),
   Layer.provide(Pipeline.layer),
   Layer.provide(Layer.mergeAll(
     Jobs.layer,
     Sources.layer,
+    SourceStages.layer,
+    Artifacts.layer,
     Projects.layer,
     Presets.layer,
     MusicLibrary.layer,

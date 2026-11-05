@@ -16,9 +16,14 @@ export const TranscriptSegment = Schema.Struct({
 })
 export type TranscriptSegment = typeof TranscriptSegment.Type
 
+export const TranscriptProvider = Schema.Literals(["grok", "whisper-local"])
+export type TranscriptProvider = typeof TranscriptProvider.Type
+
 export const Transcript = Schema.Struct({
   source: Schema.String,
   language: Schema.String,
+  // absent in transcripts made before providers existed (the original candy transcript is Whisper)
+  provider: Schema.optionalKey(TranscriptProvider),
   segments: Schema.Array(TranscriptSegment)
 })
 export type Transcript = typeof Transcript.Type

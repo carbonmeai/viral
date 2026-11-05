@@ -1,0 +1,51 @@
+import { Schema } from "effect"
+import { Rpc, RpcGroup } from "effect/rpc"
+import { ProjectId } from "./projects.ts"
+import { SourceId } from "./sources.ts"
+
+export const ArtifactId = Schema.String.pipe(Schema.brand("ArtifactId"))
+export type ArtifactId = typeof ArtifactId.Type
+
+// Source-level artifacts are made once per long video; project-level ones per short.
+export const SourceArtifactKind = Schema.Literals(["source-video", "transcript", "contact-sheet", "ad-ranges"])
+export type SourceArtifactKind = typeof SourceArtifactKind.Type
+
+export const ProjectArtifactKind = Schema.Literals([
+  "story-map",
+  "script",
+  "cut-plan",
+  "voiceover",
+  "voiceover-transcript",
+  "narrated-plan",
+  "music-config",
+  "render",
+  "captions",
+  "metadata",
+  "thumb-config",
+  "thumbnail"
+])
+export type ProjectArtifactKind = typeof ProjectArtifactKind.Type
+
+export const ArtifactOwner = Schema.Union([
+  Schema.TaggedStruct("Source", { id: SourceId }),
+  Schema.TaggedStruct("Project", { id: ProjectId })
+])
+export type ArtifactOwner = typeof ArtifactOwner.Type
+
+// One version of a stage output. `path` is relative to the owner's folder; `data` holds structured
+// output and is decoded with the kind's schema by whoever reads it.
+export const Artifact = Schema.Struct({
+  id: ArtifactId,
+  owner: ArtifactOwner,
+  kind: Schema.Union([SourceArtifactKind, ProjectArtifactKind]),
+  version: Schema.Int,
+  data: Schema.NullOr(Schema.Unknown),
+  path: Schema.NullOr(Schema.String),
+  createdAt: Schema.DateTimeUtcFromString
+})
+export type Artifact = typeof Artifact.Type
+
+export class ArtifactsRpcs extends RpcGroup.make(
+  // Every version of every artifact the owner has, newest first within each kind.
+  Rpc.make("ListArtifacts", { payload: { owner: ArtifactOwner }, success: Schema.Array(Artifact) })
+) {}

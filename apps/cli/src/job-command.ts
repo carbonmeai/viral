@@ -3,6 +3,7 @@ import { Console, Effect, Stream } from "effect"
 import * as readline from "node:readline/promises"
 import { flag, option, positionals } from "./args.ts"
 import { Client } from "./client.ts"
+import { printEvent } from "./print-event.ts"
 
 export const JOB_USAGE = `  run <job-id> [--approve|--reject] [--seconds N]
   approve <request-id> | reject <request-id>
@@ -25,20 +26,11 @@ export const jobCommand = Effect.fn("jobCommand")(function*() {
     yield* client.Respond({ requestId, approved })
   })
 
-  const print = (event: JobEvent) => {
-    switch (event._tag) {
-      case "AgentText":
-        return Console.log(`  claude: ${event.text}`)
-      case "ScriptProposed":
-        return Console.log(`  script:\n    ${[event.script.hook, ...event.script.lines].join("\n    ")}`)
-      case "ApprovalRequested":
-        return Console.log(`? ${event.title} (${event.requestId})`).pipe(Effect.andThen(answer(event.requestId)))
-      case "Progress":
-        return Console.log(`  ${event.stage} ${event.pct.toFixed(1)}%`)
-      default:
-        return Console.log(`[${event._tag}] ${JSON.stringify({ ...event, _tag: undefined })}`)
-    }
-  }
+  const show = printEvent()
+  const print = (event: JobEvent) =>
+    event._tag === "ApprovalRequested"
+      ? Console.log(`? ${event.title} (${event.requestId})`).pipe(Effect.andThen(answer(event.requestId)))
+      : show(event)
 
   switch (command) {
     case "run":

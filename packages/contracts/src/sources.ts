@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
+import { JobEvent } from "./pipeline.ts"
 
 export const SourceId = Schema.String.pipe(Schema.brand("SourceId"))
 export type SourceId = typeof SourceId.Type
@@ -30,6 +31,10 @@ export const Source = Schema.Struct({
 })
 export type Source = typeof Source.Type
 
+// Stages that work on the long video itself; their artifacts are shared by every short from it.
+export const SourceStage = Schema.Literals(["source", "transcribe", "contact-sheet"])
+export type SourceStage = typeof SourceStage.Type
+
 export class SourceNotFound extends Schema.TaggedError<SourceNotFound>()("SourceNotFound", {
   id: SourceId
 }) {}
@@ -45,6 +50,13 @@ export class SourcesRpcs extends RpcGroup.make(
     payload: { id: SourceId, rights: SourceRights, rightsNote: Schema.NullOr(Schema.String) },
     success: Source,
     error: SourceNotFound
+  }),
+  // Runs one source-level stage and streams its events. A stage whose artifact already exists is
+  // skipped unless `force`. Until the pipeline owns stage order, the caller runs them in order.
+  Rpc.make("RunSourceStage", {
+    payload: { id: SourceId, stage: SourceStage, force: Schema.Boolean },
+    success: JobEvent,
+    stream: true
   }),
   // Deletes the source, every short made from it, and their folders; false when the source is unknown.
   Rpc.make("DeleteSource", { payload: { id: SourceId }, success: Schema.Boolean })

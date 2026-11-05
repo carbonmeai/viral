@@ -6,6 +6,14 @@ import { SqlClient, SqlSchema } from "effect/sql"
 import { ViralHome } from "../home/viral-home.ts"
 import { DatabaseLive } from "../persistence/database.ts"
 
+// What the source stage learns about the video once it has it.
+export interface SourceMetadata {
+  readonly title: string | null
+  readonly channel: string | null
+  readonly url: string | null
+  readonly durationS: number
+}
+
 export interface CreateSourceInput {
   readonly origin: SourceOrigin
   readonly rights: SourceRights
@@ -46,6 +54,7 @@ export class Sources extends Context.Service<Sources, {
   readonly list: Effect.Effect<ReadonlyArray<Source>>
   get(id: SourceId): Effect.Effect<Source, SourceNotFound>
   setRights(id: SourceId, rights: SourceRights, rightsNote: string | null): Effect.Effect<Source, SourceNotFound>
+  recordMetadata(id: SourceId, metadata: SourceMetadata): Effect.Effect<void>
   remove(id: SourceId): Effect.Effect<boolean>
 }>()("@viral/server/sources/sources") {
   static readonly layer = Layer.effect(
@@ -100,6 +109,16 @@ export class Sources extends Context.Service<Sources, {
         }
       )
 
+      const recordMetadata = Effect.fn("Sources.recordMetadata")(function*(id: SourceId, metadata: SourceMetadata) {
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql`
+          UPDATE sources
+          SET title = ${metadata.title}, channel = ${metadata.channel}, url = ${metadata.url},
+              duration_s = ${metadata.durationS}, updated_at = ${now}
+          WHERE id = ${id}
+        `
+      }, Effect.orDie)
+
       // The database cascades to the source's shorts; their folders are removed here too.
       const remove = Effect.fn("Sources.remove")(function*(id: SourceId) {
         const projects = yield* sql<{ readonly id: string }>`SELECT id FROM projects WHERE source_id = ${id}`
@@ -110,7 +129,7 @@ export class Sources extends Context.Service<Sources, {
         return true
       }, Effect.orDie)
 
-      return Sources.of({ create, list, get, setRights, remove })
+      return Sources.of({ create, list, get, setRights, recordMetadata, remove })
     })
   ).pipe(Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto]))
 }

@@ -16,7 +16,13 @@ apps/server/src/
   main.ts              wires domain layers + the RPC server
   home/                ~/.viral paths ($VIRAL_HOME overrides; tests use a temp dir)
   persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one)
-  sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short from them
+  sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short from them;
+                       source-stages.ts runs the video-level stages (source, transcribe, contact-sheet)
+  artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/
+  transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
+  contact-sheet/       timestamped frame grids for picking b-roll by eye
+  script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
+  secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
   presets/             style profiles; one default, seeded on first start
   music-library/       user-supplied tracks, copied into ~/.viral/music/
@@ -32,7 +38,9 @@ scripts/               repo tooling (sync-repos.ts)
 ```
 
 - Prompts are TypeScript modules in the domain that uses them (`script/script-prompt.ts`).
-- Python scripts are standalone uv scripts (PEP 723 inline deps) next to the code that runs them.
+- Python scripts are standalone uv scripts (PEP 723 inline deps) next to the code that runs them. They
+  write one JSON object per stdout line and report failure as `{"type":"error","code","message"}`;
+  run them through `ScriptRunner`.
 - Tests sit next to the file they cover (`script-prompt.test.ts`).
 - A package exists only when it stands alone and is named for its purpose (`contracts`). Never add a
   generic `shared`/`utils`/`common` package or folder.
@@ -59,12 +67,14 @@ T3 Code (whose architecture we follow) is not included; if a local clone exists 
 
 ```bash
 bun install           # also patches TypeScript with @effect/tsgo
+cp .env.example .env  # API keys (gitignored); or store them in the Keychain:
+                      #   security add-generic-password -s viral -a xai -w
 bun run repos:sync    # clone reference source into repos/ (gitignored)
 bun run typecheck     # effect-tsgo tsc (TS7 + Effect diagnostics)
 bun run dev:server    # node --watch apps/server/src/main.ts  (port 3410)
 bun run cli run job-1 # dev client
 bun run test          # node --test over apps and packages
-bun run test:golden   # full candy render vs the original short (slow; needs fixtures:sync)
+bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
 bun run fixtures:sync # copy the candy project (plans, media, golden outputs) into ~/.viral/fixtures (not in git)
 ```
 

@@ -5,3 +5,6 @@ node_modules/
 work/
 repos/
 docs/
+.env
+.env.*
+!.env.example

@@ -4,6 +4,8 @@ import { Script } from "./script.ts"
 
 export const JobEvent = Schema.Union([
   Schema.TaggedStruct("StageStarted", { stage: Schema.String }),
+  Schema.TaggedStruct("StageSkipped", { stage: Schema.String, reason: Schema.String }),
+  Schema.TaggedStruct("Log", { stage: Schema.String, message: Schema.String }),
   Schema.TaggedStruct("AgentText", { text: Schema.String }),
   Schema.TaggedStruct("ToolCalled", { name: Schema.String }),
   Schema.TaggedStruct("ScriptProposed", { script: Script }),

@@ -8,13 +8,14 @@
   ],
   "scripts": {
     "typecheck": "effect-tsgo tsc -p tsconfig.json",
-    "dev:server": "node --watch apps/server/src/main.ts",
+    "dev:server": "node --env-file-if-exists=.env --watch apps/server/src/main.ts",
     "cli": "node apps/cli/src/main.ts",
-    "test": "node --test \"apps/**/*.test.ts\" \"packages/**/*.test.ts\"",
+    "test": "node --env-file-if-exists=.env --test \"apps/**/*.test.ts\" \"packages/**/*.test.ts\"",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
     "repos:sync": "node scripts/sync-repos.ts",
     "fixtures:sync": "node scripts/sync-fixtures.ts",
-    "test:golden": "node --test apps/server/src/render/render-narrated.golden.ts"
+    "test:golden": "node --env-file-if-exists=.env --test \"apps/**/*.golden.ts\"",
+    "start:server": "node --env-file-if-exists=.env apps/server/src/main.ts"
   },
   "devDependencies": {
     "@types/node": "^24",
