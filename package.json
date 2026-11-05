@@ -1,0 +1,22 @@
+{
+  "name": "viral",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "effect-tsgo tsc -p tsconfig.json",
+    "dev:server": "node --watch apps/server/src/main.ts",
+    "cli": "node apps/cli/src/main.ts",
+    "test": "node --test \"apps/**/*.test.ts\" \"packages/**/*.test.ts\"",
+    "prepare": "effect-tsgo patch --typescript --no-oxlint",
+    "repos:sync": "node scripts/sync-repos.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "7.0.2",
+    "@effect/tsgo": "0.67.3"
+  }
+}
