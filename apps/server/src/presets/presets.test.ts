@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
-import { DEFAULT_PRESET_CONFIG, DEFAULT_PRESET_NAME } from "./default-preset.ts"
+import { BUILT_IN_PRESETS, DEFAULT_PRESET_CONFIG, DEFAULT_PRESET_NAME } from "./built-in-presets.ts"
 import { Presets } from "./presets.ts"
 
 let home: string
@@ -16,15 +16,18 @@ after(() => rmSync(home, { recursive: true, force: true }))
 
 const run = <A, E>(effect: Effect.Effect<A, E, Presets>) => Effect.runPromise(Effect.provide(effect, Presets.layer))
 
-test("seeds the default preset once", async () => {
+test("ensures the built-in presets once, with Viral recap as the default", async () => {
   await run(Effect.void)
   const presets = await run(Effect.gen(function*() {
     return yield* (yield* Presets).list
   }))
-  assert.equal(presets.length, 1)
-  assert.equal(presets[0]!.name, DEFAULT_PRESET_NAME)
-  assert.equal(presets[0]!.isDefault, true)
-  assert.deepEqual(presets[0]!.config, DEFAULT_PRESET_CONFIG)
+  assert.deepEqual(presets.map((p) => p.name).sort(), BUILT_IN_PRESETS.map((p) => p.name).sort())
+  const recap = presets.find((p) => p.isDefault)!
+  assert.equal(recap.name, DEFAULT_PRESET_NAME)
+  assert.deepEqual(recap.config, DEFAULT_PRESET_CONFIG)
+  const headline = presets.find((p) => p.name === "Headline full-bleed")!
+  assert.equal(headline.config.framing, "full")
+  assert.equal(headline.config.captions.mode, "chunk")
 })
 
 test("moves the default, protects it from deletion and rejects duplicate names", async () => {

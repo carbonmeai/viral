@@ -29,11 +29,12 @@ test("numbers shorts per source and slugs them from the title", async () => {
       rightsNote: null
     })
     const make = (title: string) =>
-      projects.create({ sourceId: source.id, title, format: "narrated", presetId: null, musicTrackId: null })
+      projects.create({ sourceId: source.id, title, approach: "question-recap", presetId: null, musicTrackId: null })
     return { source, first: yield* make("He Put Every Taste Into One Candy"), second: yield* make("The Glue Batch") }
   }))
   assert.equal(first.slug, "01-he-put-every-taste-into-one-candy")
   assert.equal(second.slug, "02-the-glue-batch")
+  assert.equal(first.format, "narrated", "the format follows the approach")
   assert.ok(existsSync(join(home, "sources", source.id)))
   assert.ok(existsSync(join(home, "projects", first.id)))
 
@@ -50,7 +51,7 @@ test("rejects a short for an unknown source with a typed error", async () => {
     return yield* projects.create({
       sourceId: SourceId.make("missing"),
       title: "x",
-      format: "cut-down",
+      approach: "cut-down",
       presetId: null,
       musicTrackId: null
     })
@@ -67,7 +68,7 @@ test("deleting a source removes its shorts and their folders", async () => {
     const short = yield* projects.create({
       sourceId: source.id,
       title: "Only short",
-      format: "narrated",
+      approach: "claim-interleaved",
       presetId: null,
       musicTrackId: null
     })

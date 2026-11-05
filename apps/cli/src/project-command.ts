@@ -1,13 +1,16 @@
-import { MusicTrackId, PresetId, Project, ProjectId, SourceId } from "@viral/contracts"
-import { Console, Effect } from "effect"
-import { flag, option, positionals } from "./args.ts"
+import { ApproachName, MusicTrackId, PresetId, Project, ProjectId, SourceId } from "@viral/contracts"
+import { Console, Effect, Schema } from "effect"
+import { option, positionals } from "./args.ts"
 import { Client } from "./client.ts"
 import { show } from "./show.ts"
 
-export const PROJECT_USAGE = `  project create <source-id> <title> [--cut-down] [--preset <id>] [--music <track-id>]
+export const PROJECT_USAGE = `  project create <source-id> <title> [--approach question-recap|claim-interleaved|cut-down]
+                 [--preset <id>] [--music <track-id>]
   project list [--source <id>] | show <id> | delete <id>`
 
-const describe = (project: Project) => `${project.id}  ${project.format.padEnd(9)} ${project.slug}`
+const describe = (project: Project) => `${project.id}  ${project.approach.padEnd(17)} ${project.slug}`
+
+const decodeApproach = Schema.decodeUnknownEffect(ApproachName)
 
 const orNull = <A>(value: string | undefined, make: (value: string) => A) => value === undefined ? null : make(value)
 
@@ -21,7 +24,7 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
       const project = yield* client.CreateProject({
         sourceId: SourceId.make(first),
         title,
-        format: flag("--cut-down") ? "cut-down" : "narrated",
+        approach: yield* decodeApproach(option("--approach") ?? "question-recap"),
         presetId: orNull(option("--preset"), PresetId.make),
         musicTrackId: orNull(option("--music"), MusicTrackId.make)
       })

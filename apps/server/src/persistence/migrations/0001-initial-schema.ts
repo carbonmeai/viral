@@ -80,7 +80,8 @@ const SCHEMA = `
     number          INTEGER NOT NULL,             -- 1, 2, 3… within the source; gives the "01-" slug prefix
     slug            TEXT NOT NULL,                -- "01-every-taste-candy"
     title           TEXT NOT NULL,
-    format          TEXT NOT NULL CHECK (format IN ('narrated', 'cut-down')),
+    approach        TEXT NOT NULL,                -- question-recap | claim-interleaved | cut-down (validated in contracts)
+    format          TEXT NOT NULL CHECK (format IN ('narrated', 'cut-down')),  -- derived from the approach
     preset_id       TEXT REFERENCES presets (id) ON DELETE SET NULL,     -- null = use the default preset
     music_track_id  TEXT REFERENCES music_tracks (id) ON DELETE SET NULL, -- optional; the music stage asks if missing
     created_at      TEXT NOT NULL,

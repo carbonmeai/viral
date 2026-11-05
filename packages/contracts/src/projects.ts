@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
+import { ApproachName } from "./approaches.ts"
 import { MusicTrackId, MusicTrackNotFound } from "./music-library.ts"
 import { PresetId, PresetNotFound } from "./presets.ts"
 import { SourceId, SourceNotFound } from "./sources.ts"
@@ -8,6 +9,7 @@ export const ProjectId = Schema.String.pipe(Schema.brand("ProjectId"))
 export type ProjectId = typeof ProjectId.Type
 
 // narrated: new third-person voiceover over b-roll. cut-down: the creator's own speech, spliced by beat.
+// Always derived from the project's approach.
 export const ProjectFormat = Schema.Literals(["narrated", "cut-down"])
 export type ProjectFormat = typeof ProjectFormat.Type
 
@@ -19,6 +21,7 @@ export const Project = Schema.Struct({
   number: Schema.Int,
   slug: Schema.String,
   title: Schema.String,
+  approach: ApproachName,
   format: ProjectFormat,
   // null = use the default preset
   presetId: Schema.NullOr(PresetId),
@@ -38,7 +41,7 @@ export class ProjectsRpcs extends RpcGroup.make(
     payload: {
       sourceId: SourceId,
       title: Schema.String,
-      format: ProjectFormat,
+      approach: ApproachName,
       presetId: Schema.NullOr(PresetId),
       musicTrackId: Schema.NullOr(MusicTrackId)
     },

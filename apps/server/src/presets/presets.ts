@@ -10,7 +10,7 @@ import { Context, DateTime, Effect, Layer, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { DatabaseLive } from "../persistence/database.ts"
-import { DEFAULT_PRESET_CONFIG, DEFAULT_PRESET_NAME } from "./default-preset.ts"
+import { BUILT_IN_PRESETS, DEFAULT_PRESET_NAME } from "./built-in-presets.ts"
 
 const ConfigJson = Schema.fromJsonString(PresetConfig)
 
@@ -31,8 +31,8 @@ const toPreset = (row: typeof PresetRow.Type): Preset => ({
   updatedAt: row.updated_at
 })
 
-// Style profiles. Exactly one is the default (enforced by a partial unique index); a short with no
-// preset uses it. The default preset is seeded the first time the server starts.
+// Style profiles: how a short looks and sounds. Exactly one is the default (enforced by a partial unique
+// index); a short with no preset uses it. The built-in presets are ensured by name on every start.
 export class Presets extends Context.Service<Presets, {
   readonly list: Effect.Effect<ReadonlyArray<Preset>>
   get(id: PresetId): Effect.Effect<Preset, PresetNotFound>
@@ -74,14 +74,13 @@ export class Presets extends Context.Service<Presets, {
         return id
       })
 
-      // Seed on first start.
-      const countPresets = SqlSchema.findOne({
-        Request: Schema.Void,
-        Result: Schema.Struct({ count: Schema.Int }),
-        execute: () => sql`SELECT count(*) AS count FROM presets`
-      })
-      const { count } = yield* countPresets().pipe(Effect.orDie)
-      if (count === 0) yield* insert(DEFAULT_PRESET_NAME, DEFAULT_PRESET_CONFIG, true).pipe(Effect.orDie)
+      // Add any built-in preset that's missing (never overwrite one you've edited), and make "Viral recap"
+      // the default when nothing is the default yet.
+      const names = new Set((yield* sql<{ readonly name: string }>`SELECT name FROM presets`.pipe(Effect.orDie)).map((r) => r.name))
+      const hasDefault = (yield* sql`SELECT 1 FROM presets WHERE is_default = 1`.pipe(Effect.orDie)).length > 0
+      yield* Effect.forEach(BUILT_IN_PRESETS.filter((preset) => !names.has(preset.name)), (preset) =>
+        insert(preset.name, preset.config, !hasDefault && preset.name === DEFAULT_PRESET_NAME).pipe(Effect.orDie),
+        { discard: true })
 
       const get = Effect.fn("Presets.get")(function*(id: PresetId) {
         const row = yield* findById(id).pipe(Effect.orDie)

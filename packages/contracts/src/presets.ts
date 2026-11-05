@@ -18,12 +18,36 @@ export const PresetConfig = Schema.Struct({
     // the voiceover is sped up until it reaches this pace
     wordsPerSecond: Schema.Finite
   }),
+  // band: a sharp band over a blurred fill · full: the footage cropped to fill the frame
+  framing: Schema.Literals(["band", "full"]),
+  // a pinned headline restating the open loop (its text comes from the script stage); null = none
+  headline: Schema.NullOr(Schema.Struct({
+    // first line, second line (e.g. red + white)
+    colors: Schema.Tuple([Schema.String, Schema.String]),
+    // top of the headline, as a fraction of the frame height
+    y: Schema.Finite,
+    // font size as a fraction of the frame width
+    size: Schema.Finite
+  })),
   captions: Schema.Struct({
     // false when the short is finished in an editor (e.g. CapCut) from the mp4 + srt
     enabled: Schema.Boolean,
     y: Schema.Finite,
-    lowercase: Schema.Boolean
+    // word: one word at a time · chunk: up to `maxWords` words, with the key word highlighted
+    mode: Schema.Literals(["word", "chunk"]),
+    maxWords: Schema.Int,
+    case: Schema.Literals(["lower", "upper", "as-spoken"]),
+    // colour of the highlighted word in a chunk
+    highlight: Schema.String,
+    // real-voice lines (inserts, outro) in a quote box, so viewers see who's talking
+    quoteBox: Schema.Boolean
   }),
+  // small spaced text labels ("STICKY", "VERSION 2") placed by the shots stage
+  labels: Schema.Boolean,
+  // "Video: <channel>" overlay when the footage isn't yours
+  credit: Schema.Boolean,
+  // target average shot length, a guide for the shots stage
+  pace: Schema.Struct({ shotSeconds: Schema.Finite }),
   music: Schema.Struct({
     gain: Schema.Finite,
     dropGain: Schema.Finite,

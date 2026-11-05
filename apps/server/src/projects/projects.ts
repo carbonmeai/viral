@@ -1,5 +1,7 @@
 import { NodeServices } from "@effect/platform-node"
 import {
+  APPROACHES,
+  ApproachName,
   MusicTrackId,
   type MusicTrackNotFound,
   PresetId,
@@ -24,7 +26,7 @@ import { projectSlug } from "./project-slug.ts"
 export interface CreateProjectInput {
   readonly sourceId: SourceId
   readonly title: string
-  readonly format: ProjectFormat
+  readonly approach: ApproachName
   readonly presetId: PresetId | null
   readonly musicTrackId: MusicTrackId | null
 }
@@ -35,6 +37,7 @@ const ProjectRow = Schema.Struct({
   number: Schema.Int,
   slug: Schema.String,
   title: Schema.String,
+  approach: ApproachName,
   format: ProjectFormat,
   preset_id: Schema.NullOr(PresetId),
   music_track_id: Schema.NullOr(MusicTrackId),
@@ -47,6 +50,7 @@ const toProject = (row: typeof ProjectRow.Type): Project => ({
   number: row.number,
   slug: row.slug,
   title: row.title,
+  approach: row.approach,
   format: row.format,
   presetId: row.preset_id,
   musicTrackId: row.music_track_id,
@@ -112,9 +116,11 @@ export class Projects extends Context.Service<Projects, {
         yield* sql.withTransaction(Effect.gen(function*() {
           const { next } = yield* nextNumber(input.sourceId)
           yield* sql`
-            INSERT INTO projects (id, source_id, number, slug, title, format, preset_id, music_track_id, created_at, updated_at)
-            VALUES (${id}, ${input.sourceId}, ${next}, ${projectSlug(next, input.title)}, ${input.title}, ${input.format},
-                    ${input.presetId}, ${input.musicTrackId}, ${now}, ${now})
+            INSERT INTO projects (id, source_id, number, slug, title, approach, format, preset_id, music_track_id,
+                                  created_at, updated_at)
+            VALUES (${id}, ${input.sourceId}, ${next}, ${projectSlug(next, input.title)}, ${input.title},
+                    ${input.approach}, ${APPROACHES[input.approach].format}, ${input.presetId}, ${input.musicTrackId},
+                    ${now}, ${now})
           `
         })).pipe(Effect.orDie)
         yield* fs.makeDirectory(home.projectDir(id), { recursive: true }).pipe(Effect.orDie)

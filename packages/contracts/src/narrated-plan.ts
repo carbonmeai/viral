@@ -32,6 +32,19 @@ export const NarratedShot = Schema.Struct({
 })
 export type NarratedShot = typeof NarratedShot.Type
 
+// A real-voice clip played *during* the narration: the voiceover pauses after word `after_word`, the clip
+// plays with its own audio, then the voiceover resumes. Everything later shifts by the clip's length.
+export const NarratedInsert = Schema.Struct({
+  start: Seconds,
+  end: Seconds,
+  after_word: Schema.Int,
+  after_word_text: Schema.optionalKey(Schema.String),
+  ...Framing,
+  captions: Schema.optionalKey(Schema.Boolean),
+  note: Schema.optionalKey(Schema.String)
+})
+export type NarratedInsert = typeof NarratedInsert.Type
+
 // The creator's real audio, appended after the narration.
 export const NarratedOutro = Schema.Struct({
   start: Seconds,
@@ -51,6 +64,13 @@ const AnnotationBase = {
 }
 
 export const NarratedAnnotation = Schema.Union([
+  // small spaced text, e.g. "STICKY", "VERSION 2"
+  Schema.Struct({
+    type: Schema.Literal("label"),
+    ...AnnotationBase,
+    text: Schema.String,
+    size: Schema.optionalKey(Fraction)
+  }),
   Schema.Struct({ type: Schema.Literal("circle"), ...AnnotationBase, r: Schema.optionalKey(Fraction) }),
   Schema.Struct({
     type: Schema.Literal("arrow"),
@@ -107,6 +127,24 @@ export const NarratedPlan = Schema.Struct({
   caption_y: Schema.optionalKey(Fraction),
   captions: Schema.optionalKey(Schema.Boolean),
   lowercase: Schema.optionalKey(Schema.Boolean),
+  // absent = one word at a time (the original format)
+  caption_mode: Schema.optionalKey(Schema.Literals(["word", "chunk"])),
+  caption_max_words: Schema.optionalKey(Schema.Int),
+  caption_case: Schema.optionalKey(Schema.Literals(["lower", "upper", "as-spoken"])),
+  caption_highlight: Schema.optionalKey(Schema.String),
+  // insert and outro speech in a quote box
+  quote_box: Schema.optionalKey(Schema.Boolean),
+  // absent = band (the original layout)
+  framing: Schema.optionalKey(Schema.Literals(["band", "full"])),
+  // pinned for the whole short, or until `until` seconds
+  headline: Schema.optionalKey(Schema.Struct({
+    lines: Schema.Array(Schema.Struct({ text: Schema.String, color: Schema.optionalKey(Schema.String) })),
+    y: Schema.optionalKey(Fraction),
+    size: Schema.optionalKey(Fraction),
+    until: Schema.optionalKey(Seconds)
+  })),
+  // e.g. "Video: NileBlue"
+  credit: Schema.optionalKey(Schema.String),
   // word (lowercase, punctuation stripped) -> caption color
   highlights: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   // sponsor/ad/end-screen source ranges; the renderer fails if a shot touches one
@@ -114,6 +152,7 @@ export const NarratedPlan = Schema.Struct({
   exclude_note: Schema.optionalKey(Schema.String),
   narration_end: Schema.optionalKey(Seconds),
   shots: Schema.Array(NarratedShot),
+  inserts: Schema.optionalKey(Schema.Array(NarratedInsert)),
   outro: Schema.optionalKey(Schema.Array(NarratedOutro)),
   annotations: Schema.optionalKey(Schema.Array(NarratedAnnotation)),
   // absent = no sound effects, and the render is exactly as before
