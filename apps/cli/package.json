@@ -1,0 +1,10 @@
+{
+  "name": "@viral/cli",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@effect/platform-node": "4.1.2",
+    "@viral/contracts": "workspace:*",
+    "effect": "4.1.2"
+  }
+}
