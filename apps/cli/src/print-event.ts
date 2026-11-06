@@ -32,6 +32,15 @@ const describePayload = (payload: GatePayload | null): string => {
       ].join("\n")
       return `${shots}\n${reals}\n  ${plan.shots.length} shots · ${plan.markers.length} markers · storyboard ${storyboard ?? "(none)"}\n`
     }
+    case "SectionsGate": {
+      const { plan, storyboard } = payload
+      const seconds = plan.sections.reduce((n, s) => n + s.end - s.start, 0)
+      const hook = plan.hookText === null ? "" : `  HOOK TEXT  ${plan.hookText}\n`
+      const sections = plan.sections.map((s, k) =>
+        `  ${String(k + 1).padStart(2)}  ${s.beat.padEnd(13)} ${s.start.toFixed(1).padStart(7)}–${s.end.toFixed(1)}s  "${s.text}"`
+      ).join("\n")
+      return `${hook}${sections}\n  ${plan.sections.length} sections · ${seconds.toFixed(1)}s · storyboard ${storyboard ?? "(none)"}\n`
+    }
     case "RenderGate": {
       const r = payload.render
       return `  ${r.video}\n  ${r.durationS.toFixed(1)}s · ${r.shots} shots · captions ${r.captions}\n` +

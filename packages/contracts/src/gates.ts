@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Artifact } from "./artifacts.ts"
+import { CutPlan } from "./cut-plan.ts"
 import { RenderedShort } from "./render.ts"
 import { Script } from "./script.ts"
 import { ShotPlan } from "./shot-plan.ts"
@@ -12,7 +13,9 @@ export const GatePayload = Schema.Union([
   Schema.TaggedStruct("VoiceGate", { voiceover: Voiceover, file: Schema.NullOr(Schema.String) }),
   // `storyboard`: the stitched image; each shot and real clip also carries its own frame
   Schema.TaggedStruct("ShotsGate", { plan: ShotPlan, storyboard: Schema.NullOr(Schema.String) }),
-  // rejecting a render goes back to the shots with your note
+  // a cut-down short's sections: `storyboard` is the stitched image; each section also carries its own frame
+  Schema.TaggedStruct("SectionsGate", { plan: CutPlan, storyboard: Schema.NullOr(Schema.String) }),
+  // rejecting a render goes back to the shots (or sections) with your note
   Schema.TaggedStruct("RenderGate", { render: RenderedShort }),
   // a stage with no view of its own: the artifact as stored
   Schema.TaggedStruct("ArtifactGate", { artifact: Artifact })

@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { NarratedPlan } from "@viral/contracts"
+import { CutRenderPlan, NarratedPlan } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { ViralHome } from "../home/viral-home.ts"
 import { type ScriptError, ScriptRunner } from "../script-runner/script-runner.ts"
@@ -53,11 +53,46 @@ const narratedPct = (step: typeof NarratedStep.Type, done: number, total: number
 
 const PlanJson = Schema.fromJsonString(NarratedPlan)
 
+export interface CutRender {
+  readonly output: string
+  readonly captions: string
+  readonly durationS: number
+  readonly sections: number
+}
+
+const CutStep = Schema.Literals(["sections", "overlays", "encode"])
+const CutLine = Schema.fromJsonString(Schema.Union([
+  Schema.Struct({ type: Schema.Literal("progress"), step: CutStep, done: Schema.Int, total: Schema.Int }),
+  Schema.Struct({
+    type: Schema.Literal("done"),
+    output: Schema.String,
+    captions: Schema.String,
+    duration_s: Schema.Finite,
+    sections: Schema.Int
+  })
+]))
+const CutPlanJson = Schema.fromJsonString(CutRenderPlan)
+
+// Overall render % per step: cutting sections dominates, then one encode pass with the overlays.
+const cutPct = (step: typeof CutStep.Type, done: number, total: number) => {
+  const fraction = total === 0 ? 1 : done / total
+  switch (step) {
+    case "sections":
+      return 70 * fraction
+    case "overlays":
+      return 72
+    case "encode":
+      return 75 + 20 * fraction
+  }
+}
+
 // Runs the Python render scripts next to this file through the ScriptRunner.
 export class RenderEngine extends Context.Service<RenderEngine, {
   // Writes the plan to `<workDir>/narrated.json` (its relative paths resolve against workDir) and
   // renders it to `out`, plus a sibling .srt.
   renderNarrated(plan: NarratedPlan, workDir: string, out: string, progress: Progress): Effect.Effect<NarratedRender, RenderError>
+  // The same for a cut-down short: writes `<workDir>/cut.json` and renders it to `out` + .srt.
+  renderCut(plan: CutRenderPlan, workDir: string, out: string, progress: Progress): Effect.Effect<CutRender, RenderError>
 }>()("@viral/server/render/render-engine/RenderEngine") {
   static readonly layer = Layer.effect(
     RenderEngine,
@@ -98,7 +133,25 @@ export class RenderEngine extends Context.Service<RenderEngine, {
         }
       )
 
-      return RenderEngine.of({ renderNarrated })
+      const renderCut = Effect.fn("RenderEngine.renderCut")(
+        function*(plan: CutRenderPlan, workDir: string, out: string, progress: Progress) {
+          const planFile = path.join(workDir, "cut.json")
+          yield* Schema.encodeEffect(CutPlanJson)(plan).pipe(
+            Effect.flatMap((encoded) => fs.writeFileString(planFile, encoded)),
+            Effect.mapError((error) => new RenderError({ code: "plan", message: error.message }))
+          )
+          return yield* scripts.run(
+            [script("render-short.py"), planFile, "--out", out],
+            Schema.decodeEffect(CutLine),
+            (line): Effect.Effect<CutRender | undefined> =>
+              line.type === "progress"
+                ? progress(cutPct(line.step, line.done, line.total)).pipe(Effect.as(undefined))
+                : Effect.succeed({ output: line.output, captions: line.captions, durationS: line.duration_s, sections: line.sections })
+          ).pipe(toRenderError)
+        }
+      )
+
+      return RenderEngine.of({ renderNarrated, renderCut })
     })
   ).pipe(Layer.provide([NodeServices.layer, ViralHome.layer, ScriptRunner.layer]))
 }
