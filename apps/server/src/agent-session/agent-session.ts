@@ -9,6 +9,7 @@ import { AppSettingsStore } from "../settings/app-settings.ts"
 import { Settings } from "../settings/settings.ts"
 import { makeAiGatewayProvider } from "@viral/provider-ai-gateway"
 import { makeClaudeCliProvider } from "@viral/provider-claude-cli"
+import { makeCodexProvider } from "@viral/provider-codex"
 import { replayRun } from "@viral/provider-testing"
 import type { LanguageModel } from "ai"
 import type { AgentError, AgentHooks, AgentRoute, AgentRun, AgentTask } from "./agent-task.ts"
@@ -49,7 +50,8 @@ export class AgentSession extends Context.Service<AgentSession, {
         sessionsDir: path.join(home.root, "agent-sessions"),
         ...(options.gatewayModel === undefined ? {} : { languageModel: options.gatewayModel })
       })
-      const providers: Record<AgentRoute["provider"], AgentRun> = { "claude-cli": claude, "ai-gateway": gateway }
+      const codex = yield* makeCodexProvider()
+      const providers: Record<AgentRoute["provider"], AgentRun> = { "claude-cli": claude, codex, "ai-gateway": gateway }
       // a CLI with an API key bills per use; signed in to a Claude plan, its reported cost is the plan's value
       const cliBilling = Option.isSome(yield* Config.option(Config.String("ANTHROPIC_API_KEY")).pipe(Effect.orDie))
         ? "billed" as const
@@ -71,7 +73,8 @@ export class AgentSession extends Context.Service<AgentSession, {
       const run = Effect.fn("AgentSession.run")(function*<S extends Schema.Top>(task: AgentTask<S>, hooks: AgentHooks) {
         const route = task.route ?? (yield* routeFor(task))
         // every cost is recorded with who ran it and whether it's real money
-        const billing = route.provider === "claude-cli" ? cliBilling : "billed" as const
+        // Codex reports tokens, never dollars: its runs count against your ChatGPT plan
+        const billing = route.provider === "claude-cli" ? cliBilling : route.provider === "codex" ? "subscription" as const : "billed" as const
         const stamped: AgentHooks = {
           ...hooks,
           recordCost: (cost) => hooks.recordCost({ ...cost, provider: route.provider, billing })

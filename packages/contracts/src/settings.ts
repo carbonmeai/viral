@@ -25,9 +25,9 @@ export type Account = typeof Account.Type
 export const AgentStage = Schema.Literals(["ads", "story", "script", "shots", "sections", "metadata", "thumbnail"])
 export type AgentStage = typeof AgentStage.Type
 
-// Who runs an agent stage. The Claude CLI is the out-of-the-box default; the AI Gateway runs other models (Haiku,
-// GPT-6 Luna, Gemini…) on your gateway key. More CLIs (Codex, OpenCode) are planned and join this list.
-export const AgentProvider = Schema.Literals(["claude-cli", "ai-gateway"])
+// Who runs an agent stage. The Claude CLI is the out-of-the-box default; Codex runs on your ChatGPT plan (or OpenAI
+// key); the AI Gateway runs other models (Haiku, GPT-6 Luna, Gemini…) on your gateway key.
+export const AgentProvider = Schema.Literals(["claude-cli", "codex", "ai-gateway"])
 export type AgentProvider = typeof AgentProvider.Type
 
 // Whether a cost is real money (an API key, the gateway) or the API-equivalent value a CLI plan reports.

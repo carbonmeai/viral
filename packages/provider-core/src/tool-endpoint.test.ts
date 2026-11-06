@@ -50,6 +50,7 @@ test("the tool endpoint serves the output and helper tools, hands mismatches bac
     yield* Effect.promise(() => client.close())
 
     // the token is required
+    // @effect-diagnostics-next-line globalFetchInEffect:off -- a raw request without the token, as a stranger sends it
     const denied = yield* Effect.promise(() => fetch(endpoint.url, { method: "POST", body: "{}" }))
     assert.equal(denied.status, 401)
   })).pipe(Effect.provide(SecureRandom.layerWebCrypto)))

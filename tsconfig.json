@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["packages/contracts/src", "packages/provider-core/src", "packages/provider-claude-cli/src", "packages/provider-ai-gateway/src", "packages/provider-testing/src", "apps/server/src", "apps/cli/src"]
+  "include": ["packages/contracts/src", "packages/provider-core/src", "packages/provider-claude-cli/src", "packages/provider-ai-gateway/src", "packages/provider-codex/src", "packages/provider-testing/src", "apps/server/src", "apps/cli/src"]
 }
