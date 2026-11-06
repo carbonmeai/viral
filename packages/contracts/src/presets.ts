@@ -26,7 +26,8 @@ export const PresetConfig = Schema.Struct({
     colors: Schema.Tuple([Schema.String, Schema.String]),
     // top of the headline, as a fraction of the frame height
     y: Schema.Finite,
-    // font size as a fraction of the frame width
+    // the first line's largest font size as a fraction of the frame width (the renderer's default is 0.13); the
+    // second line is 60% of it, and both shrink to fit the width
     size: Schema.Finite
   })),
   captions: Schema.Struct({

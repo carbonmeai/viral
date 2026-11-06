@@ -32,7 +32,7 @@ const VIRAL_RECAP: PresetConfig = {
 const HEADLINE_FULL_BLEED: PresetConfig = {
   ...VIRAL_RECAP,
   framing: "full",
-  headline: { colors: ["#FF2A2A", "#FFFFFF"], y: 0.035, size: 0.075 },
+  headline: { colors: ["#FF2A2A", "#FFFFFF"], y: 0.035, size: 0.13 },
   captions: { enabled: true, y: 0.74, mode: "chunk", maxWords: 3, case: "upper", highlight: "#FFD400", quoteBox: true },
   labels: true,
   credit: true,

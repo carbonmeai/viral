@@ -111,11 +111,27 @@ cp .env.example .env  # API keys (gitignored); or store them in the Keychain:
 bun run repos:sync    # clone reference source into repos/ (gitignored)
 bun run typecheck     # effect-tsgo tsc (TS7 + Effect diagnostics)
 bun run dev:server    # node --watch apps/server/src/main.ts  (port 3410)
-bun run cli run job-1 # dev client
+bun run cli           # dev client; prints every command
 bun run test          # node --test over apps and packages
 bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
 bun run fixtures:sync # copy the candy project (plans, media, golden outputs) into ~/.viral/fixtures (not in git)
 ```
+
+A short from start to finish with the dev client (the server running):
+
+```bash
+bun run cli source add --file ~/videos/candy.mp4 --rights owned
+bun run cli source run <source-id>                 # transcribe → contact sheets → ads → story; prints 3 proposals
+bun run cli project from-proposal <source-id> <n>
+bun run cli project style <project-id> <preset-id|default>   # see `preset list`
+bun run cli music add <file> --rights owned && bun run cli music beat <track-id> <bpm> <drop-s>
+bun run cli project music <project-id> <track-id|none>       # none = voice only
+bun run cli project voice <project-id> <voice-id|preset>     # see `voices`
+bun run cli project run <project-id> [--from <stage>]        # stops at each gate
+bun run cli approve <request-id> | reject <request-id> "note" | edit <request-id> <file.json>
+```
+
+Finished shorts (mp4, srt, post notes) land in `~/.viral/renders/`.
 
 Runtime is Node 24, which runs `.ts` directly via type stripping — use only erasable TS syntax (no
 enums, namespaces or parameter properties). bun is the package manager.
