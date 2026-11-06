@@ -163,10 +163,12 @@ export class RunManager extends Context.Service<RunManager, {
                 return Option.none()
               }
               case "Reject": {
-                const target = stage.rejectTo === undefined ? "" : ` (back to ${stage.rejectTo})`
+                // your choice of stage first, then the stage's own default; otherwise this stage runs again
+                const backTo = response.to !== undefined && response.to !== stage.name ? response.to : stage.rejectTo
+                const target = backTo === undefined ? "" : ` (back to ${backTo})`
                 const rejected = yield* store.updateStageRun(stageRun.id, "failed", `rejected${target}: ${response.note}`)
                 yield* publish(run.id, { _tag: "StageFinished", stageRun: rejected })
-                if (stage.rejectTo !== undefined) return Option.some({ stage: stage.rejectTo, note: response.note })
+                if (backTo !== undefined) return Option.some({ stage: backTo, note: response.note })
                 note = response.note
                 produce = true
               }

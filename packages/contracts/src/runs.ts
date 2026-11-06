@@ -85,7 +85,9 @@ export type StageRun = typeof StageRun.Type
 // How you answer a gate: carry on, re-run the stage with a note, or continue with your own edited artifact.
 export const GateResponse = Schema.Union([
   Schema.TaggedStruct("Approve", {}),
-  Schema.TaggedStruct("Reject", { note: Schema.String }),
+  // `to`: send the note back to an earlier stage of the run instead (e.g. a render's style problem goes to
+  // assemble, a wrong shot to shots); that stage and every one after it run again
+  Schema.TaggedStruct("Reject", { note: Schema.String, to: Schema.optionalKey(StageName) }),
   Schema.TaggedStruct("Edit", { artifact: Schema.Unknown })
 ])
 export type GateResponse = typeof GateResponse.Type

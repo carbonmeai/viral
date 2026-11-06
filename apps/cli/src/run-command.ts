@@ -1,13 +1,14 @@
-import { RequestId, RunId } from "@viral/contracts"
+import { RequestId, RunId, StageName } from "@viral/contracts"
 import { Console, Effect, FileSystem, Path, Schema, Stream } from "effect"
-import { positionals } from "./args.ts"
+import { option, positionals } from "./args.ts"
 import { Client } from "./client.ts"
 import { printUpdate } from "./print-event.ts"
 
 const Json = Schema.fromJsonString(Schema.Unknown)
+const decodeStage = Schema.decodeUnknownEffect(StageName)
 
 export const RUN_USAGE = `  follow <run-id> | cancel <run-id> | resume <run-id>
-  requests | approve <request-id> | reject <request-id> "<note>"
+  requests | approve <request-id> | reject <request-id> "<note>" [--to <stage>]   (--to sends it back further, e.g. assemble)
   edit <request-id> <file.json>   (answer a gate with your edited version, e.g. a shot list)`
 
 // Prints a run's updates until it finishes or stops at a gate you still need to answer (the history
@@ -49,7 +50,9 @@ export const runCommand = Effect.fn("runCommand")(function*() {
     case "reject": {
       const request = yield* client.RespondToRequest({
         requestId: RequestId.make(id),
-        response: command === "approve" ? { _tag: "Approve" } : { _tag: "Reject", note }
+        response: command === "approve"
+          ? { _tag: "Approve" }
+          : { _tag: "Reject", note, ...(option("--to") === undefined ? {} : { to: yield* decodeStage(option("--to")) }) }
       })
       yield* Console.log(`${command}d ${request.stage}`)
       return yield* follow(request.runId)

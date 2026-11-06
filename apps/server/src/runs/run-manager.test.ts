@@ -275,3 +275,29 @@ test("a rejection sent back re-runs the earlier stage with the note, in its own 
   withReview.on = false
   await rt.dispose()
 })
+
+test("a rejection can name an earlier stage to go back to", async () => {
+  const rt = boot()
+  withReview.on = true
+  const owner = await createSource(rt)
+  const run = await start(rt, owner)
+  const answered = new Set<string>()
+  const nextGate = async (stage: string) => {
+    const updates = await until(rt, run.id, (u) =>
+      u._tag === "Event" && u.event._tag === "RequestRaised" && u.event.request.stage === stage && !answered.has(u.event.request.id))
+    const request = requestOf(updates)
+    answered.add(request.id)
+    return request
+  }
+  await respond(rt, (await nextGate("transcribe")).id, { _tag: "Approve" })
+  const sourcesBefore = calls.source
+  // the review sends back to transcribe by default; this note goes all the way back to the source
+  await respond(rt, (await nextGate("ads")).id, { _tag: "Reject", note: "wrong video", to: "source" })
+  await respond(rt, (await nextGate("transcribe")).id, { _tag: "Approve" })
+  await respond(rt, (await nextGate("ads")).id, { _tag: "Approve" })
+  await until(rt, run.id, finished)
+  assert.equal(calls.source, sourcesBefore + 1, "the source stage ran again")
+  assert.deepEqual((await stageStatuses(rt, run.id)).slice(2), ["ads:failed", "source:succeeded", "transcribe:succeeded", "ads:succeeded"])
+  withReview.on = false
+  await rt.dispose()
+})
