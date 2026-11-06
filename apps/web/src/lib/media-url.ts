@@ -15,3 +15,6 @@ export const artifactFileUrl = (server: string, owner: MediaOwner, kind: string,
 // An artifact's own `path` (relative to its owner's folder).
 export const artifactPathUrl = (server: string, owner: MediaOwner, path: string) =>
   `${server}/media/${encodePath(`${ownerFolder(owner)}/${path}`)}`
+
+// A file anywhere in the Viral home, by its path relative to the home (e.g. "renders/02-candy.mp4").
+export const homeFileUrl = (server: string, path: string) => `${server}/media/${encodePath(path)}`

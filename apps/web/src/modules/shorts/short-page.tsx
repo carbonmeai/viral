@@ -1,14 +1,14 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { FrameAt, GateResponse, ProjectId, RunId, RunRequest, ShortWorkspace, ShotProposal, StageRun, Voice } from "@viral/contracts"
+import type { FrameAt, GateResponse, ProjectId, RunId, RunRequest, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Button } from "@viral/ui/primitives/button"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { ArrowRight, Check, Eye, LayoutGrid, MessageSquare } from "lucide-react"
+import { ArrowRight, Check, Copy, Eye, FolderOpen, LayoutGrid, MessageSquare, Undo2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { serverUrl } from "../../config/server-url.ts"
-import { artifactFileUrl, artifactPathUrl } from "../../lib/media-url.ts"
+import { desktop, serverUrl } from "../../config/server-url.ts"
+import { artifactFileUrl, artifactPathUrl, homeFileUrl } from "../../lib/media-url.ts"
 import { ServerState } from "../home/server-state.tsx"
 import { TitleBar } from "../layout/title-bar.tsx"
 import { voicesAtom } from "../settings/settings-api.ts"
@@ -27,13 +27,20 @@ import {
 } from "./editor-values.ts"
 import type { GateControls } from "./gate.ts"
 import { LaterStep } from "./later-step.tsx"
+import { PublishInspector, type PublishTab } from "./publish/publish-inspector.tsx"
+import { postText } from "./publish/publish-values.ts"
+import { RenderInspector, type RenderTab } from "./render/render-inspector.tsx"
+import { ShortPlayer } from "./render/short-player.tsx"
 import { ScriptInspector, type ScriptTab } from "./script/script-inspector.tsx"
 import { ScriptStage } from "./script/script-stage.tsx"
-import { checkScriptEdit, checkShotsEdit, respondToRequest, setProjectVoice, workspaceAtom } from "./shorts-api.ts"
+import { checkScriptEdit, checkShotsEdit, checkThumbnailEdit, respondToRequest, setProjectVoice, workspaceAtom } from "./shorts-api.ts"
 import { ShotsInspector, type ShotsTab } from "./shots/shots-inspector.tsx"
 import { ShotsStage, type ShotsView } from "./shots/shots-stage.tsx"
 import { proposalOf, type ShotChange, shotSpans, timelineShots } from "./shots/shots-values.ts"
 import { StepBar } from "./step-bar.tsx"
+import { ThumbnailInspector, type ThumbnailTab } from "./thumbnail/thumbnail-inspector.tsx"
+import { ThumbnailStage } from "./thumbnail/thumbnail-stage.tsx"
+import { type ThumbnailWords, withWords, wordsOf } from "./thumbnail/thumbnail-values.ts"
 import { Timeline } from "./timeline.tsx"
 import { VoiceInspector, type VoiceTab } from "./voice/voice-inspector.tsx"
 import { VoiceStage } from "./voice/voice-stage.tsx"
@@ -100,6 +107,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const respond = useAtomSet(respondToRequest, { mode: "promise" })
   const check = useAtomSet(checkScriptEdit, { mode: "promise" })
   const checkShots = useAtomSet(checkShotsEdit, { mode: "promise" })
+  const checkThumbnail = useAtomSet(checkThumbnailEdit, { mode: "promise" })
   const setVoice = useAtomSet(setProjectVoice, { mode: "promise" })
   const voices = Option.getOrElse(AsyncResult.value(useAtomValue(voicesAtom)), (): ReadonlyArray<Voice> => [])
   const [busy, setBusy] = useState(false)
@@ -116,6 +124,16 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [candidate, setCandidate] = useState<FrameAt | null>(null)
   const [draft, setDraft] = useState<ReadonlyMap<number, ShotChange>>(new Map())
   const [shotProblems, setShotProblems] = useState<ReadonlyArray<string>>([])
+  // Render, Publish and Thumbnail: the inspector's tab, where the player is, the title you'll post with, and the
+  // thumbnail's words as you edit them
+  const [renderTab, setRenderTab] = useState<RenderTab>("check")
+  const [publishTab, setPublishTab] = useState<PublishTab>("post")
+  const [thumbTab, setThumbTab] = useState<ThumbnailTab>("thumbnail")
+  const [playTime, setPlayTime] = useState<number | null>(null)
+  const [chosenTitle, setChosenTitle] = useState<string | null>(null)
+  const [thumbWords, setThumbWords] = useState<ThumbnailWords | null>(null)
+  const [thumbProblems, setThumbProblems] = useState<ReadonlyArray<string>>([])
+  const [copied, setCopied] = useState(false)
 
   const request = waitingOn === open ? pending : null
   const answer = (response: GateResponse) => {
@@ -133,6 +151,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     error,
     approve: () => void answer({ _tag: "Approve" }),
     ask: (note) => void answer({ _tag: "Reject", note }),
+    sendBack: (note, to) => void answer({ _tag: "Reject", note, to }),
     edit: (artifact) => {
       if (request === null) return Promise.resolve(["This step isn't waiting for you."])
       // a script or shots edit is checked first, so a problem is shown instead of failing the run
@@ -140,6 +159,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         ? check({ payload: { projectId: ws.project.id, script: artifact as typeof ws.script.script } }).then((r) => r.problems)
         : open === "shots"
         ? checkShots({ payload: { projectId: ws.project.id, proposal: artifact as ShotProposal } }).then((r) => r.problems)
+        : open === "thumbnail"
+        ? checkThumbnail({ payload: { projectId: ws.project.id, config: artifact as ThumbConfig } }).then((r) => r.problems)
         : Promise.resolve([] as ReadonlyArray<string>)
       return checked.then((problems) => problems.length > 0 ? problems : answer({ _tag: "Edit", artifact }).then(() => []))
     }
@@ -190,21 +211,43 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     ? <Status tone="neutral">Stopped</Status>
     : null
 
+  const askFor = () => {
+    if (open === "voice") setVoiceTab("ask")
+    else if (open === "shots") setShotsTab("ask")
+    else if (open === "render") setRenderTab("back")
+    else if (open === "thumbnail") setThumbTab("ask")
+    else setScriptTab("ask")
+  }
+  const metadata = ws.metadata
+  const title = chosenTitle ?? metadata?.metadata.title ?? ws.project.title
+  const copyPost = () => {
+    if (metadata === null) return
+    void navigator.clipboard.writeText(postText(metadata.metadata, title)).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    })
+  }
+  const publishActions = open === "publish" && metadata !== null ? (
+    <>
+      <Button size="md" onClick={copyPost}>{copied ? <><Check />Copied</> : <><Copy />Copy text</>}</Button>
+      {desktop === undefined ? null : (
+        <Button size="md" onClick={() => void desktop?.showInFinder(metadata.files.thumbnail ?? metadata.files.folder)}><FolderOpen />Show files</Button>
+      )}
+    </>
+  ) : null
+
   const actions = request !== null ? (
     <>
       {error === null ? null : <span className="text-xs text-danger">{error}</span>}
-      <Button
-        size="md"
-        disabled={busy}
-        onClick={() => (open === "voice" ? setVoiceTab("ask") : open === "shots" ? setShotsTab("ask") : setScriptTab("ask"))}
-      >
-        <MessageSquare />Ask for changes
+      <Button size="md" disabled={busy} onClick={askFor}>
+        {open === "render" ? <><Undo2 />Send back…</> : <><MessageSquare />Ask for changes</>}
       </Button>
       <Button size="md" variant="primary" disabled={busy} onClick={gate.approve}><Check />Approve the {openStep.name.toLowerCase()}</Button>
     </>
-  ) : state === "done" ? (
+  ) : publishActions !== null && state !== "done" ? publishActions : state === "done" ? (
     <>
-      <Status tone="ok">Approved</Status>
+      {publishActions}
+      {open === "publish" ? null : <Status tone="ok">Approved</Status>}
       {current !== open && states.get(current) !== "done" ? (
         <Button size="md" variant="primary" onClick={() => onStep(current)}>Go to {steps.find((s) => s.id === current)?.name}<ArrowRight /></Button>
       ) : null}
@@ -337,8 +380,105 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         />
       )
     }
+  } else if (open === "render") {
+    const render = ws.render
+    stage = render === null ? notYet("render") : (
+      <>
+        {stageBar(`${render.render.durationS.toFixed(1)}s · ${render.render.shots} shots`)}
+        {render.media.video === null
+          ? <div className="grid flex-1 place-items-center text-fg-2">The render's file isn't in the library.</div>
+          : <ShortPlayer url={homeFileUrl(serverUrl, render.media.video)} onTime={setPlayTime} />}
+      </>
+    )
+    inspector = render === null ? null : (
+      <RenderInspector
+        render={render.render}
+        checkSheetUrl={render.media.checkSheet === null ? null : homeFileUrl(serverUrl, render.media.checkSheet)}
+        format={ws.project.format}
+        stages={stages}
+        gate={gate}
+        tab={renderTab}
+        onTab={setRenderTab}
+      />
+    )
+  } else if (open === "publish") {
+    const video = metadata?.media.video ?? ws.render?.media.video ?? null
+    stage = metadata === null ? notYet("post text") : (
+      <>
+        {stageBar(title)}
+        {video === null
+          ? <div className="grid flex-1 place-items-center text-fg-2">The published file isn't in the library.</div>
+          : <ShortPlayer url={homeFileUrl(serverUrl, video)} onTime={setPlayTime} />}
+      </>
+    )
+    inspector = metadata === null ? null : (
+      <PublishInspector
+        metadata={metadata.metadata}
+        slug={ws.project.slug}
+        source={ws.source}
+        files={{
+          video: metadata.media.video === null ? null : homeFileUrl(serverUrl, metadata.media.video),
+          captions: metadata.media.captions === null ? null : homeFileUrl(serverUrl, metadata.media.captions),
+          notes: metadata.media.notes === null ? null : homeFileUrl(serverUrl, metadata.media.notes),
+          thumbnail: metadata.media.thumbnail === null ? null : homeFileUrl(serverUrl, metadata.media.thumbnail),
+          folder: metadata.files.folder
+        }}
+        chosen={title}
+        onChoose={setChosenTitle}
+        stages={stages}
+        tab={publishTab}
+        onTab={setPublishTab}
+      />
+    )
+  } else if (open === "thumbnail") {
+    const thumbnail = ws.thumbnail
+    if (thumbnail === null) {
+      stage = notYet("thumbnail")
+      inspector = null
+    } else {
+      const config = thumbnail.thumbnail.config
+      const words = thumbWords ?? wordsOf(config)
+      const image = thumbnail.thumbnail.image
+      stage = (
+        <>
+          {stageBar(config.lines.map((l) => l.text).join(" "))}
+          <ThumbnailStage
+            url={image === null ? null : artifactFileUrl(serverUrl, projectOwner, "thumbnail", thumbnail.version, image)}
+            layout={config.layout ?? "classic"}
+          />
+        </>
+      )
+      inspector = (
+        <ThumbnailInspector
+          config={config}
+          sourceId={ws.source.id}
+          stillUrl={stillUrl}
+          words={words}
+          onWords={(next) => {
+            setThumbProblems([])
+            setThumbWords(next)
+          }}
+          problems={thumbProblems}
+          onRevert={() => {
+            setThumbWords(null)
+            setThumbProblems([])
+          }}
+          onSend={() => {
+            void gate.edit(withWords(config, words)).then((refused) => {
+              setThumbProblems(refused)
+              if (refused.length === 0) setThumbWords(null)
+            })
+          }}
+          stages={stages}
+          gate={gate}
+          tab={thumbTab}
+          onTab={setThumbTab}
+        />
+      )
+    }
   } else {
-    stage = <LaterStep step={openStep} milestone="M5" />
+    // a cut-down short's Sections step has no view yet
+    stage = <LaterStep step={openStep} milestone="a later milestone" />
     inspector = null
   }
 
@@ -362,7 +502,10 @@ function Editor({ ws, progress, step, onStep, refresh }: {
               ? shortTimeOf(layout, voTime)
               : open === "shots" && shotBlocks !== null
               ? shotBlocks.find((b) => b.k === shotK)?.start ?? null
+              : (open === "render" || open === "publish") && playTime !== null
+              ? playTime
               : null}
+            drop={ws.project.musicTrackId === null ? null : layout?.narration.at(-1)?.start ?? null}
             captions={`${captions.enabled ? `${captions.mode === "chunk" ? `${captions.maxWords} words at a time` : "One word at a time"} · ${captions.case}` : "No captions (finish in an editor from the .srt)"}`}
             music={ws.project.musicTrackId === null ? "No music · voice only" : "Music · its drop lands on the last narrated line"}
             shots={ws.shotPlan !== null ? `${ws.shotPlan.plan.shots.length} shots` : "Shots are planned in step 3"}

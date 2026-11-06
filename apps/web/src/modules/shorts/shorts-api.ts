@@ -23,4 +23,5 @@ export const framesKey = (sourceId: SourceId, t: number, span: number) => `${sou
 export const respondToRequest = ViralClient.mutation("RespondToRequest")
 export const checkScriptEdit = ViralClient.mutation("CheckScriptEdit")
 export const checkShotsEdit = ViralClient.mutation("CheckShotsEdit")
+export const checkThumbnailEdit = ViralClient.mutation("CheckThumbnailEdit")
 export const setProjectVoice = ViralClient.mutation("SetProjectVoice")

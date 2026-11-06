@@ -1,7 +1,8 @@
 import type { ProjectFormat, RunRequest, Script, StageName, StageRun, TranscriptWord } from "@viral/contracts"
 
 // The editor's steps. A step can cover more than one stage: Render is assemble then render; Publish is metadata.
-export type EditorStepId = "script" | "sections" | "voice" | "shots" | "render" | "publish"
+export type EditorStepId = "script" | "sections" | "voice" | "shots" | "render" | "publish" | "thumbnail"
+export const EDITOR_STEP_IDS: ReadonlyArray<EditorStepId> = ["script", "sections", "voice", "shots", "render", "publish", "thumbnail"]
 export interface EditorStep {
   readonly id: EditorStepId
   readonly name: string
@@ -13,12 +14,14 @@ const NARRATED: ReadonlyArray<EditorStep> = [
   { id: "voice", name: "Voice", stages: ["voice"] },
   { id: "shots", name: "Shots", stages: ["shots"] },
   { id: "render", name: "Render", stages: ["assemble", "render"] },
-  { id: "publish", name: "Publish", stages: ["metadata"] }
+  { id: "publish", name: "Publish", stages: ["metadata"] },
+  { id: "thumbnail", name: "Thumbnail", stages: ["thumbnail"] }
 ]
 const CUT_DOWN: ReadonlyArray<EditorStep> = [
   { id: "sections", name: "Sections", stages: ["sections"] },
   { id: "render", name: "Render", stages: ["assemble", "render"] },
-  { id: "publish", name: "Publish", stages: ["metadata"] }
+  { id: "publish", name: "Publish", stages: ["metadata"] },
+  { id: "thumbnail", name: "Thumbnail", stages: ["thumbnail"] }
 ]
 
 export const editorSteps = (format: ProjectFormat): ReadonlyArray<EditorStep> => format === "cut-down" ? CUT_DOWN : NARRATED
@@ -61,7 +64,7 @@ export const openingStep = (steps: ReadonlyArray<EditorStep>, states: ReadonlyMa
     steps.find((s) => states.get(s.id) !== "done")?.id ??
     steps[steps.length - 1]!.id
 
-// The editor step that shows a stage (assemble and render are Render; metadata and the thumbnail are Publish),
+// The editor step that shows a stage (assemble and render are Render; metadata is Publish),
 // or undefined for a stage that isn't a short's.
 const STEP_OF_STAGE: Partial<Record<string, EditorStepId>> = {
   script: "script",
@@ -71,7 +74,7 @@ const STEP_OF_STAGE: Partial<Record<string, EditorStepId>> = {
   assemble: "render",
   render: "render",
   metadata: "publish",
-  thumbnail: "publish"
+  thumbnail: "thumbnail"
 }
 export const stepOfStage = (stage: StageName): EditorStepId | undefined => STEP_OF_STAGE[stage]
 

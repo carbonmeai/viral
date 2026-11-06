@@ -111,7 +111,12 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        its timeline the way the renderer plays it. shots/: the Shots step (preview in the style's
                        framing, storyboard, a frame picker over ListFramesAround stills, framing/crop/speed); its
                        changes collect into one edit, checked with CheckShotsEdit before it answers the gate.
-                       Edits to an approved short's shots aren't supported yet (only at the gate)
+                       Edits to an approved short's shots aren't supported yet (only at the gate).
+                       render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows, the
+                       check sheet, "Send back" to Shots/Sections or Style via Reject.to). publish/: the post
+                       text (choose a title, copy it all), the files, and a rights reminder. thumbnail/: the
+                       thumbnail in a phone frame, its moments, and word edits checked with CheckThumbnailEdit.
+                       The Sections step of a cut-down short has no view yet
   api/                 the RPC client (AtomRpc over one WebSocket) and the atom registry
   lib/  config/        small shared helpers (media URLs, formatting); where the server is
 apps/desktop/          the Electron shell: starts the server (node in dev; Electron's own Node packaged), opens the

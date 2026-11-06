@@ -68,11 +68,13 @@ export interface TimelineProps {
   readonly shots: string
   // the shot frames, once there's a shot plan
   readonly shotBlocks?: TimelineShots | null
+  // where the music drops, in the short's seconds, when it has music
+  readonly drop?: number | null
 }
 
 // The short on one timeline, read-only for now: the narration, the shots, the real lines (in the creator's own
 // voice), the captions and the music, in the short's own seconds.
-export function Timeline({ layout, head, captions, music, shots, shotBlocks }: TimelineProps) {
+export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop }: TimelineProps) {
   if (layout === null) {
     return (
       <div className="grid grid-cols-[112px_minmax(700px,1fr)] items-center gap-y-1.5">
@@ -140,7 +142,14 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks }: T
         <Lane><Block start={0} end={total} total={total} color="var(--t-cap)" label={captions} /></Lane>
 
         <TrackName icon={Music} color="var(--t-music)" name="Music" />
-        <Lane><Block start={0} end={total} total={total} color="" dim label={music} /></Lane>
+        <Lane>
+          <Block start={0} end={total} total={total} color="" dim label={music} />
+          {drop === null || drop === undefined ? null : (
+            <span className="pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-[var(--t-music)]" style={{ left: `${(drop / total) * 100}%` }} title="The drop">
+              <span className="absolute top-0.5 left-1 text-[10.5px] font-medium text-[color-mix(in_srgb,var(--t-music)_70%,var(--fg))]">drop</span>
+            </span>
+          )}
+        </Lane>
       </div>
     </div>
   )
