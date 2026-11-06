@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { type EvalReport, reportHtml, reportMarkdown, summarize } from "./eval-report.ts"
+import { combineReports, type EvalReport, reportHtml, reportMarkdown, summarize } from "./eval-report.ts"
 import type { EvalRunResult } from "./eval-runner.ts"
 
 const run = (overrides: Partial<EvalRunResult>): EvalRunResult => ({
@@ -59,4 +59,30 @@ test("the page shows each output readably and escapes it", () => {
   assert.doesNotMatch(html, /Candy <that>/)
   assert.match(html, /passed after 1 fix round ·/)
   assert.match(html, /title too long/)
+})
+
+test("combining reports numbers the runs on from the earlier ones and adds up the spend", () => {
+  const later: EvalReport = {
+    ...report,
+    createdAt: "2026-11-07T12:00:00Z",
+    stages: ["metadata", "ads"],
+    models: ["openai/gpt-6-luna", "claude-cli"],
+    runs: 1,
+    spentUsd: 0.02,
+    results: [run({}), run({ stage: "ads", model: "claude-cli", provider: "claude-cli" })]
+  }
+  const combined = combineReports(later, [report])
+  assert.deepEqual(combined.results.map((r) => `${r.stage} ${r.model} ${r.run}`), [
+    "metadata openai/gpt-6-luna 1",
+    "metadata openai/gpt-6-luna 2",
+    "metadata openai/gpt-6-luna 3",
+    "metadata openai/gpt-6-luna 4",
+    "ads claude-cli 1"
+  ])
+  assert.deepEqual(combined.stages, ["metadata", "ads"])
+  assert.deepEqual(combined.models, ["openai/gpt-6-luna", "claude-cli"])
+  assert.equal(combined.runs, 4)
+  assert.equal(combined.spentUsd, 0.06)
+  assert.equal(combined.createdAt, "2026-11-07T12:00:00Z")
+  assert.equal(combineReports(later, []), later)
 })

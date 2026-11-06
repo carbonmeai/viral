@@ -2,14 +2,17 @@ import { Config, Console, Effect, Path } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { option, positionals } from "./args.ts"
 
-export const EVAL_USAGE = `  eval <stages|all> --models <ids> [--runs N] [--budget USD] [--fixture <dir>]
+export const EVAL_USAGE = `  eval <stages|all> --models <ids> [--runs N] [--budget USD] [--fixture <dir>] [--include <eval dirs>]
                               (ads, story, script, metadata on the fixture; models: claude-cli, claude-cli:<model>,
-                               or AI Gateway ids like anthropic/claude-haiku-4.5; writes ~/.viral/evals/<date>-<stages>/)
+                               or AI Gateway ids like anthropic/claude-haiku-4.5; writes ~/.viral/evals/<date>-<stages>/;
+                               --include puts earlier evals' runs on the same page)
+  eval record <eval dir>      (records an earlier eval's runs and spend in your library)
   eval export --from <library> --source <id> --project <id> [--name candy]
                               (copies a processed source and its approved short into ~/.viral/fixtures/<name>/eval)`
 
 // The eval runs in its own server process, not through the running server: its agent sessions and settings go to
-// a scratch library (~/.viral/evals/.home), so your library is never touched and no server is needed.
+// a scratch library (~/.viral/evals/.home), so no server is needed. Only each run's result and spend are recorded
+// in your library (eval_runs), for Settings › Usage and Settings › Agents.
 export const evalCommand = Effect.fn("evalCommand")(function*() {
   const path = yield* Path.Path
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
@@ -39,7 +42,13 @@ export const evalCommand = Effect.fn("evalCommand")(function*() {
       "export", "--source", source, "--project", project, "--name", name, "--out", path.join(home, "fixtures", name, "eval")
     ])
   }
+  if (sub === "record") {
+    const dir = positionals[2]
+    if (dir === undefined) return yield* Console.error(EVAL_USAGE)
+    return yield* spawn({ VIRAL_HOME: path.join(home, "evals", ".home") }, ["record", "--dir", path.resolve(dir), "--record", home])
+  }
   const models = option("--models")
+  const include = option("--include")
   if (models === undefined) return yield* Console.error(EVAL_USAGE)
   return yield* spawn({ VIRAL_HOME: path.join(home, "evals", ".home") }, [
     "run",
@@ -48,6 +57,8 @@ export const evalCommand = Effect.fn("evalCommand")(function*() {
     "--runs", option("--runs") ?? "1",
     "--budget", option("--budget") ?? "5",
     "--fixture", option("--fixture") ?? path.join(home, "fixtures", "candy", "eval"),
-    "--out", path.join(home, "evals")
+    "--out", path.join(home, "evals"),
+    "--record", home,
+    ...(include === undefined ? [] : ["--include", include.split(",").map((d) => path.resolve(d.trim())).join(",")])
   ])
 })

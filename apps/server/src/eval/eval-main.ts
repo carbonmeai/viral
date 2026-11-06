@@ -1,13 +1,15 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { ProjectId, SourceId } from "@viral/contracts"
-import { Console, DateTime, Effect, FileSystem, Layer, Path, Schema } from "effect"
+import { Config, Console, DateTime, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { Projects } from "../projects/projects.ts"
 import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
 import { EvalFixtureError, exportFixture, loadFixture } from "./eval-fixture.ts"
-import { type EvalReport, reportHtml, reportMarkdown } from "./eval-report.ts"
+import { databaseAt } from "../persistence/database.ts"
+import { evalBilling, EvalRecords } from "./eval-records.ts"
+import { combineReports, type EvalReport, reportHtml, reportMarkdown, StoredEvalReport } from "./eval-report.ts"
 import { type EvalModel, parseModel, runEval } from "./eval-runner.ts"
 import { EvalStageName, evalStages } from "./eval-stages.ts"
 
@@ -15,7 +17,12 @@ import { EvalStageName, evalStages } from "./eval-stages.ts"
 // one for `run` (agent sessions and settings land there, never in yours), the library to copy from for `export`.
 //
 //   eval-main.ts run --stages ads,story --models claude-cli,openai/gpt-6-luna --runs 2 --budget 5 --fixture <dir> --out <dir>
+//                    [--record <library>] [--include <earlier report folders, comma-separated>]
+//   eval-main.ts record --dir <report folder> --record <library>
 //   eval-main.ts export --source <id> --project <id> --out <dir> [--name candy]
+//
+// --record writes every run's result and spend into that library's database (eval_runs), so Settings › Usage
+// counts eval spend and Settings › Agents shows how each model did; `record` does it for an earlier report.
 
 const argv = process.argv.slice(2)
 const option = (name: string) => {
@@ -28,6 +35,21 @@ const required = (name: string) => {
   return value === undefined || value === "" ? Effect.fail(fail(`--${name} is required`)) : Effect.succeed(value)
 }
 const list = (value: string) => value.split(",").map((s) => s.trim()).filter((s) => s !== "")
+
+// Where eval results go: that library's database with --record, nowhere without it.
+const recording = (library: string | undefined) =>
+  library === undefined
+    ? Layer.succeed(EvalRecords, EvalRecords.of({ record: Effect.fn("EvalRecords.record")(() => Effect.void), byModel: Effect.succeed([]) }))
+    : EvalRecords.layer.pipe(Layer.provide(databaseAt(`${library}/viral.db`)))
+
+// A CLI signed in to a plan reports the plan's value; with an API key it's real money.
+const cliBilled = Config.option(Config.String("ANTHROPIC_API_KEY")).pipe(Effect.map(Option.isSome), Effect.orDie)
+
+const readReport = Effect.fn("readReport")(function*(dir: string) {
+  const fs = yield* FileSystem.FileSystem
+  const json = yield* fs.readFileString(`${dir}/report.json`).pipe(Effect.mapError((e) => fail(`can't read ${dir}/report.json: ${e.message}`)))
+  return yield* Schema.decodeEffect(StoredEvalReport)(json).pipe(Effect.mapError((e) => fail(`${dir}/report.json: ${e.message}`)))
+})
 
 const run = Effect.gen(function*() {
   const fs = yield* FileSystem.FileSystem
@@ -56,6 +78,13 @@ const run = Effect.gen(function*() {
   const out = path.join(outRoot, `${stamp}-${stageNames.join("-")}`)
   yield* fs.makeDirectory(out, { recursive: true })
 
+  const evalId = path.basename(out)
+  const createdAt = DateTime.formatIso(now)
+  const billed = yield* cliBilled
+  // every run is recorded in your library as it finishes, so a stopped eval still shows its spend
+  const records = yield* EvalRecords
+  const earlier = yield* Effect.forEach(list(option("include") ?? ""), readReport)
+
   yield* Console.log(`eval: ${stageNames.join(", ")} × ${models.map((m) => m.label).join(", ")}, ${runs} run(s), budget $${budgetUsd.toFixed(2)}`)
   const { results, spentUsd } = yield* runEval({
     stages,
@@ -63,15 +92,15 @@ const run = Effect.gen(function*() {
     runs,
     budgetUsd,
     onResult: (r, spent) =>
-      Console.log(
+      records.record(evalId, r, evalBilling(r.provider, billed), createdAt).pipe(Effect.andThen(Console.log(
         `  run ${r.run} ${r.stage.padEnd(8)} ${r.model.padEnd(28)} ${r.status.padEnd(7)} $${r.costUsd.toFixed(4)} ${r.seconds.toFixed(1)}s` +
           (r.status === "skipped" ? "" : ` first try ${r.firstTryPass === true ? "yes" : "no"}, ${r.fixRounds} fix`) +
           (r.error === null ? "" : `  (${r.error.split("\n")[0]})`) +
           `  · spent $${spent.toFixed(4)}`
-      )
+      )))
   })
-  const report: EvalReport = {
-    createdAt: DateTime.formatIso(now),
+  const thisRun: EvalReport = {
+    createdAt,
     fixture: fixture.name,
     stages: stageNames,
     models: models.map((m) => m.label),
@@ -81,11 +110,25 @@ const run = Effect.gen(function*() {
     results,
     reference: { ads: fixture.adRanges, story: fixture.story, script: fixture.short.script }
   }
+  // with --include, the page and table compare these runs together with the earlier ones
+  const report = combineReports(thisRun, earlier)
   yield* fs.writeFileString(path.join(out, "report.json"), yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown, { space: 2 }))(report))
   yield* fs.writeFileString(path.join(out, "report.md"), reportMarkdown(report))
   yield* fs.writeFileString(path.join(out, "eval.html"), reportHtml(report))
   yield* Console.log(`\n${reportMarkdown(report)}\nside by side: ${path.join(out, "eval.html")}`)
-}).pipe(Effect.provide(AgentSession.layer))
+}).pipe(Effect.provide(Layer.merge(AgentSession.layer, recording(option("record")))))
+
+// Records an earlier report's runs in a library (for evals run before recording existed).
+const recordCommand = Effect.gen(function*() {
+  const dir = yield* required("dir")
+  const library = yield* required("record")
+  const report = yield* readReport(dir)
+  const billed = yield* cliBilled
+  const evalId = dir.split("/").filter((p) => p !== "").at(-1) ?? dir
+  const records = yield* EvalRecords
+  yield* Effect.forEach(report.results, (r) => records.record(evalId, r, evalBilling(r.provider, billed), report.createdAt), { discard: true })
+  yield* Console.log(`recorded ${report.results.length} runs of ${evalId} ($${report.spentUsd.toFixed(4)}) in ${library}`)
+}).pipe(Effect.provide(recording(option("record"))))
 
 const exportCommand = Effect.gen(function*() {
   const fixture = yield* exportFixture({
@@ -100,7 +143,8 @@ const exportCommand = Effect.gen(function*() {
 const program = Effect.gen(function*() {
   if (argv[0] === "export") return yield* exportCommand
   if (argv[0] === "run") return yield* run
-  return yield* fail("usage: eval-main.ts run|export …")
+  if (argv[0] === "record") return yield* recordCommand
+  return yield* fail("usage: eval-main.ts run|record|export …")
 }).pipe(
   Effect.catchTag("EvalFixtureError", (e) => Console.error(e.message).pipe(Effect.andThen(Effect.sync(() => void (process.exitCode = 1))))),
   Effect.provide(NodeServices.layer)

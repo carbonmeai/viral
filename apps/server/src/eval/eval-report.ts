@@ -17,6 +17,62 @@ export interface EvalReport {
   readonly reference: Partial<Record<EvalStageName, unknown>>
 }
 
+// A report.json as read back (for --include and `eval record`): the fields the summary and recording use.
+export const StoredEvalReport = Schema.fromJsonString(Schema.Struct({
+  createdAt: Schema.String,
+  fixture: Schema.String,
+  stages: Schema.Array(Schema.Literals(["ads", "story", "script", "metadata"])),
+  models: Schema.Array(Schema.String),
+  runs: Schema.Int,
+  budgetUsd: Schema.Number,
+  spentUsd: Schema.Number,
+  results: Schema.Array(Schema.Struct({
+    stage: Schema.Literals(["ads", "story", "script", "metadata"]),
+    model: Schema.String,
+    provider: Schema.Literals(["claude-cli", "ai-gateway"]),
+    run: Schema.Int,
+    status: Schema.Literals(["passed", "failed", "skipped"]),
+    error: Schema.NullOr(Schema.String),
+    costUsd: Schema.Number,
+    inputTokens: Schema.Number,
+    outputTokens: Schema.Number,
+    seconds: Schema.Number,
+    reportedModel: Schema.NullOr(Schema.String),
+    firstTryPass: Schema.NullOr(Schema.Boolean),
+    firstTryProblems: Schema.Array(Schema.String),
+    fixRounds: Schema.Int,
+    result: Schema.Unknown
+  })),
+  reference: Schema.Record(Schema.String, Schema.Unknown)
+}))
+
+// Adds earlier reports' runs to this one, numbering them first, so one page and one table compare every run.
+export const combineReports = (report: EvalReport, earlier: ReadonlyArray<EvalReport>): EvalReport => {
+  if (earlier.length === 0) return report
+  const all = [...earlier, report]
+  const results: Array<EvalRunResult> = []
+  const offset = new Map<string, number>()
+  for (const r of all) {
+    const local = new Map<string, number>()
+    for (const result of r.results) {
+      const key = `${result.stage}|${result.model}`
+      const run = (offset.get(key) ?? 0) + result.run
+      local.set(key, Math.max(local.get(key) ?? 0, run))
+      results.push({ ...result, run })
+    }
+    for (const [key, top] of local) offset.set(key, top)
+  }
+  return {
+    ...report,
+    stages: [...new Set(all.flatMap((r) => r.stages))],
+    models: [...new Set(all.flatMap((r) => r.models))],
+    runs: all.reduce((n, r) => n + r.runs, 0),
+    budgetUsd: all.reduce((n, r) => n + r.budgetUsd, 0),
+    spentUsd: all.reduce((n, r) => n + r.spentUsd, 0),
+    results
+  }
+}
+
 export interface EvalSummaryRow {
   readonly stage: EvalStageName
   readonly model: string
