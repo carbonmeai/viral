@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react"
 import { desktop } from "../../config/server-url.ts"
+import { windowControlsInset } from "./window-controls-values.ts"
 
-// How much room the macOS window buttons take at the start of the sidebar's top row: their width in the
-// desktop app, nothing in full screen (macOS hides them) or in a browser.
-export const windowControlsInset = (bridge: { readonly windowControlsInset: number } | undefined, fullScreen: boolean) =>
-  bridge === undefined || fullScreen ? 0 : bridge.windowControlsInset
-
+// The window buttons' room right now, following the window in and out of full screen.
 export function useWindowControlsInset() {
   const [fullScreen, setFullScreen] = useState(false)
   useEffect(() => desktop?.onFullScreenChange(setFullScreen), [])

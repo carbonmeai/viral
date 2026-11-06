@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { windowControlsInset } from "./window-controls.ts"
+import { windowControlsInset } from "./window-controls-values.ts"
 
 test("the window buttons' room is kept in a window and given back in full screen or a browser", () => {
   const bridge = { windowControlsInset: 76 }
