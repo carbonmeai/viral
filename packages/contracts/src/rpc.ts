@@ -5,9 +5,10 @@ import { ProjectsRpcs } from "./projects.ts"
 import { ReferencesRpcs } from "./references.ts"
 import { RunsRpcs } from "./runs.ts"
 import { SoundLibraryRpcs } from "./sound-library.ts"
+import { SettingsRpcs } from "./settings.ts"
 import { SourcesRpcs } from "./sources.ts"
 import { ToolsRpcs } from "./tools.ts"
 import { VoicesRpcs } from "./voices.ts"
 
 // Everything the server exposes over its WebSocket; each domain owns its own group.
-export const ViralRpcs = SourcesRpcs.merge(ProjectsRpcs, PresetsRpcs, MusicLibraryRpcs, ArtifactsRpcs, SoundLibraryRpcs, ReferencesRpcs, RunsRpcs, VoicesRpcs, ToolsRpcs)
+export const ViralRpcs = SourcesRpcs.merge(ProjectsRpcs, PresetsRpcs, MusicLibraryRpcs, ArtifactsRpcs, SoundLibraryRpcs, ReferencesRpcs, RunsRpcs, VoicesRpcs, ToolsRpcs, SettingsRpcs)

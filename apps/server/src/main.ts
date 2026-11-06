@@ -31,6 +31,11 @@ import { ViralHome } from "./home/viral-home.ts"
 import { HealthRouteLive, MediaRouteLive } from "./media/media-route.ts"
 import { prependToolsPath, Tools } from "./tools/tools.ts"
 import { ToolsRpcLive } from "./tools/tools-rpc.ts"
+import { Secrets } from "./secrets/secrets.ts"
+import { AppSettingsStore } from "./settings/app-settings.ts"
+import { SettingsRpcLive } from "./settings/settings-rpc.ts"
+import { StorageReport } from "./storage/storage.ts"
+import { UsageReport } from "./usage/usage.ts"
 
 // The port clients connect to; VIRAL_PORT moves it (the desktop app passes its own).
 const PORT = 3410
@@ -47,7 +52,12 @@ const DomainsLive = Layer.mergeAll(
   ElevenLabs.layer,
   Transcriber.layer,
   ViralHome.layer,
-  Tools.layer
+  Tools.layer,
+  Secrets.layer,
+  AppSettingsStore.layer,
+  StorageReport.layer,
+  UsageReport.layer,
+  NodeServices.layer
 )
 
 const RunsLive = RunManager.layer.pipe(
@@ -66,7 +76,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     ReferencesRpcLive,
     RunsRpcLive,
     VoicesRpcLive,
-    ToolsRpcLive
+    ToolsRpcLive,
+    SettingsRpcLive
   ]),
   Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)
