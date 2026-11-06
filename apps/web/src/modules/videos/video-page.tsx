@@ -27,6 +27,7 @@ import { StoryBeats } from "./story-beats.tsx"
 import { StoryStrip } from "./story-strip.tsx"
 import { TranscriptList } from "./transcript-list.tsx"
 import { VideoDetails } from "./video-details.tsx"
+import { MakeShortDialog } from "./make-short-dialog.tsx"
 import { VideoSkeleton } from "./video-skeleton.tsx"
 import { createProjectFromProposal, runProgressAtom, sourceOverviewAtom, startProjectRun } from "./videos-api.ts"
 import { firstSentence, type FrameView, framesOf, nearestStill, proposalStillTime, runSpend, shortForProposal } from "./video-values.ts"
@@ -93,14 +94,19 @@ function VideoContent({ data, progress, tab, onTab, refresh }: {
   const thumbs = new Map((home?.shorts ?? []).map((s) => [s.project.id, s.thumb]))
   const statusOf = new Map((home?.shorts ?? []).map((s) => [s.project.id, s.status]))
 
-  const make = (index: number) => {
+  // the proposal whose "Make this short" dialog is open
+  const [asking, setAsking] = useState<number | null>(null)
+  const make = (index: number, brief: string | null) => {
     setMaking(index)
     setError(null)
-    create({ payload: { sourceId: source.id, proposal: index } })
+    create({ payload: { sourceId: source.id, proposal: index, brief } })
       .then((project) => start({ payload: { projectId: project.id, from: null } }).then(() => project))
       .then((project) => navigate({ to: "/shorts/$projectId", params: { projectId: project.id } }))
       .catch(() => setError("Couldn't make that short. Is the server running?"))
-      .finally(() => setMaking(null))
+      .finally(() => {
+        setMaking(null)
+        setAsking(null)
+      })
   }
 
   const sub = [
@@ -201,7 +207,7 @@ function VideoContent({ data, progress, tab, onTab, refresh }: {
                       still={still}
                       made={short === null ? null : { short, status: statusOf.get(short.project.id) ?? null }}
                       busy={making === i}
-                      onMake={() => make(i)}
+                      onMake={() => setAsking(i)}
                       onOpen={() => short !== null && navigate({ to: "/shorts/$projectId", params: { projectId: short.project.id } })}
                     />
                   )
@@ -228,6 +234,15 @@ function VideoContent({ data, progress, tab, onTab, refresh }: {
           <WaitingRows items={waiting} showVideo={false} thumbs={thumbs} now={Date.now()} />
         </Panel>
       </div>
+      <MakeShortDialog
+        title={asking === null ? "" : story?.proposals[asking]?.title ?? "this short"}
+        open={asking !== null}
+        busy={making !== null}
+        onCancel={() => setAsking(null)}
+        onMake={(brief) => {
+          if (asking !== null) make(asking, brief)
+        }}
+      />
     </Page>
   )
 }

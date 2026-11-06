@@ -15,6 +15,7 @@ import { voicesAtom } from "../settings/settings-api.ts"
 import { Detail } from "../system/detail.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
+import { BriefButton } from "./brief-button.tsx"
 import { EditorFrame } from "./editor-frame.tsx"
 import { EditorSkeleton } from "./editor-skeleton.tsx"
 import {
@@ -614,7 +615,10 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const captions = ws.preset.config.captions
   return (
     <>
-      <TitleBar title={titleOf(ws)}>{status}</TitleBar>
+      <TitleBar title={titleOf(ws)}>
+        <BriefButton project={ws.project} running={(progress.run ?? ws.run)?.status === "running" || (progress.run ?? ws.run)?.status === "waiting"} onSaved={refresh} />
+        {status}
+      </TitleBar>
       <EditorFrame
         bar={
           <>
