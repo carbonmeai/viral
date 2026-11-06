@@ -4,8 +4,11 @@ import { Context, Effect, Layer } from "effect"
 import { RpcClient, RpcSerialization } from "effect/rpc"
 import type { RpcClientError } from "effect/rpc/RpcClientError"
 
+// VIRAL_PORT points the CLI at a server on another port (the default is 3410), e.g. a second library.
+const port = process.env["VIRAL_PORT"] ?? "3410"
+
 const ProtocolLive = RpcClient.layerProtocolSocket().pipe(
-  Layer.provide([NodeSocket.layerWebSocket("ws://127.0.0.1:3410/rpc"), RpcSerialization.layerJson])
+  Layer.provide([NodeSocket.layerWebSocket(`ws://127.0.0.1:${port}/rpc`), RpcSerialization.layerJson])
 )
 
 // The typed RPC client for the local Viral server.
