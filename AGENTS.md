@@ -35,6 +35,11 @@ apps/server/src/
                        srt and <slug>.md into ~/.viral/renders/
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
+  tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/
+                       Viral/tools; VIRAL_TOOLS_DIR overrides), then the PATH. Not bundled in the app: missing ones
+                       are downloaded on first run from pinned URLs, checksum-verified (ffmpeg: hash recorded on the
+                       first download), and the folder is put first on the server's PATH. Viral's yt-dlp updates
+                       itself every few days. ListTools / InstallTools
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
   presets/             style profiles; one default, seeded on first start
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/
@@ -130,7 +135,7 @@ bun run dev           # the web dev server (:5733) + the desktop app, which star
                       #   (VIRAL_HOME=~/.viral/work/live-check bun run dev to open another library)
 bun run dev:server    # node --watch apps/server/src/main.ts  (port 3410), for the CLI or the browser
 bun run dev:web       # the UI alone at http://127.0.0.1:5733 (against a running server)
-bun run --cwd apps/desktop fetch-tools  # download ffmpeg, ffprobe, uv, yt-dlp (checksummed) into resources/bin
+bun run cli tools install # download the missing tools (also happens on the app's first run)
 bun run package:desktop # build the UI and Viral.app (apps/desktop/release/mac-arm64, unsigned)
 bun run cli           # dev client; prints every command
 bun run test          # node --test over apps and packages
