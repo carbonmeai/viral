@@ -47,7 +47,7 @@ const OPTIONS: ReadonlyArray<{ readonly value: Theme; readonly label: string }> 
 // The theme as three small pictures of the app, the selected one outlined in lemon.
 export function ThemePicker({ value, onChange }: { readonly value: Theme; readonly onChange: (theme: Theme) => void }) {
   return (
-    <div role="radiogroup" aria-label="Theme" className="flex gap-3">
+    <div role="radiogroup" aria-label="Theme" className="flex gap-2.5">
       {OPTIONS.map((option) => {
         const selected = option.value === value
         return (
@@ -57,13 +57,13 @@ export function ThemePicker({ value, onChange }: { readonly value: Theme; readon
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(option.value)}
-            className="group flex flex-col items-center gap-1.5 outline-none"
+            className="group flex flex-col items-center gap-1 outline-none"
           >
             <span
               className={cn(
-                "block h-[60px] w-[96px] overflow-hidden rounded-[10px] ring-offset-2 ring-offset-panel transition-shadow",
-                selected ? "ring-2 ring-lemon" : "ring-1 ring-line-2 group-hover:ring-fg-3",
-                "group-focus-visible:ring-2 group-focus-visible:ring-ring"
+                "block h-[48px] w-[76px] overflow-hidden rounded-[8px] ring-offset-1 ring-offset-panel transition-shadow",
+                selected ? "ring-[1.5px] ring-lemon" : "ring-1 ring-line-2 group-hover:ring-fg-3",
+                "group-focus-visible:ring-[1.5px] group-focus-visible:ring-ring"
               )}
             >
               <Preview theme={option.value} />
