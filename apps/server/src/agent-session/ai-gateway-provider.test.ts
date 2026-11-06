@@ -165,3 +165,32 @@ test("no output call, no model or no key are clear errors", async () => {
   ))
   assert.match(JSON.stringify(noKey), /no-key/)
 })
+
+test("output that doesn't match the schema goes back to the model, which fixes it in the same run", async () => {
+  // the first answer isn't a whole number; the second is
+  const { calls, model } = scripted([
+    reply([call("t1", "propose_answer", { answer: "forty-two" })], "0.001"),
+    reply([call("t2", "propose_answer", { answer: 42 })], "0.001")
+  ])
+  const r = recorded()
+  const answer = await run(model, "test-key", (go) => go(taskFor(), r.hooks, "anthropic/claude-haiku-4.5"))
+
+  assert.deepEqual(answer, { answer: 42 })
+  assert.equal(calls.length, 2, "one retry, then it stopped")
+  // the second call carried the schema error as the tool's answer
+  const toolParts = calls[1]!.prompt.flatMap((m: { readonly role: string; readonly content: unknown }) =>
+    m.role === "tool" && Array.isArray(m.content) ? m.content : [])
+  assert.match(JSON.stringify(toolParts), /doesn't match the expected format/)
+  assert.equal(r.costs.reduce((n, c) => n + c.costUsd, 0), 0.002, "both calls are paid for")
+})
+
+test("a model that never gets the format right fails with invalid-output", async () => {
+  const { model } = scripted([reply([call("t1", "propose_answer", { answer: "nope" })], "0.001")])
+  const exit = await Effect.runPromiseExit(Effect.provide(
+    makeAiGatewayProvider({ languageModel: () => model }).pipe(
+      Effect.flatMap((go) => go({ ...taskFor(), maxTurns: 3 }, recorded().hooks, "openai/gpt-6-luna"))
+    ),
+    layers("test-key")
+  ))
+  assert.match(JSON.stringify(exit), /invalid-output/)
+})

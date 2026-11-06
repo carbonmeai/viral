@@ -1,5 +1,5 @@
 import { createGateway } from "@ai-sdk/gateway"
-import { generateText, hasToolCall, type ImagePart, isStepCount, jsonSchema, type LanguageModel, type ModelMessage, type TextPart, tool, type ToolSet } from "ai"
+import { generateText, type ImagePart, isStepCount, jsonSchema, type LanguageModel, type ModelMessage, type TextPart, tool, type ToolSet } from "ai"
 import { Effect, FileSystem, Option, Path, Redacted, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SkillPack } from "../agent-skills/skill-pack.ts"
@@ -115,10 +115,24 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
     }
     const messages = [...history, user]
 
-    const services = yield* Effect.context<never>()
+    const services = yield* Effect.context<S["DecodingServices"]>()
+    // The output tool checks its input against the stage's schema: a match is the result and ends the run; a
+    // mismatch goes back to the model as the tool's answer, so it can fix it and call again (as on the CLI).
+    let accepted: Option.Option<{ readonly value: S["Type"]; readonly input: unknown }> = Option.none()
+    const decodeOutput = Schema.decodeUnknownEffect(task.output.schema)
     const tools: ToolSet = {
-      // no execute: the call ends the run, and its input is the result
-      [task.output.tool]: tool({ description: task.output.description, inputSchema: jsonSchema(toolJsonSchema(task.output.schema)) }),
+      [task.output.tool]: tool({
+        description: task.output.description,
+        inputSchema: jsonSchema(toolJsonSchema(task.output.schema)),
+        execute: (input: unknown) =>
+          Effect.runPromiseWith(services)(decodeOutput(input).pipe(Effect.match({
+            onFailure: (error) => `That doesn't match the expected format:\n${error.message}\n\nFix it and call ${task.output.tool} again with the whole result.`,
+            onSuccess: (value) => {
+              accepted = Option.some({ value, input })
+              return "Received."
+            }
+          })))
+      }),
       ...Object.fromEntries((task.tools ?? []).map((helper) => [
         helper.name,
         tool({
@@ -137,7 +151,7 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
           instructions: anthropic ? { role: "system", content: system, providerOptions: ANTHROPIC_CACHE } : system,
           messages,
           tools,
-          stopWhen: [hasToolCall(task.output.tool), isStepCount(task.maxTurns ?? 8)],
+          stopWhen: [() => Option.isSome(accepted), isStepCount(task.maxTurns ?? 8)],
           maxRetries: 2,
           abortSignal: signal,
           onStepFinish: (step) =>
@@ -158,20 +172,17 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
       costUsd
     })
 
-    const call = result.steps.flatMap((step) => step.toolCalls).find((c) => c.toolName === task.output.tool)
-    // the output tool's call is answered in the stored history, so a resumed conversation is well formed
-    const answered: Array<ModelMessage> = call === undefined ? [] : [{
-      role: "tool",
-      content: [{ type: "tool-result", toolCallId: call.toolCallId, toolName: call.toolName, output: { type: "text", value: "Received." } }]
-    }]
-    yield* saveHistory(sessionId, [...messages, ...result.responseMessages, ...answered], fileOf)
+    // the output tool answered every call itself, so the stored conversation is already well formed
+    yield* saveHistory(sessionId, [...messages, ...result.responseMessages], fileOf)
 
-    if (call === undefined) {
-      return yield* fail("no-output")(`the agent didn't call ${task.output.tool}${result.text.trim() === "" ? "" : `; it said: ${result.text.slice(0, 300)}`}`)
+    if (Option.isSome(accepted)) return accepted.value.value
+    const calls = result.steps.flatMap((step) => step.toolCalls).filter((c) => c.toolName === task.output.tool)
+    if (calls.length > 0) {
+      // it kept calling with output that doesn't match, until the turns ran out
+      const last = calls.at(-1)!
+      return yield* decodeOutput(last.input).pipe(Effect.mapError((error) => fail("invalid-output")(error.message)))
     }
-    return yield* Schema.decodeUnknownEffect(task.output.schema)(call.input).pipe(
-      Effect.mapError((error) => fail("invalid-output")(error.message))
-    )
+    return yield* fail("no-output")(`the agent didn't call ${task.output.tool}${result.text.trim() === "" ? "" : `; it said: ${result.text.slice(0, 300)}`}`)
   })
 
   return run
