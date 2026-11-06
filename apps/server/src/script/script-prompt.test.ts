@@ -4,7 +4,7 @@ import { buildScriptPrompt, SCRIPT_WRITER_PROMPT } from "./script-prompt.ts"
 
 test("the stage prompt names the tool and defers to the skills", () => {
   assert.match(SCRIPT_WRITER_PROMPT, /`propose_script`/)
-  assert.match(SCRIPT_WRITER_PROMPT, /narrated-recap/)
+  assert.match(SCRIPT_WRITER_PROMPT, /approach\s+skill/)
 })
 
 test("prompt embeds the trimmed transcript", () => {

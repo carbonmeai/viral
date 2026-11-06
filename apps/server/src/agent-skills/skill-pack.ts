@@ -1,9 +1,19 @@
 import { NodeServices } from "@effect/platform-node"
+import type { ApproachName } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
 
 // The skills in the app's skill pack (skills/<name>/SKILL.md, laid out as a Claude Code plugin).
-export const SkillName = Schema.Literals(["story-arc", "narrated-recap"])
+export const SkillName = Schema.Literals([
+  "story-arc",
+  "narrated-shots",
+  "approach-question-recap",
+  "approach-claim-interleaved",
+  "approach-cut-down"
+])
 export type SkillName = typeof SkillName.Type
+
+// Each approach's writing rules live in its own skill.
+export const approachSkill = (approach: ApproachName): SkillName => `approach-${approach}`
 
 export interface Skill {
   readonly name: SkillName

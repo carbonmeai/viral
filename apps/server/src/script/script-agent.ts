@@ -1,9 +1,9 @@
 import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { NodeServices } from "@effect/platform-node"
-import { type JobEvent, Script } from "@viral/contracts"
+import { type ApproachName, type JobEvent, Script } from "@viral/contracts"
 import { Context, Effect, Layer, Schema, Stream, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { SkillPack, type StageAgent } from "../agent-skills/skill-pack.ts"
+import { approachSkill, SkillPack } from "../agent-skills/skill-pack.ts"
 import { makeProposeScriptServer, PROPOSE_SCRIPT_TOOL } from "./propose-script-tool.ts"
 import { buildScriptPrompt, SCRIPT_WRITER_PROMPT } from "./script-prompt.ts"
 
@@ -13,28 +13,30 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
 
 type Emit = (event: JobEvent) => Effect.Effect<void>
 
-const SCRIPT_WRITER: StageAgent = {
-  prompt: SCRIPT_WRITER_PROMPT,
-  skills: ["story-arc", "narrated-recap"]
-}
-
-// Drives the user's installed Claude CLI through the Agent SDK, with the stage's skills in its system
-// prompt. The agent hands its result back through an in-process MCP tool so the server can validate it.
+// Drives the user's installed Claude CLI through the Agent SDK. Its system prompt is the stage's job plus the
+// story-arc skill and the project's approach skill. The agent hands its result back through an in-process MCP tool so the server can validate it.
 export class ScriptAgent extends Context.Service<ScriptAgent, {
-  writeScript(transcript: string, emit: Emit): Effect.Effect<Script, AgentError>
+  writeScript(transcript: string, approach: ApproachName, emit: Emit): Effect.Effect<Script, AgentError>
 }>()("@viral/server/script/script-agent/ScriptAgent") {
   static readonly layer = Layer.effect(
     ScriptAgent,
     Effect.gen(function*() {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
       const skillPack = yield* SkillPack
-      const systemPrompt = skillPack.systemPrompt(SCRIPT_WRITER)
       const claudePath = yield* spawner.string(ChildProcess.make("which", ["claude"])).pipe(
         Effect.map(Str.trim),
         Effect.orDie
       )
 
-      const writeScript = Effect.fn("ScriptAgent.writeScript")(function*(transcript: string, emit: Emit) {
+      const writeScript = Effect.fn("ScriptAgent.writeScript")(function*(
+        transcript: string,
+        approach: ApproachName,
+        emit: Emit
+      ) {
+        const systemPrompt = skillPack.systemPrompt({
+          prompt: SCRIPT_WRITER_PROMPT,
+          skills: ["story-arc", approachSkill(approach)]
+        })
         let proposed: unknown = undefined
         const server = makeProposeScriptServer((input) => {
           proposed = input

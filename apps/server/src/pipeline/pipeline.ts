@@ -20,7 +20,7 @@ export class Pipeline extends Context.Service<Pipeline, {
 
       const run = Effect.fn("Pipeline.run")(function*(jobId: string, renderSeconds: number, emit: Emit) {
         yield* emit({ _tag: "StageStarted", stage: "script" })
-        const script = yield* agent.writeScript(SAMPLE_TRANSCRIPT, emit)
+        const script = yield* agent.writeScript(SAMPLE_TRANSCRIPT, "question-recap", emit)
         yield* emit({ _tag: "ScriptProposed", script })
 
         const requestId = `${jobId}:script`
