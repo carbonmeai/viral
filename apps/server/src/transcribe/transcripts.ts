@@ -9,6 +9,11 @@ export class TranscriptMissing extends Schema.TaggedError<TranscriptMissing>()("
 
 const fmt = (t: number) => t.toFixed(1)
 
+// One line per segment with its source seconds, "[1143.7–1145.5] Right now, it's just pain.", so an agent can
+// cite exact times.
+export const timedText = (transcript: Transcript) =>
+  transcript.segments.map((s) => `[${fmt(s.start)}–${fmt(s.end)}] ${s.text}`).join("\n")
+
 // Reads a source's current transcript, for the stages that plan from it.
 export class Transcripts extends Context.Service<Transcripts, {
   forSource(sourceId: SourceId): Effect.Effect<Transcript, TranscriptMissing>
@@ -30,9 +35,6 @@ export class Transcripts extends Context.Service<Transcripts, {
         const json = yield* fs.readFileString(file.value).pipe(Effect.mapError(() => missing))
         return yield* Schema.decodeEffect(Schema.fromJsonString(Transcript))(json).pipe(Effect.mapError(() => missing))
       })
-
-      const timedText = (transcript: Transcript) =>
-        transcript.segments.map((s) => `[${fmt(s.start)}–${fmt(s.end)}] ${s.text}`).join("\n")
 
       return Transcripts.of({ forSource, timedText })
     })

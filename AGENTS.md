@@ -87,11 +87,20 @@ apps/server/src/
                        Frames are always kept one image per file (contact sheets: frames/frame_NNNNN.jpg;
                        shot plans: frames/shot-NN.jpg…) and stitched from those, so clients can offer any frame
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
-  agent-session/       runs every agent stage on the Claude CLI: isolated session, skills in the prompt, one
+  agent-session/       runs every agent stage: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
                        per-stage model, cost + session recording, resume; AgentSession.replay for tests.
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
-                       A task can offer helper tools (`agentTool`) besides its propose_* tool
+                       A task can offer helper tools (`agentTool`) besides its propose_* tool.
+                       Providers: claude-cli-provider.ts (the Claude CLI, always the default) and
+                       ai-gateway-provider.ts (AI SDK + Vercel AI Gateway, ai/@ai-sdk/gateway pinned; Experimental,
+                       for evals and developers: same JSON Schema tool, stops on its call, history stored in
+                       ~/.viral/agent-sessions/ for resume, gateway cost incl. BYOK market cost, Anthropic cache
+                       markers). The route is task.route (evals), else settings stage.<name>.provider/.model
+  eval/                the eval harness (`bun run cli eval`): runs ads, story, script and metadata on a fixed fixture
+                       (~/.viral/fixtures/candy/eval, made by `eval export`) with no gates, through the production
+                       tasks and checks, on any models, in a scratch library; records cost, time, first-try pass and
+                       fix rounds, stops at the budget, and writes report.json/report.md + a side-by-side eval.html
   settings/            app preferences as JSON under keys (e.g. stage.story.model)
   render/              the render stage (gated; a rejection goes back to the shots, or the sections for a
                        cut-down short, with your note, via the stage's `rejectTo`) + render engine + its Python
@@ -187,6 +196,8 @@ bun run cli tools install # download the missing tools (also happens on the app'
 bun run package:desktop # build the UI and Viral.app (apps/desktop/release/mac-arm64, unsigned)
 bun run cli           # dev client; prints every command
 bun run test          # node --test over apps and packages
+bun run cli eval all --models claude-cli,openai/gpt-6-luna --runs 2 --budget 5
+                      # agent-stage eval vs the CLI baseline → ~/.viral/evals/<date>-<stages>/eval.html
 bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
 bun run fixtures:sync # copy the candy project (plans, media, golden outputs) into ~/.viral/fixtures (not in git)
 ```

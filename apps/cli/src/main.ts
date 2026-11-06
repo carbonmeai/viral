@@ -2,6 +2,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect } from "effect"
 import { positionals } from "./args.ts"
 import { Client } from "./client.ts"
+import { EVAL_USAGE, evalCommand } from "./eval-command.ts"
 import { MUSIC_USAGE, musicCommand } from "./music-command.ts"
 import { PRESET_USAGE, presetCommand } from "./preset-command.ts"
 import { PROJECT_USAGE, projectCommand } from "./project-command.ts"
@@ -11,7 +12,7 @@ import { TOOLS_USAGE, toolsCommand } from "./tools-command.ts"
 import { VOICE_USAGE, voiceCommand } from "./voice-command.ts"
 
 // Dev client for the local Viral server (ws://127.0.0.1:3410/rpc).
-const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE].join("\n")
+const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE, EVAL_USAGE].join("\n")
 
 const program = Effect.gen(function*() {
   switch (positionals[0]) {
@@ -57,4 +58,5 @@ const program = Effect.gen(function*() {
   Effect.provide([Client.layer, NodeServices.layer])
 )
 
-NodeRuntime.runMain(program)
+// The eval starts its own server process and needs no connection to the running server.
+NodeRuntime.runMain(positionals[0] === "eval" ? evalCommand().pipe(Effect.provide(NodeServices.layer)) : program)
