@@ -40,3 +40,31 @@ test("a crop outside the frame fails with the script's code", async () => {
   assert.equal(error.code, "crop")
   assert.match(error.message, /outside the 854x480 frame/)
 })
+
+test("the bold layout draws, falling back to framed insets when cut-outs aren't available", async () => {
+  const saved = process.env["VIRAL_CUTOUT"]
+  process.env["VIRAL_CUTOUT"] = "off"
+  try {
+    const bold = {
+      ...config,
+      layout: "bold" as const,
+      source: video,
+      backdrop: { colors: ["#FF3B30", "#3A0000"] as const, burst: true },
+      inset: { src: 3, box: [300, 0, 600, 480] as const, y: 1, height: 0.5, side: "right" as const, x: 0.74 },
+      arrow: true,
+      emoji: { char: "🤢", x: 0.2, y: 0.78, size: 250 }
+    }
+    const out = await run((r) => r.render(bold, join(dir, "bold.jpg")))
+    assert.equal(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", out]).toString().trim(), "1080,1920")
+    // the script says how each layer was drawn
+    const lines = execFileSync("uv", ["run", "--quiet", "--script", join(import.meta.dirname, "render-thumbnail.py"), join(dir, "bold.json"), "--out", join(dir, "bold2.jpg")], {
+      env: { ...process.env, VIRAL_CUTOUT: "off" }
+    }).toString()
+    const done = JSON.parse(lines.trim().split("\n").at(-1)!)
+    assert.match(done.cutouts.hero, /^fallback/)
+    assert.match(done.cutouts.face, /^fallback/)
+  } finally {
+    if (saved === undefined) delete process.env["VIRAL_CUTOUT"]
+    else process.env["VIRAL_CUTOUT"] = saved
+  }
+})

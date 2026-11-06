@@ -13,8 +13,15 @@ export class ThumbnailError extends Schema.TaggedError<ThumbnailError>()("Thumbn
 
 const ConfigJson = Schema.fromJsonString(ThumbConfig)
 const Line = Schema.fromJsonString(Schema.Union([
-  Schema.Struct({ type: Schema.Literal("progress"), step: Schema.Literals(["background", "hero", "inset", "text"]) }),
-  Schema.Struct({ type: Schema.Literal("done"), output: Schema.String, width: Schema.Int, height: Schema.Int })
+  Schema.Struct({ type: Schema.Literal("progress"), step: Schema.Literals(["background", "hero", "inset", "text", "cutout"]) }),
+  // bold reports how each layer was drawn: "rembg", or "fallback: <why>" (a framed inset instead)
+  Schema.Struct({
+    type: Schema.Literal("done"),
+    output: Schema.String,
+    width: Schema.Int,
+    height: Schema.Int,
+    cutouts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+  })
 ]))
 const Probe = Schema.fromJsonString(Schema.Struct({
   streams: Schema.Array(Schema.Struct({ width: Schema.Int, height: Schema.Int })),
@@ -48,7 +55,15 @@ export class ThumbnailRenderer extends Context.Service<ThumbnailRenderer, {
         return yield* scripts.run(
           [path.join(import.meta.dirname, "render-thumbnail.py"), configFile, "--out", out],
           Schema.decodeEffect(Line),
-          (line) => Effect.succeed(line.type === "done" ? line.output : undefined)
+          (line) =>
+            line.type !== "done"
+              ? Effect.undefined
+              : Effect.as(
+                Object.values(line.cutouts ?? {}).some((how) => how.startsWith("fallback"))
+                  ? Effect.logWarning("a thumbnail cut-out fell back to a framed inset", { cutouts: line.cutouts })
+                  : Effect.void,
+                line.output
+              )
         ).pipe(Effect.mapError((error) => new ThumbnailError({ code: error.code, message: error.message })))
       })
 
