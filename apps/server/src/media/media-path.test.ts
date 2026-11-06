@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { byteRange, mediaSegments } from "./media-path.ts"
+import { appOrigin, byteRange, mediaSegments } from "./media-path.ts"
 
 test("only files inside the media folders are allowed", () => {
   assert.deepEqual(mediaSegments("projects/p1/shot-plan/v2/frames/shot-01.jpg"), ["projects", "p1", "shot-plan", "v2", "frames", "shot-01.jpg"])
@@ -19,4 +19,13 @@ test("byte ranges for seeking", () => {
   assert.equal(byteRange("bytes=5-1", 1000), null)
   assert.equal(byteRange("items=0-1", 1000), null)
   assert.equal(byteRange("bytes=0-1,5-9", 1000), null)
+})
+
+test("only Viral's own UI may read media cross-origin", () => {
+  assert.equal(appOrigin("viral://app"), "viral://app")
+  assert.equal(appOrigin("http://127.0.0.1:5733"), "http://127.0.0.1:5733")
+  assert.equal(appOrigin("http://localhost:5762"), "http://localhost:5762")
+  assert.equal(appOrigin("https://evil.example"), null)
+  assert.equal(appOrigin("http://127.0.0.1.evil.example"), null)
+  assert.equal(appOrigin(undefined), null)
 })

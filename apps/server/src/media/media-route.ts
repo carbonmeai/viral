@@ -1,7 +1,7 @@
 import { Effect, FileSystem, Layer, Option, Path } from "effect"
 import { HttpRouter, type HttpServerRequest, HttpServerResponse, Mime } from "effect/http"
 import { ViralHome } from "../home/viral-home.ts"
-import { byteRange, mediaSegments } from "./media-path.ts"
+import { appOrigin, byteRange, mediaSegments } from "./media-path.ts"
 
 const notFound = HttpServerResponse.text("Not Found", { status: 404 })
 
@@ -29,7 +29,12 @@ export const MediaRouteLive = Layer.unwrap(Effect.gen(function*() {
 
       const size = Number(info.size)
       const contentType = Option.getOrElse(Mime.getType(file), () => "application/octet-stream")
-      const headers = { "accept-ranges": "bytes", "cache-control": "private, no-store" }
+      const origin = appOrigin(request.headers["origin"])
+      const headers = {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store",
+        ...(origin === null ? {} : { "access-control-allow-origin": origin, vary: "origin" })
+      }
       const rangeHeader = request.headers["range"]
       const range = rangeHeader === undefined ? null : byteRange(rangeHeader, size)
       if (range?._tag === "Unsatisfiable") {

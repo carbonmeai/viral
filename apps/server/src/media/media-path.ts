@@ -41,3 +41,8 @@ export const byteRange = (header: string, size: number): ByteRange | null => {
   const end = first === null || last === null || last >= size ? size - 1 : last
   return { _tag: "Range", start, length: end - start + 1, contentRange: `bytes ${start}-${end}/${size}` }
 }
+
+// The origins of Viral's own UI: the desktop app's viral://app and a dev server on this machine. Only they may read
+// media with fetch (to draw a waveform); any other web page gets no CORS header, so it can't read the files.
+export const appOrigin = (origin: string | undefined): string | null =>
+  origin !== undefined && /^(viral:\/\/app|https?:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?)$/.test(origin) ? origin : null
