@@ -1,8 +1,7 @@
 import { createSdkMcpServer, query, type SDKMessage, tool } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Option, Path, Schema, Stream, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { SkillPack } from "../agent-skills/skill-pack.ts"
-import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolShape } from "./agent-task.ts"
+import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolShape } from "@viral/provider-core"
 
 const isInside = (dir: string, file: string, path: Path.Path) => {
   const relative = path.relative(dir, path.resolve(file))
@@ -11,11 +10,11 @@ const isInside = (dir: string, file: string, path: Path.Path) => {
 
 // Runs an agent job on the user's installed Claude CLI through the Agent SDK. The session is isolated: no user
 // settings, skills, plugins, MCP servers or claude.ai connectors; only the stage's tool, plus read-only access to
-// the stage's folders. The system prompt is the stage's instructions followed by its skills. Cost and the session
-// id are reported through `hooks`, so a rejected attempt can resume the same conversation with your note.
+// the stage's folders. The system prompt (the stage's instructions followed by its skills) comes from the app. Cost
+// and the session id are reported through `hooks`, so a rejected attempt can resume the same conversation with
+// your note.
 export const makeClaudeCliProvider = Effect.gen(function*() {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-  const skillPack = yield* SkillPack
   const path = yield* Path.Path
   const claudePath = yield* spawner.string(ChildProcess.make("which", ["claude"])).pipe(
     Effect.map(Str.trim),
@@ -25,7 +24,8 @@ export const makeClaudeCliProvider = Effect.gen(function*() {
   const run: AgentRun = Effect.fn("ClaudeCli.run")(function*<S extends Schema.Top>(
     task: AgentTask<S>,
     hooks: AgentHooks,
-    model: string | null
+    model: string | null,
+    system: string
   ) {
     const readDirs = task.readDirs ?? []
 
@@ -58,7 +58,7 @@ export const makeClaudeCliProvider = Effect.gen(function*() {
             pathToClaudeCodeExecutable: claudePath,
             ...(model === null ? {} : { model }),
             ...(task.resumeSession ? { resume: task.resumeSession } : {}),
-            systemPrompt: skillPack.systemPrompt({ prompt: task.instructions, skills: task.skills }),
+            systemPrompt: system,
             tools: readDirs.length > 0 ? ["Read"] : [],
             settingSources: [],
             mcpServers: { viral: server },

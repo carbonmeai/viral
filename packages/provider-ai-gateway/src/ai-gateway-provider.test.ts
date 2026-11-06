@@ -1,17 +1,14 @@
 import { NodeServices } from "@effect/platform-node"
 import { MockLanguageModelV4 } from "ai/test"
-import { ConfigProvider, Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Option, Redacted, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import assert from "node:assert/strict"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
-import { SkillPack } from "../agent-skills/skill-pack.ts"
-import { ViralHome } from "../home/viral-home.ts"
-import { Secrets } from "../secrets/secrets.ts"
+import { type AgentError, type AgentHooks, type AgentRun, type AgentTask, agentTool } from "@viral/provider-core"
 import { makeAiGatewayProvider } from "./ai-gateway-provider.ts"
-import { type AgentError, type AgentHooks, type AgentRun, type AgentTask, agentTool } from "./agent-task.ts"
 
 type CallOptions = Parameters<MockLanguageModelV4["doGenerate"]>[0]
 type Content = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>["content"][number]
@@ -61,24 +58,20 @@ const recorded = () => {
   return { costs, sessions, hooks }
 }
 
-const layers = (key: string | undefined) =>
-  Layer.mergeAll(
-    NodeServices.layer,
-    SkillPack.layer,
-    ViralHome.layer,
-    Secrets.layerWith({ security: join(home, "no-such-security") }),
-    SecureRandom.layerWebCrypto
-  ).pipe(Layer.provideMerge(ConfigProvider.layer(ConfigProvider.fromUnknown({
-    VIRAL_HOME: home,
-    HOME: home,
-    ...(key === undefined ? {} : { AI_GATEWAY_API_KEY: key })
-  }))))
+const layers = Layer.mergeAll(NodeServices.layer, SecureRandom.layerWebCrypto)
+
+// The provider with the given model, and a key or none.
+const gateway = (model: MockLanguageModelV4, key: string | undefined) =>
+  makeAiGatewayProvider({
+    apiKey: Effect.succeed(key === undefined ? Option.none() : Option.some(Redacted.make(key))),
+    sessionsDir: join(home, "agent-sessions"),
+    languageModel: () => model
+  })
+
+const SYSTEM = "Answer."
 
 const run = <A>(model: MockLanguageModelV4, key: string | undefined, use: (go: AgentRun) => Effect.Effect<A, AgentError>) =>
-  Effect.runPromise(makeAiGatewayProvider({ languageModel: () => model }).pipe(
-    Effect.flatMap(use),
-    Effect.provide(layers(key))
-  ))
+  Effect.runPromise(gateway(model, key).pipe(Effect.flatMap(use), Effect.provide(layers)))
 
 const taskFor = (): AgentTask<typeof Answer> => ({
   stage: "test",
@@ -108,7 +101,7 @@ test("a gateway run sends the brief with its images, stops at the output tool, a
     reply([{ type: "text", text: "Done!" }], "0.1")
   ])
   const r = recorded()
-  const answer = await run(model, "test-key", (go) => go({ ...taskFor(), tools: [helper] }, r.hooks, "anthropic/claude-haiku-4.5"))
+  const answer = await run(model, "test-key", (go) => go({ ...taskFor(), tools: [helper] }, r.hooks, "anthropic/claude-haiku-4.5", SYSTEM))
 
   assert.deepEqual(answer, { answer: 42 })
   assert.equal(calls.length, 2, "the output tool's call ends the run; no wasted turn")
@@ -129,7 +122,7 @@ test("a gateway run sends the brief with its images, stops at the output tool, a
 test("a resumed run continues the stored conversation with the note", async () => {
   const first = scripted([reply([call("c1", "propose_answer", { answer: 41 })], "0.001")])
   const r = recorded()
-  await run(first.model, "test-key", (go) => go(taskFor(), r.hooks, "openai/gpt-6-luna"))
+  await run(first.model, "test-key", (go) => go(taskFor(), r.hooks, "openai/gpt-6-luna", SYSTEM))
   const session = r.sessions[0]!
   const stored = JSON.parse(readFileSync(join(home, "agent-sessions", `${session.slice("gateway:".length)}.json`), "utf8"))
   assert.equal(stored.at(-1).role, "tool", "the output call is answered, so the history can continue")
@@ -137,7 +130,7 @@ test("a resumed run continues the stored conversation with the note", async () =
 
   const second = scripted([reply([call("c9", "propose_answer", { answer: 42 })], "0.001")])
   const again = recorded()
-  const answer = await run(second.model, "test-key", (go) => go({ ...taskFor(), message: "Off by one.", resumeSession: session }, again.hooks, "openai/gpt-6-luna"))
+  const answer = await run(second.model, "test-key", (go) => go({ ...taskFor(), message: "Off by one.", resumeSession: session }, again.hooks, "openai/gpt-6-luna", SYSTEM))
   assert.deepEqual(answer, { answer: 42 })
   assert.deepEqual(again.sessions, [session], "the same conversation")
   const sent = second.calls[0]!.prompt
@@ -148,20 +141,20 @@ test("a resumed run continues the stored conversation with the note", async () =
 test("no output call, no model or no key are clear errors", async () => {
   const silent = scripted([reply([{ type: "text", text: "Here is my answer: 42" }], "0.001")])
   const noCall = await Effect.runPromiseExit(Effect.provide(
-    makeAiGatewayProvider({ languageModel: () => silent.model }).pipe(Effect.flatMap((go) => go(taskFor(), recorded().hooks, "openai/gpt-6-luna"))),
-    layers("test-key")
+    gateway(silent.model, "test-key").pipe(Effect.flatMap((go) => go(taskFor(), recorded().hooks, "openai/gpt-6-luna", SYSTEM))),
+    layers
   ))
   assert.match(JSON.stringify(noCall), /no-output.*Here is my answer/)
 
   const noModel = await Effect.runPromiseExit(Effect.provide(
-    makeAiGatewayProvider({ languageModel: () => silent.model }).pipe(Effect.flatMap((go) => go(taskFor(), recorded().hooks, null))),
-    layers("test-key")
+    gateway(silent.model, "test-key").pipe(Effect.flatMap((go) => go(taskFor(), recorded().hooks, null, SYSTEM))),
+    layers
   ))
   assert.match(JSON.stringify(noModel), /no-model/)
 
   const noKey = await Effect.runPromiseExit(Effect.provide(
-    makeAiGatewayProvider({ languageModel: () => silent.model }).pipe(Effect.flatMap((go) => go(taskFor(), recorded().hooks, "openai/gpt-6-luna"))),
-    layers(undefined)
+    gateway(silent.model, undefined).pipe(Effect.flatMap((go) => go(taskFor(), recorded().hooks, "openai/gpt-6-luna", SYSTEM))),
+    layers
   ))
   assert.match(JSON.stringify(noKey), /no-key/)
 })
@@ -173,7 +166,7 @@ test("output that doesn't match the schema goes back to the model, which fixes i
     reply([call("t2", "propose_answer", { answer: 42 })], "0.001")
   ])
   const r = recorded()
-  const answer = await run(model, "test-key", (go) => go(taskFor(), r.hooks, "anthropic/claude-haiku-4.5"))
+  const answer = await run(model, "test-key", (go) => go(taskFor(), r.hooks, "anthropic/claude-haiku-4.5", SYSTEM))
 
   assert.deepEqual(answer, { answer: 42 })
   assert.equal(calls.length, 2, "one retry, then it stopped")
@@ -187,10 +180,10 @@ test("output that doesn't match the schema goes back to the model, which fixes i
 test("a model that never gets the format right fails with invalid-output", async () => {
   const { model } = scripted([reply([call("t1", "propose_answer", { answer: "nope" })], "0.001")])
   const exit = await Effect.runPromiseExit(Effect.provide(
-    makeAiGatewayProvider({ languageModel: () => model }).pipe(
-      Effect.flatMap((go) => go({ ...taskFor(), maxTurns: 3 }, recorded().hooks, "openai/gpt-6-luna"))
+    gateway(model, "test-key").pipe(
+      Effect.flatMap((go) => go({ ...taskFor(), maxTurns: 3 }, recorded().hooks, "openai/gpt-6-luna", SYSTEM))
     ),
-    layers("test-key")
+    layers
   ))
   assert.match(JSON.stringify(exit), /invalid-output/)
 })

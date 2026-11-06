@@ -8,6 +8,10 @@
     "@effect/platform-node": "4.1.2",
     "@effect/sql-sqlite-node": "4.1.2",
     "@viral/contracts": "workspace:*",
+    "@viral/provider-ai-gateway": "workspace:*",
+    "@viral/provider-claude-cli": "workspace:*",
+    "@viral/provider-core": "workspace:*",
+    "@viral/provider-testing": "workspace:*",
     "ai": "7.0.97",
     "effect": "4.1.2",
     "zod": "^4"

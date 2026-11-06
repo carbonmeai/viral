@@ -38,6 +38,10 @@
         "@effect/platform-node": "4.1.2",
         "@effect/sql-sqlite-node": "4.1.2",
         "@viral/contracts": "workspace:*",
+        "@viral/provider-ai-gateway": "workspace:*",
+        "@viral/provider-claude-cli": "workspace:*",
+        "@viral/provider-core": "workspace:*",
+        "@viral/provider-testing": "workspace:*",
         "ai": "7.0.97",
         "effect": "4.1.2",
         "zod": "^4",
@@ -71,6 +75,41 @@
     "packages/contracts": {
       "name": "@viral/contracts",
       "dependencies": {
+        "effect": "4.1.2",
+      },
+    },
+    "packages/provider-ai-gateway": {
+      "name": "@viral/provider-ai-gateway",
+      "dependencies": {
+        "@ai-sdk/gateway": "4.0.78",
+        "@viral/provider-core": "workspace:*",
+        "ai": "7.0.97",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.1.2",
+      },
+    },
+    "packages/provider-claude-cli": {
+      "name": "@viral/provider-claude-cli",
+      "dependencies": {
+        "@anthropic-ai/claude-agent-sdk": "0.3.318",
+        "@viral/provider-core": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
+    "packages/provider-core": {
+      "name": "@viral/provider-core",
+      "dependencies": {
+        "@viral/contracts": "workspace:*",
+        "effect": "4.1.2",
+        "zod": "^4",
+      },
+    },
+    "packages/provider-testing": {
+      "name": "@viral/provider-testing",
+      "dependencies": {
+        "@viral/provider-core": "workspace:*",
         "effect": "4.1.2",
       },
     },
@@ -496,6 +535,14 @@
     "@viral/contracts": ["@viral/contracts@workspace:packages/contracts"],
 
     "@viral/desktop": ["@viral/desktop@workspace:apps/desktop"],
+
+    "@viral/provider-ai-gateway": ["@viral/provider-ai-gateway@workspace:packages/provider-ai-gateway"],
+
+    "@viral/provider-claude-cli": ["@viral/provider-claude-cli@workspace:packages/provider-claude-cli"],
+
+    "@viral/provider-core": ["@viral/provider-core@workspace:packages/provider-core"],
+
+    "@viral/provider-testing": ["@viral/provider-testing@workspace:packages/provider-testing"],
 
     "@viral/server": ["@viral/server@workspace:apps/server"],
 

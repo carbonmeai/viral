@@ -1,0 +1,11 @@
+{
+  "name": "@viral/provider-claude-cli",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.318",
+    "@viral/provider-core": "workspace:*",
+    "effect": "4.1.2"
+  }
+}

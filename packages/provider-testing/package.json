@@ -1,0 +1,7 @@
+{
+  "name": "@viral/provider-testing",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@viral/provider-core": "workspace:*", "effect": "4.1.2" }
+}
