@@ -1,4 +1,4 @@
-import { AdRanges, Script, ShortMetadata, StoryMap } from "@viral/contracts"
+import { AdRanges, AgentProvider, Script, ShortMetadata, StoryMap } from "@viral/contracts"
 import { Option, Schema } from "effect"
 import type { EvalRunResult } from "./eval-runner.ts"
 import type { EvalStageName } from "./eval-stages.ts"
@@ -29,7 +29,9 @@ export const StoredEvalReport = Schema.fromJsonString(Schema.Struct({
   results: Schema.Array(Schema.Struct({
     stage: Schema.Literals(["ads", "story", "script", "metadata"]),
     model: Schema.String,
-    provider: Schema.Literals(["claude-cli", "ai-gateway"]),
+    provider: AgentProvider,
+    // reports from before Codex and OpenCode have no billing: the gateway's runs were billed, the CLI's on a plan
+    billing: Schema.optional(Schema.Literals(["billed", "subscription"])),
     run: Schema.Int,
     status: Schema.Literals(["passed", "failed", "skipped"]),
     error: Schema.NullOr(Schema.String),
@@ -82,6 +84,9 @@ export interface EvalSummaryRow {
   readonly firstTryPassed: number
   readonly fixRounds: number
   readonly avgCostUsd: number
+  readonly avgTokens: number
+  // every run that ran was on a plan (its cost is a plan's value, or nothing for Codex)
+  readonly onPlan: boolean
   readonly avgSeconds: number
 }
 
@@ -102,23 +107,31 @@ export const summarize = (report: EvalReport): ReadonlyArray<EvalSummaryRow> =>
         firstTryPassed: ran.filter((r) => r.firstTryPass === true).length,
         fixRounds: ran.reduce((sum, r) => sum + r.fixRounds, 0),
         avgCostUsd: avg((r) => r.costUsd),
+        avgTokens: avg((r) => r.inputTokens + r.outputTokens),
+        onPlan: ran.length > 0 && ran.every((r) => r.billing === "subscription"),
         avgSeconds: avg((r) => r.seconds)
       }
     })
   )
 
 const usd = (n: number) => `$${n.toFixed(n < 0.1 ? 4 : 3)}`
+const tokens = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k tok` : `${Math.round(n)} tok`
+
+// What a run (or a row's average) cost: dollars, or on a plan the tokens it used (and the plan's value when the CLI
+// reports one, as the Claude CLI does).
+const costText = (costUsd: number, tokenCount: number, onPlan: boolean) =>
+  !onPlan ? usd(costUsd) : costUsd === 0 ? `${tokens(tokenCount)} · plan` : `${usd(costUsd)} plan value`
 
 export const reportMarkdown = (report: EvalReport): string =>
   [
     `# Eval ${report.createdAt}`,
     "",
-    `Fixture **${report.fixture}**, ${report.runs} run(s) each, budget $${report.budgetUsd.toFixed(2)}, spent **${usd(report.spentUsd)}**.`,
+    `Fixture **${report.fixture}**, ${report.runs} run(s) each, budget $${report.budgetUsd.toFixed(2)} for priced runs, spent **${usd(report.spentUsd)}**.`,
     "",
     "| stage | model | passed | first try | fix rounds | avg cost | avg time | skipped |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ...summarize(report).map((r) =>
-      `| ${r.stage} | ${r.model} | ${r.passed}/${r.runs} | ${r.firstTryPassed}/${r.runs} | ${r.fixRounds} | ${usd(r.avgCostUsd)} | ${r.avgSeconds.toFixed(1)}s | ${r.skipped} |`
+      `| ${r.stage} | ${r.model} | ${r.passed}/${r.runs} | ${r.firstTryPassed}/${r.runs} | ${r.fixRounds} | ${costText(r.avgCostUsd, r.avgTokens, r.onPlan)} | ${r.avgSeconds.toFixed(1)}s | ${r.skipped} |`
     ),
     ""
   ].join("\n")
@@ -176,7 +189,7 @@ const renderRun = (r: EvalRunResult): string => {
   const status = r.status === "passed"
     ? r.firstTryPass === true ? "passed first try" : `passed after ${r.fixRounds} fix round${r.fixRounds === 1 ? "" : "s"}`
     : r.status
-  const facts = r.status === "skipped" ? "" : ` · ${usd(r.costUsd)} · ${r.seconds.toFixed(1)}s${r.reportedModel === null ? "" : ` · ${escape(r.reportedModel)}`}`
+  const facts = r.status === "skipped" ? "" : ` · ${costText(r.costUsd, r.inputTokens + r.outputTokens, r.billing === "subscription")} · ${r.seconds.toFixed(1)}s${r.reportedModel === null ? "" : ` · ${escape(r.reportedModel)}`}`
   const problems = r.firstTryProblems.length === 0 || r.firstTryPass === true
     ? ""
     : `<details><summary>first try: ${r.firstTryProblems.length} problem(s)</summary><ul>${r.firstTryProblems.map((p) => `<li>${escape(p)}</li>`).join("")}</ul></details>`
@@ -190,7 +203,7 @@ export const reportHtml = (report: EvalReport): string => {
   const rows = summarize(report)
   const summary = `<table><thead><tr><th>stage</th><th>model</th><th>passed</th><th>first try</th><th>fix rounds</th><th>avg cost</th><th>avg time</th><th>skipped</th></tr></thead><tbody>${
     rows.map((r) =>
-      `<tr><td>${r.stage}</td><td>${escape(r.model)}</td><td>${r.passed}/${r.runs}</td><td>${r.firstTryPassed}/${r.runs}</td><td>${r.fixRounds}</td><td>${usd(r.avgCostUsd)}</td><td>${r.avgSeconds.toFixed(1)}s</td><td>${r.skipped}</td></tr>`
+      `<tr><td>${r.stage}</td><td>${escape(r.model)}</td><td>${r.passed}/${r.runs}</td><td>${r.firstTryPassed}/${r.runs}</td><td>${r.fixRounds}</td><td>${costText(r.avgCostUsd, r.avgTokens, r.onPlan)}</td><td>${r.avgSeconds.toFixed(1)}s</td><td>${r.skipped}</td></tr>`
     ).join("")
   }</tbody></table>`
   const sections = report.stages.map((stage) => {
@@ -223,7 +236,7 @@ ol,ul{padding-left:20px;margin:6px 0}li{margin:4px 0}.real q{font-style:italic}.
 pre{white-space:pre-wrap;font-size:12px}details{margin:6px 0}summary{cursor:pointer;color:var(--muted)}
 </style></head><body>
 <h1>Viral eval · ${escape(report.fixture)}</h1>
-<p class=muted>${escape(report.createdAt)} · ${report.runs} run(s) each · budget $${report.budgetUsd.toFixed(2)} · spent ${usd(report.spentUsd)}</p>
+<p class=muted>${escape(report.createdAt)} · ${report.runs} run(s) each · budget $${report.budgetUsd.toFixed(2)} for priced runs · spent ${usd(report.spentUsd)}</p>
 ${summary}
 ${sections.join("\n")}
 </body></html>

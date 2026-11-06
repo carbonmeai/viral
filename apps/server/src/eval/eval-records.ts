@@ -1,17 +1,21 @@
-import type { AgentProvider, ModelEval } from "@viral/contracts"
+import { AgentProvider, type ModelEval } from "@viral/contracts"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { EvalRunResult } from "./eval-runner.ts"
 
-// Which runs count as real money: the gateway always, the Claude CLI only with an API key (otherwise its reported
-// cost is a plan's value).
+// Which runs count as real money: the gateway and OpenCode always, the Claude CLI only with an API key (otherwise
+// its reported cost is a plan's value), Codex never (Viral runs it on your ChatGPT sign-in and gets tokens only).
 export const evalBilling = (provider: AgentProvider, cliBilled: boolean) =>
-  provider === "ai-gateway" || cliBilled ? "billed" as const : "subscription" as const
+  provider === "codex"
+    ? "subscription" as const
+    : provider === "claude-cli" && !cliBilled
+    ? "subscription" as const
+    : "billed" as const
 
 const SummaryRow = Schema.Struct({
   model: Schema.String,
-  provider: Schema.Literals(["claude-cli", "ai-gateway"]),
+  provider: AgentProvider,
   runs: Schema.Int,
   passed: Schema.Int,
   first_try_passed: Schema.Int,

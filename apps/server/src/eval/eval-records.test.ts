@@ -18,6 +18,7 @@ const run = (overrides: Partial<EvalRunResult>): EvalRunResult => ({
   stage: "ads",
   model: "openai/gpt-6-luna",
   provider: "ai-gateway",
+  billing: "billed",
   run: 1,
   status: "passed",
   error: null,

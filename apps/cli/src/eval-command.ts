@@ -2,10 +2,13 @@ import { Config, Console, Effect, Path } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { option, positionals } from "./args.ts"
 
-export const EVAL_USAGE = `  eval <stages|all> --models <ids> [--runs N] [--budget USD] [--fixture <dir>] [--include <eval dirs>]
-                              (ads, story, script, metadata on the fixture; models: claude-cli, claude-cli:<model>,
-                               or AI Gateway ids like anthropic/claude-haiku-4.5; writes ~/.viral/evals/<date>-<stages>/;
-                               --include puts earlier evals' runs on the same page)
+export const EVAL_USAGE = `  eval <stages|all> --models <provider:model,…> [--runs N] [--budget USD] [--plan-runs N] [--fixture <dir>]
+                              [--include <eval dirs>]
+                              (ads, story, script, metadata on the fixture; models: claude-cli[:<model>],
+                               codex[:<model>], opencode:<provider/model>, gateway:<id> such as
+                               gateway:anthropic/claude-haiku-4.5; --budget caps priced runs (default $5),
+                               --plan-runs caps runs on a plan per CLI (default 8); writes
+                               ~/.viral/evals/<date>-<stages>/; --include puts earlier evals' runs on the same page)
   eval record <eval dir>      (records an earlier eval's runs and spend in your library)
   eval export --from <library> --source <id> --project <id> [--name candy]
                               (copies a processed source and its approved short into ~/.viral/fixtures/<name>/eval)`
@@ -56,6 +59,7 @@ export const evalCommand = Effect.fn("evalCommand")(function*() {
     "--models", models,
     "--runs", option("--runs") ?? "1",
     "--budget", option("--budget") ?? "5",
+    "--plan-runs", option("--plan-runs") ?? "8",
     "--fixture", option("--fixture") ?? path.join(home, "fixtures", "candy", "eval"),
     "--out", path.join(home, "evals"),
     "--record", home,

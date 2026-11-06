@@ -16,8 +16,8 @@ import { EvalStageName, evalStages } from "./eval-stages.ts"
 // The eval's own process, started by `bun run cli eval`. VIRAL_HOME is the library it works in: a scratch
 // one for `run` (agent sessions and settings land there, never in yours), the library to copy from for `export`.
 //
-//   eval-main.ts run --stages ads,story --models claude-cli,openai/gpt-6-luna --runs 2 --budget 5 --fixture <dir> --out <dir>
-//                    [--record <library>] [--include <earlier report folders, comma-separated>]
+//   eval-main.ts run --stages ads,story --models claude-cli,codex,gateway:openai/gpt-6-luna --runs 2 --budget 5
+//                    [--plan-runs 8] --fixture <dir> --out <dir> [--record <library>] [--include <earlier report folders>]
 //   eval-main.ts record --dir <report folder> --record <library>
 //   eval-main.ts export --source <id> --project <id> --out <dir> [--name candy]
 //
@@ -48,7 +48,12 @@ const cliBilled = Config.option(Config.String("ANTHROPIC_API_KEY")).pipe(Effect.
 const readReport = Effect.fn("readReport")(function*(dir: string) {
   const fs = yield* FileSystem.FileSystem
   const json = yield* fs.readFileString(`${dir}/report.json`).pipe(Effect.mapError((e) => fail(`can't read ${dir}/report.json: ${e.message}`)))
-  return yield* Schema.decodeEffect(StoredEvalReport)(json).pipe(Effect.mapError((e) => fail(`${dir}/report.json: ${e.message}`)))
+  const stored = yield* Schema.decodeEffect(StoredEvalReport)(json).pipe(Effect.mapError((e) => fail(`${dir}/report.json: ${e.message}`)))
+  const billed = yield* cliBilled
+  return {
+    ...stored,
+    results: stored.results.map((r) => ({ ...r, billing: r.billing ?? evalBilling(r.provider, billed) }))
+  } satisfies EvalReport
 })
 
 const run = Effect.gen(function*() {
@@ -62,13 +67,19 @@ const run = Effect.gen(function*() {
   const models: Array<EvalModel> = []
   for (const spec of list(yield* required("models"))) {
     const model = parseModel(spec)
-    if (model === null) return yield* fail(`can't read the model "${spec}": use claude-cli, claude-cli:<model> or a gateway id like openai/gpt-6-luna`)
+    if (model === null) {
+      return yield* fail(
+        `can't read the model "${spec}": use claude-cli[:<model>], codex[:<model>], opencode:<provider/model> or gateway:<id> (e.g. gateway:openai/gpt-6-luna)`
+      )
+    }
     models.push(model)
   }
   const runs = Number(option("runs") ?? "1")
   const budgetUsd = Number(option("budget") ?? "5")
+  const planRuns = Number(option("plan-runs") ?? "8")
   if (!Number.isInteger(runs) || runs < 1) return yield* fail("--runs takes a whole number from 1")
   if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) return yield* fail("--budget takes a dollar amount above 0")
+  if (!Number.isInteger(planRuns) || planRuns < 0) return yield* fail("--plan-runs takes a whole number from 0")
 
   const fixture = yield* loadFixture(fixtureDir)
   const all = evalStages(fixture, fixtureDir, path)
@@ -85,15 +96,21 @@ const run = Effect.gen(function*() {
   const records = yield* EvalRecords
   const earlier = yield* Effect.forEach(list(option("include") ?? ""), readReport)
 
-  yield* Console.log(`eval: ${stageNames.join(", ")} × ${models.map((m) => m.label).join(", ")}, ${runs} run(s), budget $${budgetUsd.toFixed(2)}`)
+  yield* Console.log(
+    `eval: ${stageNames.join(", ")} × ${models.map((m) => m.label).join(", ")}, ${runs} run(s), budget $${budgetUsd.toFixed(2)} for priced runs, ` +
+      `${planRuns} runs per plan`
+  )
   const { results, spentUsd } = yield* runEval({
     stages,
     models,
     runs,
     budgetUsd,
+    billing: (provider) => evalBilling(provider, billed),
+    maxSubscriptionRuns: planRuns,
     onResult: (r, spent) =>
-      records.record(evalId, r, evalBilling(r.provider, billed), createdAt).pipe(Effect.andThen(Console.log(
-        `  run ${r.run} ${r.stage.padEnd(8)} ${r.model.padEnd(28)} ${r.status.padEnd(7)} $${r.costUsd.toFixed(4)} ${r.seconds.toFixed(1)}s` +
+      records.record(evalId, r, r.billing, createdAt).pipe(Effect.andThen(Console.log(
+        `  run ${r.run} ${r.stage.padEnd(8)} ${r.model.padEnd(28)} ${r.status.padEnd(7)} ` +
+          `${r.billing === "subscription" ? `${r.inputTokens + r.outputTokens} tok (plan)` : `$${r.costUsd.toFixed(4)}`} ${r.seconds.toFixed(1)}s` +
           (r.status === "skipped" ? "" : ` first try ${r.firstTryPass === true ? "yes" : "no"}, ${r.fixRounds} fix`) +
           (r.error === null ? "" : `  (${r.error.split("\n")[0]})`) +
           `  · spent $${spent.toFixed(4)}`
@@ -123,10 +140,9 @@ const recordCommand = Effect.gen(function*() {
   const dir = yield* required("dir")
   const library = yield* required("record")
   const report = yield* readReport(dir)
-  const billed = yield* cliBilled
   const evalId = dir.split("/").filter((p) => p !== "").at(-1) ?? dir
   const records = yield* EvalRecords
-  yield* Effect.forEach(report.results, (r) => records.record(evalId, r, evalBilling(r.provider, billed), report.createdAt), { discard: true })
+  yield* Effect.forEach(report.results, (r) => records.record(evalId, r, r.billing, report.createdAt), { discard: true })
   yield* Console.log(`recorded ${report.results.length} runs of ${evalId} ($${report.spentUsd.toFixed(4)}) in ${library}`)
 }).pipe(Effect.provide(recording(option("record"))))
 

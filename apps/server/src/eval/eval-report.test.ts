@@ -7,6 +7,7 @@ const run = (overrides: Partial<EvalRunResult>): EvalRunResult => ({
   stage: "metadata",
   model: "openai/gpt-6-luna",
   provider: "ai-gateway",
+  billing: "billed",
   run: 1,
   status: "passed",
   error: null,
@@ -48,6 +49,8 @@ test("summarize averages the runs that ran and leaves the skipped ones out", () 
     firstTryPassed: 1,
     fixRounds: 1,
     avgCostUsd: 0.02,
+    avgTokens: 120,
+    onPlan: false,
     avgSeconds: 3
   }])
   assert.match(reportMarkdown(report), /\| metadata \| openai\/gpt-6-luna \| 2\/2 \| 1\/2 \| 1 \|/)
@@ -85,4 +88,20 @@ test("combining reports numbers the runs on from the earlier ones and adds up th
   assert.equal(combined.spentUsd, 0.06)
   assert.equal(combined.createdAt, "2026-11-07T12:00:00Z")
   assert.equal(combineReports(later, []), later)
+})
+
+test("runs on a plan show their tokens instead of dollars", () => {
+  const report: EvalReport = {
+    createdAt: "2026-11-07T00:00:00.000Z",
+    fixture: "candy",
+    stages: ["metadata"],
+    models: ["codex"],
+    runs: 1,
+    budgetUsd: 3,
+    spentUsd: 0,
+    results: [run({ model: "codex", provider: "codex", billing: "subscription", costUsd: 0, inputTokens: 18_000, outputTokens: 900 })],
+    reference: {}
+  }
+  assert.match(reportMarkdown(report), /\| 18\.9k tok · plan \|/)
+  assert.match(reportHtml(report), /18\.9k tok · plan/)
 })
