@@ -63,8 +63,11 @@ apps/server/src/
                        ready (VIRAL_PREFETCH_MODELS=off skips), with progress in Settings › Tools
                        (PrefetchBackgroundRemoval)
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
-  presets/             style profiles; one default, seeded on first start
+  presets/             style profiles; one default, seeded on first start. Edits (UpdatePreset) and renames
+                       (RenamePreset) go through preset-rules.ts first; a bad one is PresetInvalid with plain problems
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;
+                       each is a full song or an already edited clip (kind; SetMusicTrackKind). AddMusicFolder adds
+                       every audio file in a folder and lists the ones it skipped;
                        analyse-track.py (librosa) measures tempo (beats fitted to a line), the drop (where the bass
                        below 150 Hz jumps, snapped to a beat; null when unclear) and LUFS, in the background on
                        add and via AnalyseMusicTrack. A beat set by hand (beat_source manual) is never overwritten
@@ -140,12 +143,16 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        text (choose a title, copy it all), the files, and a rights reminder. thumbnail/: the
                        thumbnail in a phone frame, its moments, and word edits checked with CheckThumbnailEdit.
                        The Sections step of a cut-down short has no view yet
+                       library/: Styles (cards with a CSS 9:16 preview of each style; the editor at ?edit=<id>),
+                       Music (songs with a decoded waveform and drop, kind and rights, add songs or a folder;
+                       "Used by" opens each short's editor) and Voices (free samples, a paid "Try a line", and
+                       "Use for style"). Loading is a skeleton of the page (library-loading.tsx), never a spinner
   api/                 the RPC client (AtomRpc over one WebSocket) and the atom registry
   lib/  config/        small shared helpers (media URLs, formatting); where the server is
 apps/desktop/          the Electron shell: starts the server (node in dev; Electron's own Node packaged), opens the
                        UI (the dev server, or viral://app/ from Resources/web with a strict CSP), window buttons
                        over the sidebar, preload bridge (server URL, user name, inset, Show in Finder, the open
-                       panel for a video file), electron-updater.
+                       panel for a video or audio file, several files, or a folder), electron-updater.
                        vp pack bundles main/preload and the server (dist-server); electron-builder makes Viral.app
 packages/contracts/    wire schemas + RpcGroups, one file per domain
 packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,

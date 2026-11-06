@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { ComingSoon } from "../modules/system/coming-soon.tsx"
+import { VoicesPage } from "../modules/library/voices/voices-page.tsx"
 
-export const Route = createFileRoute("/library/voices")({
-  component: () => <ComingSoon title="Voices" description="The ElevenLabs voices you narrate with." milestone="M6" />
-})
+export const Route = createFileRoute("/library/voices")({ component: VoicesPage })
