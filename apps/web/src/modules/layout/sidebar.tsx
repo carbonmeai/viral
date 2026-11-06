@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from "@effect/atom-react"
-import { Link } from "@tanstack/react-router"
+import { Link, useLocation } from "@tanstack/react-router"
 import { Count, Dot } from "@viral/ui/primitives/status"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { cn } from "@viral/ui/cn"
@@ -7,11 +7,12 @@ import { Tooltip } from "@viral/ui/primitives/tooltip"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { ChevronRight, Film, Home, Inbox, Mic, Music, Palette, Plus, Settings } from "lucide-react"
-import type { ReactNode } from "react"
+import { type ReactNode, useEffect, useRef } from "react"
 import { desktop } from "../../config/server-url.ts"
 import { useWindowControlsInset } from "./window-controls.ts"
 import { overviewAtom } from "../home/overview.ts"
-import { modeAtom } from "../system/preferences.ts"
+import { SettingsNav } from "../settings/settings-nav.tsx"
+import { modeAtom, nameAtom } from "../system/preferences.ts"
 
 const navClass =
   "flex h-[30px] w-full items-center gap-2 whitespace-nowrap rounded-ctl px-2 text-left text-fg-1 hover:bg-ctl hover:text-fg [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-fg-2"
@@ -40,6 +41,15 @@ export function Sidebar() {
   const connected = AsyncResult.isSuccess(overview)
   const waiting = data?.waiting ?? []
   const inset = useWindowControlsInset()
+  const [name] = useAtom(nameAtom)
+  const displayName = name.trim() || desktop?.userName || "You"
+  // while you're in Settings the sidebar lists its sections; its back arrow returns to where you were
+  const pathname = useLocation({ select: (location) => location.pathname })
+  const inSettings = pathname.startsWith("/settings")
+  const lastAppPath = useRef("/")
+  useEffect(() => {
+    if (!inSettings) lastAppPath.current = pathname
+  }, [inSettings, pathname])
 
   return (
     <nav aria-label="Main" className="flex min-w-0 flex-col overflow-y-auto bg-win">
@@ -57,51 +67,57 @@ export function Sidebar() {
         </Tooltip>}
       </div>
 
-      <Group>
-        <Link to="/" {...nav} activeOptions={{ exact: true }}><Home />Home</Link>
-        <Link to="/waiting" {...nav}>
-          <Inbox />
-          Waiting for you
-          {waiting.length > 0 ? <Count className="ml-auto">{waiting.length}</Count> : null}
-        </Link>
-        <Link to="/videos/new" {...nav}><Plus />New source</Link>
-      </Group>
-
-      {data !== null && data.videos.length > 0 ? (
-        <Group label="Videos">
-          {data.videos.map((video) => {
-            const count = waiting.filter((w) => w.sourceId === video.source.id).length
-            return (
-              <Link key={video.source.id} to="/videos/$sourceId" params={{ sourceId: video.source.id }} {...nav}>
-                <Film />
-                <span className="truncate">{video.source.title ?? "Untitled video"}</span>
-                {count > 0 ? <Count className="ml-auto">{count}</Count> : null}
-              </Link>
-            )
-          })}
-        </Group>
-      ) : null}
-
-      {data !== null && data.shorts.length > 0 ? (
-        <Group label="Shorts">
-          {data.shorts.slice(0, RECENT_SHORTS).map((short) => (
-            <Link key={short.project.id} to="/shorts/$projectId" params={{ projectId: short.project.id }} {...nav}>
-              {short.thumb === null
-                ? <span className="h-5 w-3.5 shrink-0 rounded-[3px] bg-ctl-active" />
-                : <img src={short.thumb} alt="" className="h-5 w-3.5 shrink-0 rounded-[3px] object-cover" />}
-              <span className="truncate">{short.project.title}</span>
-              <Dot tone={short.status.tone} className="ml-auto" />
+      {inSettings
+        ? <SettingsNav backTo={lastAppPath.current} navClass={navClass} activeClass={navActive} />
+        : (
+          <>
+          <Group>
+            <Link to="/" {...nav} activeOptions={{ exact: true }}><Home />Home</Link>
+            <Link to="/waiting" {...nav}>
+              <Inbox />
+              Waiting for you
+              {waiting.length > 0 ? <Count className="ml-auto">{waiting.length}</Count> : null}
             </Link>
-          ))}
-        </Group>
-      ) : null}
+            <Link to="/videos/new" {...nav}><Plus />New source</Link>
+          </Group>
 
-      <Group label="Library">
-        <Link to="/library/styles" {...nav}><Palette />Styles</Link>
-        <Link to="/library/music" {...nav}><Music />Music</Link>
-        <Link to="/library/voices" {...nav}><Mic />Voices</Link>
-        <Link to="/settings" {...nav}><Settings />Settings</Link>
-      </Group>
+          {data !== null && data.videos.length > 0 ? (
+            <Group label="Videos">
+              {data.videos.map((video) => {
+                const count = waiting.filter((w) => w.sourceId === video.source.id).length
+                return (
+                  <Link key={video.source.id} to="/videos/$sourceId" params={{ sourceId: video.source.id }} {...nav}>
+                    <Film />
+                    <span className="truncate">{video.source.title ?? "Untitled video"}</span>
+                    {count > 0 ? <Count className="ml-auto">{count}</Count> : null}
+                  </Link>
+                )
+              })}
+            </Group>
+          ) : null}
+
+          {data !== null && data.shorts.length > 0 ? (
+            <Group label="Shorts">
+              {data.shorts.slice(0, RECENT_SHORTS).map((short) => (
+                <Link key={short.project.id} to="/shorts/$projectId" params={{ projectId: short.project.id }} {...nav}>
+                  {short.thumb === null
+                    ? <span className="h-5 w-3.5 shrink-0 rounded-[3px] bg-ctl-active" />
+                    : <img src={short.thumb} alt="" className="h-5 w-3.5 shrink-0 rounded-[3px] object-cover" />}
+                  <span className="truncate">{short.project.title}</span>
+                  <Dot tone={short.status.tone} className="ml-auto" />
+                </Link>
+              ))}
+            </Group>
+          ) : null}
+
+          <Group label="Library">
+            <Link to="/library/styles" {...nav}><Palette />Styles</Link>
+            <Link to="/library/music" {...nav}><Music />Music</Link>
+            <Link to="/library/voices" {...nav}><Mic />Voices</Link>
+            <Link to="/settings" {...nav}><Settings />Settings</Link>
+          </Group>
+          </>
+        )}
 
       <div className="mt-auto grid gap-1.5 p-2">
         <Segmented
@@ -113,9 +129,9 @@ export function Sidebar() {
         />
         <div className="flex h-10 items-center gap-2 px-2 text-fg-1">
           <span className="grid size-6 shrink-0 place-items-center rounded-full bg-chip text-[10px] font-semibold text-fg shadow-chip">
-            {initials(desktop?.userName ?? "You")}
+            {initials(displayName)}
           </span>
-          <span className="truncate">{desktop?.userName ?? "You"}</span>
+          <span className="truncate">{displayName}</span>
           <Tooltip content={connected ? "Connected to the Viral server" : "Can't reach the Viral server"}>
             <span className={cn("ml-auto size-[7px] rounded-full", connected ? "bg-ok-dot" : "bg-wait-dot")} />
           </Tooltip>

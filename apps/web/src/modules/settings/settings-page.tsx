@@ -1,34 +1,38 @@
-import { useAtom } from "@effect/atom-react"
-import { Panel } from "@viral/ui/primitives/panel"
-import { Row } from "@viral/ui/primitives/row"
-import { Segmented } from "@viral/ui/primitives/segmented"
+import { Option } from "effect"
+import { AsyncResult } from "effect/reactivity"
+import type { ReactNode } from "react"
 import { Page } from "../layout/page.tsx"
-import { ToolsPanel } from "../tools/tools-panel.tsx"
-import { type Theme, themeAtom } from "../system/preferences.ts"
+import { sectionLabel, type SettingsSectionId } from "./sections.ts"
 
-// Settings. M1 has the appearance and the tools; accounts, agents and usage arrive in M6.
-export function SettingsPage() {
-  const [theme, setTheme] = useAtom(themeAtom)
+// A Settings section: the same page column as every other page, titled with the section's name, holding groups
+// of setting rows.
+export function SettingsPage({ section, description, actions, children }: {
+  readonly section: SettingsSectionId
+  readonly description?: string
+  readonly actions?: ReactNode
+  readonly children: ReactNode
+}) {
   return (
-    <Page title="Settings" description="Accounts, the model behind each agent, and what things cost.">
-      <div className="grid gap-2">
-        <Panel title="Appearance">
-          <Row className="grid-cols-[minmax(0,1fr)_auto]">
-            <div className="flex min-w-0 flex-col">
-              <span className="font-medium">Theme</span>
-              <span className="text-xs text-fg-2">System follows your Mac’s light or dark setting.</span>
-            </div>
-            <Segmented<Theme>
-              label="Theme"
-              value={theme}
-              onChange={setTheme}
-              options={[{ value: "system", label: "System" }, { value: "dark", label: "Dark" }, { value: "light", label: "Light" }]}
-            />
-          </Row>
-        </Panel>
-        <ToolsPanel />
-        <div className="rounded-panel bg-panel px-4 py-4 text-fg-2">Accounts, agents and usage arrive in M6 of the desktop plan.</div>
-      </div>
+    <Page title={sectionLabel(section)} {...(description === undefined ? {} : { description })} {...(actions === undefined ? {} : { actions })}>
+      <div className="grid gap-6">{children}</div>
     </Page>
   )
+}
+
+// What a section shows while its data loads, or when the server can't be reached.
+export function Pending({ children }: { readonly children: ReactNode }) {
+  return <div className="rounded-panel bg-panel px-4 py-4 text-fg-2">{children}</div>
+}
+
+// Renders a query's value, or what's happening instead: still loading, or a failure in plain words.
+export function Loaded<A, E>({ result, what, children }: {
+  readonly result: AsyncResult.AsyncResult<A, E>
+  // what is being loaded, for the messages: "your accounts"
+  readonly what: string
+  readonly children: (value: A) => ReactNode
+}) {
+  const value = AsyncResult.value(result)
+  if (Option.isSome(value)) return children(value.value)
+  if (AsyncResult.isFailure(result)) return <Pending>Couldn’t load {what}. Is the Viral server running?</Pending>
+  return <Pending>Loading {what}…</Pending>
 }

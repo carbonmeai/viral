@@ -15,6 +15,15 @@ import { Route as WaitingRouteImport } from './routes/waiting'
 import { Route as LibraryMusicRouteImport } from './routes/library.music'
 import { Route as LibraryStylesRouteImport } from './routes/library.styles'
 import { Route as LibraryVoicesRouteImport } from './routes/library.voices'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsAccountsRouteImport } from './routes/settings.accounts'
+import { Route as SettingsAgentsRouteImport } from './routes/settings.agents'
+import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
+import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
+import { Route as SettingsToolsRouteImport } from './routes/settings.tools'
+import { Route as SettingsTranscriptionRouteImport } from './routes/settings.transcription'
+import { Route as SettingsUsageRouteImport } from './routes/settings.usage'
+import { Route as SettingsVoiceRouteImport } from './routes/settings.voice'
 import { Route as ShortsProjectIdRouteImport } from './routes/shorts.$projectId'
 import { Route as VideosSourceIdRouteImport } from './routes/videos.$sourceId'
 import { Route as VideosNewRouteImport } from './routes/videos.new'
@@ -49,6 +58,51 @@ const LibraryVoicesRoute = LibraryVoicesRouteImport.update({
   path: '/library/voices',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsAccountsRoute = SettingsAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsAgentsRoute = SettingsAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
+  id: '/general',
+  path: '/general',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsStorageRoute = SettingsStorageRouteImport.update({
+  id: '/storage',
+  path: '/storage',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsToolsRoute = SettingsToolsRouteImport.update({
+  id: '/tools',
+  path: '/tools',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsTranscriptionRoute = SettingsTranscriptionRouteImport.update({
+  id: '/transcription',
+  path: '/transcription',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsUsageRoute = SettingsUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsVoiceRoute = SettingsVoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const ShortsProjectIdRoute = ShortsProjectIdRouteImport.update({
   id: '/shorts/$projectId',
   path: '/shorts/$projectId',
@@ -67,37 +121,63 @@ const VideosNewRoute = VideosNewRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/waiting': typeof WaitingRoute
   '/library/music': typeof LibraryMusicRoute
   '/library/styles': typeof LibraryStylesRoute
   '/library/voices': typeof LibraryVoicesRoute
+  '/settings/accounts': typeof SettingsAccountsRoute
+  '/settings/agents': typeof SettingsAgentsRoute
+  '/settings/general': typeof SettingsGeneralRoute
+  '/settings/storage': typeof SettingsStorageRoute
+  '/settings/tools': typeof SettingsToolsRoute
+  '/settings/transcription': typeof SettingsTranscriptionRoute
+  '/settings/usage': typeof SettingsUsageRoute
+  '/settings/voice': typeof SettingsVoiceRoute
   '/shorts/$projectId': typeof ShortsProjectIdRoute
   '/videos/$sourceId': typeof VideosSourceIdRoute
   '/videos/new': typeof VideosNewRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
   '/waiting': typeof WaitingRoute
   '/library/music': typeof LibraryMusicRoute
   '/library/styles': typeof LibraryStylesRoute
   '/library/voices': typeof LibraryVoicesRoute
+  '/settings/accounts': typeof SettingsAccountsRoute
+  '/settings/agents': typeof SettingsAgentsRoute
+  '/settings/general': typeof SettingsGeneralRoute
+  '/settings/storage': typeof SettingsStorageRoute
+  '/settings/tools': typeof SettingsToolsRoute
+  '/settings/transcription': typeof SettingsTranscriptionRoute
+  '/settings/usage': typeof SettingsUsageRoute
+  '/settings/voice': typeof SettingsVoiceRoute
   '/shorts/$projectId': typeof ShortsProjectIdRoute
   '/videos/$sourceId': typeof VideosSourceIdRoute
   '/videos/new': typeof VideosNewRoute
+  '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/waiting': typeof WaitingRoute
   '/library/music': typeof LibraryMusicRoute
   '/library/styles': typeof LibraryStylesRoute
   '/library/voices': typeof LibraryVoicesRoute
+  '/settings/accounts': typeof SettingsAccountsRoute
+  '/settings/agents': typeof SettingsAgentsRoute
+  '/settings/general': typeof SettingsGeneralRoute
+  '/settings/storage': typeof SettingsStorageRoute
+  '/settings/tools': typeof SettingsToolsRoute
+  '/settings/transcription': typeof SettingsTranscriptionRoute
+  '/settings/usage': typeof SettingsUsageRoute
+  '/settings/voice': typeof SettingsVoiceRoute
   '/shorts/$projectId': typeof ShortsProjectIdRoute
   '/videos/$sourceId': typeof VideosSourceIdRoute
   '/videos/new': typeof VideosNewRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -108,20 +188,37 @@ export interface FileRouteTypes {
     | '/library/music'
     | '/library/styles'
     | '/library/voices'
+    | '/settings/accounts'
+    | '/settings/agents'
+    | '/settings/general'
+    | '/settings/storage'
+    | '/settings/tools'
+    | '/settings/transcription'
+    | '/settings/usage'
+    | '/settings/voice'
     | '/shorts/$projectId'
     | '/videos/$sourceId'
     | '/videos/new'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/settings'
     | '/waiting'
     | '/library/music'
     | '/library/styles'
     | '/library/voices'
+    | '/settings/accounts'
+    | '/settings/agents'
+    | '/settings/general'
+    | '/settings/storage'
+    | '/settings/tools'
+    | '/settings/transcription'
+    | '/settings/usage'
+    | '/settings/voice'
     | '/shorts/$projectId'
     | '/videos/$sourceId'
     | '/videos/new'
+    | '/settings'
   id:
     | '__root__'
     | '/'
@@ -130,14 +227,23 @@ export interface FileRouteTypes {
     | '/library/music'
     | '/library/styles'
     | '/library/voices'
+    | '/settings/accounts'
+    | '/settings/agents'
+    | '/settings/general'
+    | '/settings/storage'
+    | '/settings/tools'
+    | '/settings/transcription'
+    | '/settings/usage'
+    | '/settings/voice'
     | '/shorts/$projectId'
     | '/videos/$sourceId'
     | '/videos/new'
+    | '/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   WaitingRoute: typeof WaitingRoute
   LibraryMusicRoute: typeof LibraryMusicRoute
   LibraryStylesRoute: typeof LibraryStylesRoute
@@ -191,6 +297,69 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LibraryVoicesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/accounts': {
+      id: '/settings/accounts'
+      path: '/accounts'
+      fullPath: '/settings/accounts'
+      preLoaderRoute: typeof SettingsAccountsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/agents': {
+      id: '/settings/agents'
+      path: '/agents'
+      fullPath: '/settings/agents'
+      preLoaderRoute: typeof SettingsAgentsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/general': {
+      id: '/settings/general'
+      path: '/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof SettingsGeneralRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/storage': {
+      id: '/settings/storage'
+      path: '/storage'
+      fullPath: '/settings/storage'
+      preLoaderRoute: typeof SettingsStorageRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/tools': {
+      id: '/settings/tools'
+      path: '/tools'
+      fullPath: '/settings/tools'
+      preLoaderRoute: typeof SettingsToolsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/transcription': {
+      id: '/settings/transcription'
+      path: '/transcription'
+      fullPath: '/settings/transcription'
+      preLoaderRoute: typeof SettingsTranscriptionRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/usage': {
+      id: '/settings/usage'
+      path: '/usage'
+      fullPath: '/settings/usage'
+      preLoaderRoute: typeof SettingsUsageRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/voice': {
+      id: '/settings/voice'
+      path: '/voice'
+      fullPath: '/settings/voice'
+      preLoaderRoute: typeof SettingsVoiceRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/shorts/$projectId': {
       id: '/shorts/$projectId'
       path: '/shorts/$projectId'
@@ -215,9 +384,37 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface SettingsRouteChildren {
+  SettingsAccountsRoute: typeof SettingsAccountsRoute
+  SettingsAgentsRoute: typeof SettingsAgentsRoute
+  SettingsGeneralRoute: typeof SettingsGeneralRoute
+  SettingsStorageRoute: typeof SettingsStorageRoute
+  SettingsToolsRoute: typeof SettingsToolsRoute
+  SettingsTranscriptionRoute: typeof SettingsTranscriptionRoute
+  SettingsUsageRoute: typeof SettingsUsageRoute
+  SettingsVoiceRoute: typeof SettingsVoiceRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAccountsRoute: SettingsAccountsRoute,
+  SettingsAgentsRoute: SettingsAgentsRoute,
+  SettingsGeneralRoute: SettingsGeneralRoute,
+  SettingsStorageRoute: SettingsStorageRoute,
+  SettingsToolsRoute: SettingsToolsRoute,
+  SettingsTranscriptionRoute: SettingsTranscriptionRoute,
+  SettingsUsageRoute: SettingsUsageRoute,
+  SettingsVoiceRoute: SettingsVoiceRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   WaitingRoute: WaitingRoute,
   LibraryMusicRoute: LibraryMusicRoute,
   LibraryStylesRoute: LibraryStylesRoute,

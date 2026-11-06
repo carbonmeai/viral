@@ -7,6 +7,8 @@ export interface DesktopBridge {
   readonly windowControlsInset: number
   // the window entered (true) or left (false) full screen, where macOS hides the window buttons
   onFullScreenChange(listener: (fullScreen: boolean) => void): () => void
+  // reveals a file or folder of the Viral library in Finder; resolves false when it isn't one
+  showInFinder(path: string): Promise<boolean>
   // the signed-in Mac user's name, shown at the bottom of the sidebar
   readonly userName: string
 }

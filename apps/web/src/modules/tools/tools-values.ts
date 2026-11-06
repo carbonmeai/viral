@@ -51,7 +51,11 @@ export const foldInstall = (state: InstallState, event: ToolProgress): InstallSt
 export const installFinished = (state: InstallState) => Object.values(state).every((t) => t === undefined || t.phase === "installed" || t.phase === "failed")
 
 export const formatBytes = (bytes: number) =>
-  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+  bytes >= 1024 ** 3
+    ? `${(bytes / 1024 ** 3).toFixed(1)} GB`
+    : bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`
 
 // "ffprobe version 6.0 Copyright (c) …" → "6.0"; "uv 0.13.7 (316c…)" → "0.13.7"; falls back to the line itself.
 export const shortVersion = (version: string | null): string | null =>

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { SettingsPage } from "../modules/settings/settings-page.tsx"
+import { createFileRoute, Outlet } from "@tanstack/react-router"
 
-export const Route = createFileRoute("/settings")({ component: SettingsPage })
+// Settings: each section is its own page; the sidebar lists them while you're here.
+export const Route = createFileRoute("/settings")({ component: Outlet })

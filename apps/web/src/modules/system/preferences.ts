@@ -30,3 +30,26 @@ export type Mode = "simple" | "detailed"
 export const themeAtom = persisted<Theme>("viral.theme", ["system", "dark", "light"], "system")
 // Detailed shows the numbers behind each item (approach, length, source); it's the default.
 export const modeAtom = persisted<Mode>("viral.mode", ["simple", "detailed"], "detailed")
+
+// A free-text choice kept the same way; an empty value means "use the default".
+const persistedText = (key: string) =>
+  Atom.writable(
+    () => {
+      try {
+        return localStorage.getItem(key) ?? ""
+      } catch {
+        return ""
+      }
+    },
+    (ctx, value: string) => {
+      try {
+        localStorage.setItem(key, value)
+      } catch {
+        // nothing to keep it in; the choice lasts until reload
+      }
+      ctx.setSelf(value)
+    }
+  ).pipe(Atom.keepAlive)
+
+// Your name at the bottom of the sidebar; empty uses the Mac's user name.
+export const nameAtom = persistedText("viral.name")
