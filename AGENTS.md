@@ -17,7 +17,7 @@ apps/server/src/
   home/                ~/.viral paths ($VIRAL_HOME overrides; tests use a temp dir)
   persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one)
   sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short from them;
-                       source-stages.ts runs the video-level stages (source, transcribe, contact-sheet)
+                       source-stages.ts defines the video-level stages (source, transcribe, contact-sheet)
   artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/
   transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
   contact-sheet/       timestamped frame grids for picking b-roll by eye
@@ -28,8 +28,8 @@ apps/server/src/
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/
   sound-library/       sound-effect samples by category, with variants, in ~/.viral/sounds/
   references/          viral videos kept to learn from; their analyses are reference-owned artifacts
-  jobs/                running jobs, approvals, cancel        (jobs.ts, jobs-rpc.ts)
-  pipeline/            orders the stages, StartJob stream     (pipeline.ts, pipeline-rpc.ts)
+  runs/                runs a source or a short through its stages: reuse of approved work, gates (approve,
+                       reject with a note, edit), cancel, resume after restart, events + live progress
   script/              script agent, its prompt and MCP tool  (script-agent.ts, script-prompt.ts)
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,

@@ -1,6 +1,6 @@
 import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { NodeServices } from "@effect/platform-node"
-import { type ApproachName, type JobEvent, Script } from "@viral/contracts"
+import { type ApproachName, Script } from "@viral/contracts"
 import { Context, Effect, Layer, Schema, Stream, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { approachSkill, SkillPack } from "../agent-skills/skill-pack.ts"
@@ -11,12 +11,13 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   message: Schema.String
 }) {}
 
-type Emit = (event: JobEvent) => Effect.Effect<void>
+// Reports progress: a percentage (null when unknown) and an optional message for the person watching.
+type Progress = (pct: number | null, message?: string) => Effect.Effect<void>
 
 // Drives the user's installed Claude CLI through the Agent SDK. Its system prompt is the stage's job plus the
 // story-arc skill and the project's approach skill. The agent hands its result back through an in-process MCP tool so the server can validate it.
 export class ScriptAgent extends Context.Service<ScriptAgent, {
-  writeScript(transcript: string, approach: ApproachName, emit: Emit): Effect.Effect<Script, AgentError>
+  writeScript(transcript: string, approach: ApproachName, progress: Progress): Effect.Effect<Script, AgentError>
 }>()("@viral/server/script/script-agent/ScriptAgent") {
   static readonly layer = Layer.effect(
     ScriptAgent,
@@ -31,7 +32,7 @@ export class ScriptAgent extends Context.Service<ScriptAgent, {
       const writeScript = Effect.fn("ScriptAgent.writeScript")(function*(
         transcript: string,
         approach: ApproachName,
-        emit: Emit
+        progress: Progress
       ) {
         const systemPrompt = skillPack.systemPrompt({
           prompt: SCRIPT_WRITER_PROMPT,
@@ -77,9 +78,9 @@ export class ScriptAgent extends Context.Service<ScriptAgent, {
           if (message.type === "assistant") {
             return Effect.forEach(message.message.content, (block) =>
               block.type === "text"
-                ? emit({ _tag: "AgentText", text: block.text })
+                ? progress(null, block.text)
                 : block.type === "tool_use"
-                ? emit({ _tag: "ToolCalled", name: block.name })
+                ? progress(null, `→ ${block.name}`)
                 : Effect.void, { discard: true })
           }
           if (message.type === "result" && message.subtype !== "success") {

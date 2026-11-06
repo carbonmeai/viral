@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import type { JobEvent, SourceOrigin } from "@viral/contracts"
+import type { SourceOrigin } from "@viral/contracts"
 import { Context, Effect, Layer, Path, Schema } from "effect"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
 
@@ -8,7 +8,8 @@ export class FetchError extends Schema.TaggedError<FetchError>()("FetchError", {
   message: Schema.String
 }) {}
 
-type Emit = (event: JobEvent) => Effect.Effect<void>
+// Reports progress: a percentage (null when unknown) and an optional message for the person watching.
+type Progress = (pct: number | null, message?: string) => Effect.Effect<void>
 
 export const FetchedSource = Schema.Struct({
   // relative to the folder it was fetched into
@@ -28,7 +29,7 @@ const Line = Schema.fromJsonString(Schema.Union([
 // Brings a long video into a folder as source.mp4: downloaded with yt-dlp for a URL, hard-linked or
 // copied for a local file.
 export class SourceFetcher extends Context.Service<SourceFetcher, {
-  fetch(origin: SourceOrigin, outDir: string, emit: Emit): Effect.Effect<FetchedSource, FetchError>
+  fetch(origin: SourceOrigin, outDir: string, progress: Progress): Effect.Effect<FetchedSource, FetchError>
 }>()("@viral/server/sources/source-fetcher/SourceFetcher") {
   static readonly layer = Layer.effect(
     SourceFetcher,
@@ -36,14 +37,14 @@ export class SourceFetcher extends Context.Service<SourceFetcher, {
       const scripts = yield* ScriptRunner
       const path = yield* Path.Path
 
-      const fetch = Effect.fn("SourceFetcher.fetch")(function*(origin: SourceOrigin, outDir: string, emit: Emit) {
+      const fetch = Effect.fn("SourceFetcher.fetch")(function*(origin: SourceOrigin, outDir: string, progress: Progress) {
         const from = origin._tag === "Url" ? ["--url", origin.url] : ["--file", origin.path]
         return yield* scripts.run(
           [path.join(import.meta.dirname, "fetch-source.py"), ...from, "--out-dir", outDir],
           Schema.decodeEffect(Line),
           (line): Effect.Effect<FetchedSource | undefined> => {
             if (line.type === "progress") {
-              return emit({ _tag: "Progress", stage: "source", pct: line.pct }).pipe(Effect.as(undefined))
+              return progress(line.pct).pipe(Effect.as(undefined))
             }
             const { type: _, ...fetched } = line
             return Effect.succeed(fetched)

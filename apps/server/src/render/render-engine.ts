@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
-import { type JobEvent, NarratedPlan } from "@viral/contracts"
-import { Clock, Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
+import { NarratedPlan } from "@viral/contracts"
+import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { ViralHome } from "../home/viral-home.ts"
 import { type ScriptError, ScriptRunner } from "../script-runner/script-runner.ts"
 
@@ -11,7 +11,8 @@ export class RenderError extends Schema.TaggedError<RenderError>()("RenderError"
   message: Schema.String
 }) {}
 
-type Emit = (event: JobEvent) => Effect.Effect<void>
+// Reports progress: a percentage (null when unknown) and an optional message for the person watching.
+type Progress = (pct: number | null, message?: string) => Effect.Effect<void>
 
 export interface NarratedRender {
   readonly output: string
@@ -19,11 +20,6 @@ export interface NarratedRender {
   readonly durationS: number
   readonly shots: number
 }
-
-const ProbeLine = Schema.fromJsonString(Schema.Union([
-  Schema.Struct({ type: Schema.Literal("progress"), pct: Schema.Number }),
-  Schema.Struct({ type: Schema.Literal("done"), output: Schema.String })
-]))
 
 const NarratedStep = Schema.Literals(["shots", "outro", "overlays", "encode"])
 const NarratedLine = Schema.fromJsonString(Schema.Union([
@@ -59,10 +55,9 @@ const PlanJson = Schema.fromJsonString(NarratedPlan)
 
 // Runs the Python render scripts next to this file through the ScriptRunner.
 export class RenderEngine extends Context.Service<RenderEngine, {
-  renderProbe(seconds: number, emit: Emit): Effect.Effect<string, RenderError>
   // Writes the plan to `<workDir>/narrated.json` (its relative paths resolve against workDir) and
   // renders it to `out`, plus a sibling .srt.
-  renderNarrated(plan: NarratedPlan, workDir: string, out: string, emit: Emit): Effect.Effect<NarratedRender, RenderError>
+  renderNarrated(plan: NarratedPlan, workDir: string, out: string, progress: Progress): Effect.Effect<NarratedRender, RenderError>
 }>()("@viral/server/render/render-engine/RenderEngine") {
   static readonly layer = Layer.effect(
     RenderEngine,
@@ -74,20 +69,8 @@ export class RenderEngine extends Context.Service<RenderEngine, {
       const script = (name: string) => path.join(import.meta.dirname, name)
       const toRenderError = Effect.mapError((error: ScriptError) => new RenderError({ code: error.code, message: error.message }))
 
-      const renderProbe = Effect.fn("RenderEngine.renderProbe")(function*(seconds: number, emit: Emit) {
-        const out = path.join(home.renders, `probe-${yield* Clock.currentTimeMillis}.mp4`)
-        return yield* scripts.run(
-          [script("render-probe.py"), "--seconds", String(seconds), "--out", out],
-          Schema.decodeEffect(ProbeLine),
-          (line) =>
-            line.type === "done"
-              ? Effect.succeed(line.output)
-              : emit({ _tag: "Progress", stage: "render", pct: line.pct }).pipe(Effect.as(undefined))
-        ).pipe(toRenderError)
-      })
-
       const renderNarrated = Effect.fn("RenderEngine.renderNarrated")(
-        function*(plan: NarratedPlan, workDir: string, out: string, emit: Emit) {
+        function*(plan: NarratedPlan, workDir: string, out: string, progress: Progress) {
           const planFile = path.join(workDir, "narrated.json")
           yield* Schema.encodeEffect(PlanJson)(plan).pipe(
             Effect.flatMap((encoded) => fs.writeFileString(planFile, encoded)),
@@ -99,8 +82,7 @@ export class RenderEngine extends Context.Service<RenderEngine, {
             (line): Effect.Effect<NarratedRender | undefined> => {
               switch (line.type) {
                 case "progress":
-                  return emit({ _tag: "Progress", stage: "render", pct: narratedPct(line.step, line.done, line.total) })
-                    .pipe(Effect.as(undefined))
+                  return progress(narratedPct(line.step, line.done, line.total)).pipe(Effect.as(undefined))
                 case "log":
                   return Effect.logInfo(line.message).pipe(Effect.as(undefined))
                 case "done":
@@ -116,7 +98,7 @@ export class RenderEngine extends Context.Service<RenderEngine, {
         }
       )
 
-      return RenderEngine.of({ renderProbe, renderNarrated })
+      return RenderEngine.of({ renderNarrated })
     })
   ).pipe(Layer.provide([NodeServices.layer, ViralHome.layer, ScriptRunner.layer]))
 }

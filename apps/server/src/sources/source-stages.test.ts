@@ -1,66 +1,64 @@
-import type { JobEvent } from "@viral/contracts"
-import { Effect, Exit, Layer } from "effect"
+import type { RunOwner, RunUpdate } from "@viral/contracts"
+import { Effect, Layer, ManagedRuntime, Stream } from "effect"
 import assert from "node:assert/strict"
 import { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
 import { Artifacts } from "../artifacts/artifacts.ts"
+import { PipelineStagesLive } from "../runs/pipeline-stages.ts"
+import { RunManager } from "../runs/run-manager.ts"
+import { RunStore } from "../runs/run-store.ts"
 import { makeTestVideo } from "../testing/test-video.ts"
-import { SourceStages } from "./source-stages.ts"
 import { Sources } from "./sources.ts"
 
 let work: string
 let video: string
 before(() => {
-  work = realpathSync(mkdtempSync(join(tmpdir(), "viral-stages-")))
+  work = realpathSync(mkdtempSync(join(tmpdir(), "viral-source-run-")))
   process.env.VIRAL_HOME = join(work, "home")
+  // transcription isn't exercised here (it needs a model or an API key); see transcriber.golden.ts
   video = join(work, "My Long Video.mp4")
   makeTestVideo(video, 12)
 })
 after(() => rmSync(work, { recursive: true, force: true }))
 
-const layer = Layer.mergeAll(SourceStages.layer, Sources.layer, Artifacts.layer)
-const run = <A, E>(effect: Effect.Effect<A, E, SourceStages | Sources | Artifacts>) =>
-  Effect.runPromise(Effect.provide(effect, layer))
+const runtime = () =>
+  ManagedRuntime.make(
+    RunManager.layer.pipe(
+      Layer.provideMerge(PipelineStagesLive),
+      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer))
+    )
+  )
 
-test("source and contact-sheet stages record versioned source artifacts", async () => {
-  const events: Array<JobEvent> = []
-  const emit = (event: JobEvent) => Effect.sync(() => void events.push(event))
-
-  const { source, artifacts } = await run(Effect.gen(function*() {
-    const sources = yield* Sources
-    const stages = yield* SourceStages
-    const source = yield* sources.create({ origin: { _tag: "File", path: video }, rights: "owned", rightsNote: null })
-    yield* stages.run(source.id, "source", false, emit)
-    yield* stages.run(source.id, "contact-sheet", false, emit)
-    yield* stages.run(source.id, "source", false, emit) // already done: skipped
-    yield* stages.run(source.id, "source", true, emit) // forced: version 2
-    return { source: yield* sources.get(source.id), artifacts: yield* (yield* Artifacts).list({ _tag: "Source", id: source.id }) }
+test("a source run fetches the video and records its metadata", async () => {
+  const rt = runtime()
+  const source = await rt.runPromise(Effect.gen(function*() {
+    return yield* (yield* Sources).create({ origin: { _tag: "File", path: video }, rights: "owned", rightsNote: null })
   }))
+  const owner: RunOwner = { _tag: "Source", id: source.id }
+  const updates = await rt.runPromise(Effect.gen(function*() {
+    const runs = yield* RunManager
+    const run = yield* runs.start(owner, null)
+    // stop once transcription starts: the source stage is done by then
+    return [...yield* runs.subscribe(run.id, 0).pipe(
+      Stream.takeUntil((u: RunUpdate) =>
+        u._tag === "Event" && u.event._tag === "StageStarted" && u.event.stageRun.stage === "transcribe"),
+      Stream.runCollect
+    )]
+  }))
+  assert.ok(updates.some((u) => u._tag === "Progress" && u.stage === "source"), "the fetch reports progress")
 
-  assert.equal(source.title, "My Long Video")
-  assert.ok(source.durationS !== null && Math.abs(source.durationS - 12) < 0.2)
-  assert.deepEqual(artifacts.map((a) => `${a.kind}@${a.version}`), ["contact-sheet@1", "source-video@2", "source-video@1"])
-
-  const sourceDir = join(work, "home/sources", source.id)
-  const v1 = join(sourceDir, "source-video/v1/source.mp4")
-  assert.equal(statSync(v1).ino, statSync(video).ino, "a local mp4 is hard-linked, not copied")
-  assert.ok(existsSync(join(sourceDir, "contact-sheet/v1/sheet_000.png")))
-
-  // A tile every 5s: 0s and 5s. ffmpeg's fps filter only emits the 10s tile once the video runs half an
-  // interval past it (12.5s), so a 12s clip has two.
-  const sheetData = artifacts[0]!.data as { readonly frames: number; readonly sheets: ReadonlyArray<{ start: number; end: number }> }
-  assert.equal(sheetData.frames, 2)
-  assert.deepEqual(sheetData.sheets.map((s) => [s.start, s.end]), [[0, 5]])
-  assert.ok(events.some((e) => e._tag === "StageSkipped" && e.stage === "source"))
-})
-
-test("a later stage before the source stage fails with not-ready", async () => {
-  const exit = await run(Effect.exit(Effect.gen(function*() {
-    const source = yield* (yield* Sources).create({ origin: { _tag: "File", path: video }, rights: "owned", rightsNote: null })
-    return yield* (yield* SourceStages).run(source.id, "transcribe", false, () => Effect.void)
-  })))
-  assert.ok(Exit.isFailure(exit))
-  assert.match(JSON.stringify(exit), /not-ready/)
+  const { row, video: fetched } = await rt.runPromise(Effect.gen(function*() {
+    const row = yield* (yield* Sources).get(source.id)
+    const latest = yield* (yield* Artifacts).latest(owner, "source-video")
+    return { row, video: latest }
+  }))
+  assert.equal(row.title, "My Long Video")
+  assert.ok(row.durationS !== null && Math.abs(row.durationS - 12) < 0.2)
+  assert.equal(fetched._tag, "Some")
+  const file = join(work, "home/sources", source.id, "source-video/v1/source.mp4")
+  assert.ok(existsSync(file))
+  assert.equal(statSync(file).ino, statSync(video).ino, "a local mp4 is hard-linked, not copied")
+  await rt.dispose()
 })

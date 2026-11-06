@@ -2,14 +2,14 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect } from "effect"
 import { positionals } from "./args.ts"
 import { Client } from "./client.ts"
-import { JOB_USAGE, jobCommand } from "./job-command.ts"
 import { MUSIC_USAGE, musicCommand } from "./music-command.ts"
 import { PRESET_USAGE, presetCommand } from "./preset-command.ts"
 import { PROJECT_USAGE, projectCommand } from "./project-command.ts"
+import { RUN_USAGE, runCommand } from "./run-command.ts"
 import { SOURCE_USAGE, sourceCommand } from "./source-command.ts"
 
 // Dev client for the local Viral server (ws://127.0.0.1:3410/rpc).
-const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, JOB_USAGE].join("\n")
+const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, RUN_USAGE].join("\n")
 
 const program = Effect.gen(function*() {
   switch (positionals[0]) {
@@ -21,11 +21,13 @@ const program = Effect.gen(function*() {
       return yield* presetCommand()
     case "music":
       return yield* musicCommand()
-    case "run":
+    case "follow":
+    case "cancel":
+    case "resume":
+    case "requests":
     case "approve":
     case "reject":
-    case "cancel":
-      return yield* jobCommand()
+      return yield* runCommand()
     default:
       return yield* Console.log(USAGE)
   }
@@ -38,7 +40,9 @@ const program = Effect.gen(function*() {
     PresetIsDefault: (e) => Console.error(`preset ${e.id} is the default; make another one the default first`),
     MusicTrackNotFound: (e) => Console.error(`no music track ${e.id}`),
     MusicFileUnreadable: (e) => Console.error(`can't read ${e.file}: ${e.message}`),
-    SchemaError: (e) => Console.error(e.message)
+    SchemaError: (e) => Console.error(e.message),
+    RunNotFound: (e) => Console.error(`no run ${e.id}`),
+    RequestNotPending: (e) => Console.error(`request ${e.id} isn't waiting for an answer`)
   }),
   Effect.provide([Client.layer, NodeServices.layer])
 )

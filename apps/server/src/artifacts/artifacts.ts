@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node"
 import {
   type Artifact,
   ArtifactId,
+  type StageRunId,
   ArtifactKind,
   type ArtifactOwner,
   ProjectId,
@@ -25,6 +26,13 @@ export interface ArtifactSlot {
   readonly dir: string
   // the same folder relative to the owner's folder, for `path`
   readonly relDir: string
+}
+
+export interface ArtifactOutput {
+  readonly data: unknown
+  readonly path: string | null
+  // the stage run that produced it; its status says whether the artifact was approved
+  readonly stageRunId?: StageRunId
 }
 
 const DataJson = Schema.fromJsonString(Schema.Unknown)
@@ -64,7 +72,7 @@ const toArtifact = (row: typeof ArtifactRow.Type): Artifact => ({
 export class Artifacts extends Context.Service<Artifacts, {
   // Reserves the next version and creates its folder.
   allocate(owner: ArtifactOwner, kind: Kind): Effect.Effect<ArtifactSlot>
-  record(slot: ArtifactSlot, output: { readonly data: unknown; readonly path: string | null }): Effect.Effect<Artifact>
+  record(slot: ArtifactSlot, output: ArtifactOutput): Effect.Effect<Artifact>
   latest(owner: ArtifactOwner, kind: Kind): Effect.Effect<Option.Option<Artifact>>
   list(owner: ArtifactOwner): Effect.Effect<ReadonlyArray<Artifact>>
   // Absolute path of an artifact's file.
@@ -120,7 +128,7 @@ export class Artifacts extends Context.Service<Artifacts, {
       })
 
       const record = Effect.fn("Artifacts.record")(
-        function*(slot: ArtifactSlot, output: { readonly data: unknown; readonly path: string | null }) {
+        function*(slot: ArtifactSlot, output: ArtifactOutput) {
           const id = ArtifactId.make(yield* random.uuidV7())
           const now = DateTime.formatIso(yield* DateTime.now)
           const data = output.data === undefined || output.data === null
@@ -130,9 +138,10 @@ export class Artifacts extends Context.Service<Artifacts, {
           const projectId = slot.owner._tag === "Project" ? slot.owner.id : null
           const referenceId = slot.owner._tag === "Reference" ? slot.owner.id : null
           yield* sql`
-            INSERT INTO artifacts (id, source_id, project_id, reference_id, kind, version, data, path, created_at)
-            VALUES (${id}, ${sourceId}, ${projectId}, ${referenceId}, ${slot.kind}, ${slot.version}, ${data},
-                    ${output.path}, ${now})
+            INSERT INTO artifacts (id, source_id, project_id, reference_id, stage_run_id, kind, version, data, path,
+                                   created_at)
+            VALUES (${id}, ${sourceId}, ${projectId}, ${referenceId}, ${output.stageRunId ?? null}, ${slot.kind},
+                    ${slot.version}, ${data}, ${output.path}, ${now})
           `
           const row = yield* findLatest({ column: ownerColumn(slot.owner), id: slot.owner.id, kind: slot.kind })
           return toArtifact(Option.getOrThrow(row))

@@ -9,12 +9,12 @@ export type ArtifactId = typeof ArtifactId.Type
 
 // Source-level artifacts are made once per long video, project-level ones per short, reference-level ones
 // per reference video.
-export const SourceArtifactKind = Schema.Literals(["source-video", "transcript", "contact-sheet", "ad-ranges"])
+export const SourceArtifactKind = Schema.Literals(["source-video", "transcript", "contact-sheet", "ad-ranges", "story-map"])
 export type SourceArtifactKind = typeof SourceArtifactKind.Type
 
 export const ProjectArtifactKind = Schema.Literals([
-  "story-map",
   "script",
+  "shot-plan",
   "cut-plan",
   "voiceover",
   "voiceover-transcript",

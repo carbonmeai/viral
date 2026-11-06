@@ -1,5 +1,4 @@
 import { NodeServices } from "@effect/platform-node"
-import type { JobEvent } from "@viral/contracts"
 import { Context, Effect, Layer, Path, Schema } from "effect"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
 
@@ -8,7 +7,8 @@ export class ContactSheetError extends Schema.TaggedError<ContactSheetError>()("
   message: Schema.String
 }) {}
 
-type Emit = (event: JobEvent) => Effect.Effect<void>
+// Reports progress: a percentage (null when unknown) and an optional message for the person watching.
+type Progress = (pct: number | null, message?: string) => Effect.Effect<void>
 
 export interface ContactSheetOptions {
   // seconds between tiles
@@ -43,7 +43,7 @@ const Line = Schema.fromJsonString(Schema.Union([
 
 // Timestamped frame grids of a video, so an agent (or a person) can pick b-roll by eye.
 export class ContactSheets extends Context.Service<ContactSheets, {
-  make(video: string, outDir: string, options: ContactSheetOptions, emit: Emit): Effect.Effect<ContactSheetSet, ContactSheetError>
+  make(video: string, outDir: string, options: ContactSheetOptions, progress: Progress): Effect.Effect<ContactSheetSet, ContactSheetError>
 }>()("@viral/server/contact-sheet/contact-sheets/ContactSheets") {
   static readonly layer = Layer.effect(
     ContactSheets,
@@ -52,7 +52,7 @@ export class ContactSheets extends Context.Service<ContactSheets, {
       const path = yield* Path.Path
 
       const make = Effect.fn("ContactSheets.make")(
-        function*(video: string, outDir: string, options: ContactSheetOptions, emit: Emit) {
+        function*(video: string, outDir: string, options: ContactSheetOptions, progress: Progress) {
           const args = [
             path.join(import.meta.dirname, "contact-sheet.py"), video, outDir,
             "--every", String(options.every), "--cols", String(options.cols), "--rows", String(options.rows),
@@ -64,7 +64,7 @@ export class ContactSheets extends Context.Service<ContactSheets, {
             Schema.decodeEffect(Line),
             (line): Effect.Effect<ContactSheetSet | undefined> =>
               line.type === "progress"
-                ? emit({ _tag: "Progress", stage: "contact-sheet", pct: 100 * line.done / line.total }).pipe(Effect.as(undefined))
+                ? progress(100 * line.done / line.total).pipe(Effect.as(undefined))
                 : Effect.succeed({ every: options.every, cols: options.cols, rows: options.rows, frames: line.frames, sheets: line.sheets })
           ).pipe(Effect.mapError((error) => new ContactSheetError({ code: error.code, message: error.message })))
         }

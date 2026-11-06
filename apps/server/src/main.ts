@@ -7,44 +7,50 @@ import { RpcSerialization, RpcServer } from "effect/rpc"
 import { createServer } from "node:http"
 import { Artifacts } from "./artifacts/artifacts.ts"
 import { ArtifactsRpcLive } from "./artifacts/artifacts-rpc.ts"
-import { Jobs } from "./jobs/jobs.ts"
-import { JobsRpcLive } from "./jobs/jobs-rpc.ts"
 import { MusicLibrary } from "./music-library/music-library.ts"
 import { MusicLibraryRpcLive } from "./music-library/music-library-rpc.ts"
-import { Pipeline } from "./pipeline/pipeline.ts"
-import { PipelineRpcLive } from "./pipeline/pipeline-rpc.ts"
 import { Presets } from "./presets/presets.ts"
 import { PresetsRpcLive } from "./presets/presets-rpc.ts"
 import { Projects } from "./projects/projects.ts"
 import { ProjectsRpcLive } from "./projects/projects-rpc.ts"
 import { References } from "./references/references.ts"
 import { ReferencesRpcLive } from "./references/references-rpc.ts"
-import { RenderEngine } from "./render/render-engine.ts"
-import { ScriptAgent } from "./script/script-agent.ts"
+import { PipelineStagesLive } from "./runs/pipeline-stages.ts"
+import { RunManager } from "./runs/run-manager.ts"
+import { RunStore } from "./runs/run-store.ts"
+import { RunsRpcLive } from "./runs/runs-rpc.ts"
 import { SoundLibrary } from "./sound-library/sound-library.ts"
 import { SoundLibraryRpcLive } from "./sound-library/sound-library-rpc.ts"
-import { SourceStages } from "./sources/source-stages.ts"
 import { Sources } from "./sources/sources.ts"
 import { SourcesRpcLive } from "./sources/sources-rpc.ts"
 
 const PORT = 3410
 
+const DomainsLive = Layer.mergeAll(
+  Sources.layer,
+  Artifacts.layer,
+  Projects.layer,
+  Presets.layer,
+  MusicLibrary.layer,
+  SoundLibrary.layer,
+  References.layer,
+  RunStore.layer
+)
+
+const RunsLive = RunManager.layer.pipe(Layer.provideMerge(PipelineStagesLive), Layer.provideMerge(DomainsLive))
+
 const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: "websocket" }).pipe(
-  Layer.provide([JobsRpcLive, PipelineRpcLive, SourcesRpcLive, ProjectsRpcLive, PresetsRpcLive, MusicLibraryRpcLive, ArtifactsRpcLive, SoundLibraryRpcLive, ReferencesRpcLive]),
-  Layer.provide(Pipeline.layer),
-  Layer.provide(Layer.mergeAll(
-    Jobs.layer,
-    Sources.layer,
-    SourceStages.layer,
-    Artifacts.layer,
-    Projects.layer,
-    Presets.layer,
-    MusicLibrary.layer,
-    SoundLibrary.layer,
-    References.layer,
-    ScriptAgent.layer,
-    RenderEngine.layer
-  )),
+  Layer.provide([
+    SourcesRpcLive,
+    ProjectsRpcLive,
+    PresetsRpcLive,
+    MusicLibraryRpcLive,
+    ArtifactsRpcLive,
+    SoundLibraryRpcLive,
+    ReferencesRpcLive,
+    RunsRpcLive
+  ]),
+  Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)
 )
 

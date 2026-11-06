@@ -1,32 +1,22 @@
 import { NodeServices } from "@effect/platform-node"
-import type { ArtifactOwner, JobEvent, SourceArtifactKind, SourceId, SourceNotFound, SourceStage } from "@viral/contracts"
-import { Context, Effect, Layer, Option, Path, Schema } from "effect"
+import type { ArtifactOwner, SourceId } from "@viral/contracts"
+import { Context, Effect, Layer, Option, Path } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ContactSheets, OVERVIEW } from "../contact-sheet/contact-sheets.ts"
+import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Transcriber } from "../transcribe/transcriber.ts"
 import { SourceFetcher } from "./source-fetcher.ts"
 import { Sources } from "./sources.ts"
 
-// `code`: "not-ready" when an earlier stage hasn't run, otherwise the failing stage's own code.
-export class SourceStageError extends Schema.TaggedError<SourceStageError>()("SourceStageError", {
-  stage: Schema.String,
-  code: Schema.String,
-  message: Schema.String
-}) {}
-
-type Emit = (event: JobEvent) => Effect.Effect<void>
-
-const ARTIFACT: Record<SourceStage, SourceArtifactKind> = {
-  source: "source-video",
-  transcribe: "transcript",
-  "contact-sheet": "contact-sheet"
+const sourceOf = (ctx: StageContext): SourceId => {
+  if (ctx.owner._tag !== "Source") throw new Error("source stages run on a source")
+  return ctx.owner.id
 }
 
-// Runs the stages that work on the long video itself. Each stage's output is a versioned source artifact,
-// so every short made from the source reuses it; a stage that already has its artifact is skipped unless
-// forced, and forcing adds a new version instead of overwriting.
+// The stages that work on the long video itself. Their artifacts are owned by the source, so every short
+// made from it reuses them; none needs approval.
 export class SourceStages extends Context.Service<SourceStages, {
-  run(id: SourceId, stage: SourceStage, force: boolean, emit: Emit): Effect.Effect<void, SourceStageError | SourceNotFound>
+  readonly stages: ReadonlyArray<StageDefinition>
 }>()("@viral/server/sources/source-stages/SourceStages") {
   static readonly layer = Layer.effect(
     SourceStages,
@@ -38,60 +28,62 @@ export class SourceStages extends Context.Service<SourceStages, {
       const sheets = yield* ContactSheets
       const path = yield* Path.Path
 
-      const stageError = (stage: SourceStage) => (error: { readonly code: string; readonly message: string }) =>
-        new SourceStageError({ stage, code: error.code, message: error.message })
+      const failure = (stage: string) => (error: { readonly code: string; readonly message: string }) =>
+        new StageFailure({ stage, code: error.code, message: error.message })
 
       // The source video every later stage reads.
-      const sourceVideo = Effect.fn("SourceStages.sourceVideo")(function*(owner: ArtifactOwner, stage: SourceStage) {
-        const video = yield* artifacts.latest(owner, "source-video")
-        const file = Option.flatMapNullishOr(video, artifacts.resolve)
+      const sourceVideo = Effect.fn("SourceStages.sourceVideo")(function*(owner: ArtifactOwner, stage: string) {
+        const file = Option.flatMapNullishOr(yield* artifacts.latest(owner, "source-video"), artifacts.resolve)
         if (Option.isNone(file)) {
-          return yield* new SourceStageError({ stage, code: "not-ready", message: "run the source stage first" })
+          return yield* new StageFailure({ stage, code: "not-ready", message: "the source video hasn't been fetched" })
         }
         return file.value
       })
 
-      const run = Effect.fn("SourceStages.run")(function*(id: SourceId, stage: SourceStage, force: boolean, emit: Emit) {
-        const source = yield* sources.get(id)
-        const owner: ArtifactOwner = { _tag: "Source", id }
-
-        const existing = yield* artifacts.latest(owner, ARTIFACT[stage])
-        if (Option.isSome(existing) && !force) {
-          return yield* emit({ _tag: "StageSkipped", stage, reason: `already done (v${existing.value.version})` })
-        }
-        yield* emit({ _tag: "StageStarted", stage })
-
-        const artifact = yield* Effect.gen(function*() {
-          switch (stage) {
-            case "source": {
-              const slot = yield* artifacts.allocate(owner, "source-video")
-              const fetched = yield* fetcher.fetch(source.origin, slot.dir, emit).pipe(Effect.mapError(stageError(stage)))
-              yield* sources.recordMetadata(id, {
-                title: fetched.title,
-                channel: fetched.channel,
-                url: fetched.url,
-                durationS: fetched.duration_s
-              })
-              return yield* artifacts.record(slot, { data: fetched, path: path.join(slot.relDir, fetched.path) })
-            }
-            case "transcribe": {
-              const video = yield* sourceVideo(owner, stage)
-              const slot = yield* artifacts.allocate(owner, "transcript")
-              const result = yield* transcriber.transcribe(video, slot.dir, emit).pipe(Effect.mapError(stageError(stage)))
-              return yield* artifacts.record(slot, { data: result, path: path.join(slot.relDir, "transcript.json") })
-            }
-            case "contact-sheet": {
-              const video = yield* sourceVideo(owner, stage)
-              const slot = yield* artifacts.allocate(owner, "contact-sheet")
-              const set = yield* sheets.make(video, slot.dir, OVERVIEW, emit).pipe(Effect.mapError(stageError(stage)))
-              return yield* artifacts.record(slot, { data: set, path: slot.relDir })
-            }
-          }
+      const source: StageDefinition = {
+        name: "source",
+        artifact: "source-video",
+        gate: null,
+        run: Effect.fn("SourceStages.source")(function*(ctx) {
+          const id = sourceOf(ctx)
+          const row = yield* sources.get(id).pipe(Effect.mapError(() => new StageFailure({ stage: "source", code: "not-found", message: `no source ${id}` })))
+          const slot = yield* artifacts.allocate(ctx.owner, "source-video")
+          const fetched = yield* fetcher.fetch(row.origin, slot.dir, ctx.progress).pipe(Effect.mapError(failure("source")))
+          yield* sources.recordMetadata(id, {
+            title: fetched.title,
+            channel: fetched.channel,
+            url: fetched.url,
+            durationS: fetched.duration_s
+          })
+          yield* artifacts.record(slot, { data: fetched, path: path.join(slot.relDir, fetched.path), stageRunId: ctx.stageRunId })
         })
-        yield* emit({ _tag: "Completed", output: artifacts.resolve(artifact) ?? `${artifact.kind} v${artifact.version}` })
-      })
+      }
 
-      return SourceStages.of({ run })
+      const transcribe: StageDefinition = {
+        name: "transcribe",
+        artifact: "transcript",
+        gate: null,
+        run: Effect.fn("SourceStages.transcribe")(function*(ctx) {
+          const video = yield* sourceVideo(ctx.owner, "transcribe")
+          const slot = yield* artifacts.allocate(ctx.owner, "transcript")
+          const result = yield* transcriber.transcribe(video, slot.dir, ctx.progress).pipe(Effect.mapError(failure("transcribe")))
+          yield* artifacts.record(slot, { data: result, path: path.join(slot.relDir, "transcript.json"), stageRunId: ctx.stageRunId })
+        })
+      }
+
+      const contactSheet: StageDefinition = {
+        name: "contact-sheet",
+        artifact: "contact-sheet",
+        gate: null,
+        run: Effect.fn("SourceStages.contactSheet")(function*(ctx) {
+          const video = yield* sourceVideo(ctx.owner, "contact-sheet")
+          const slot = yield* artifacts.allocate(ctx.owner, "contact-sheet")
+          const set = yield* sheets.make(video, slot.dir, OVERVIEW, ctx.progress).pipe(Effect.mapError(failure("contact-sheet")))
+          yield* artifacts.record(slot, { data: set, path: slot.relDir, stageRunId: ctx.stageRunId })
+        })
+      }
+
+      return SourceStages.of({ stages: [source, transcribe, contactSheet] })
     })
   ).pipe(
     Layer.provide([Sources.layer, Artifacts.layer, SourceFetcher.layer, Transcriber.layer, ContactSheets.layer, NodeServices.layer])

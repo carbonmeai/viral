@@ -50,9 +50,9 @@ const render = (plan: NarratedPlan, out: string) => {
   const progress: Array<number> = []
   return Effect.runPromise(Effect.gen(function*() {
     const engine = yield* RenderEngine
-    return yield* engine.renderNarrated(plan, work, out, (event) =>
+    return yield* engine.renderNarrated(plan, work, out, (pct) =>
       Effect.sync(() => {
-        if (event._tag === "Progress") progress.push(event.pct)
+        if (pct !== null) progress.push(pct)
       }))
   }).pipe(Effect.provide(RenderEngine.layer))).then((result) => ({ result, progress }))
 }

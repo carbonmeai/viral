@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type JobEvent, Transcript, type TranscriptProvider } from "@viral/contracts"
+import { Transcript, type TranscriptProvider } from "@viral/contracts"
 import { Config, Context, Duration, Effect, FileSystem, Layer, Option, Path, Redacted, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
@@ -13,7 +13,8 @@ export class TranscribeError extends Schema.TaggedError<TranscribeError>()("Tran
   message: Schema.String
 }) {}
 
-type Emit = (event: JobEvent) => Effect.Effect<void>
+// Reports progress: a percentage (null when unknown) and an optional message for the person watching.
+type Progress = (pct: number | null, message?: string) => Effect.Effect<void>
 
 export interface TranscribeResult {
   readonly provider: TranscriptProvider
@@ -41,7 +42,7 @@ const transcriptText = (transcript: Transcript) =>
 // xAI key is available, otherwise local mlx-whisper on Apple Silicon. VIRAL_TRANSCRIBER=grok|whisper-local
 // forces one.
 export class Transcriber extends Context.Service<Transcriber, {
-  transcribe(video: string, outDir: string, emit: Emit): Effect.Effect<TranscribeResult, TranscribeError>
+  transcribe(video: string, outDir: string, progress: Progress): Effect.Effect<TranscribeResult, TranscribeError>
 }>()("@viral/server/transcribe/transcriber") {
   static readonly layer = Layer.effect(
     Transcriber,
@@ -54,7 +55,6 @@ export class Transcriber extends Context.Service<Transcriber, {
       const http = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk)
 
       const fail = (code: string) => (error: { readonly message: string }) => new TranscribeError({ code, message: error.message })
-      const progress = (emit: Emit, pct: number) => emit({ _tag: "Progress", stage: "transcribe", pct })
 
       // Read once at startup, like the rest of the server's configuration.
       const forced = yield* Config.option(Config.String("VIRAL_TRANSCRIBER")).pipe(Effect.orDie)
@@ -72,7 +72,7 @@ export class Transcriber extends Context.Service<Transcriber, {
         })
       })
 
-      const withWhisper = Effect.fn("Transcriber.whisper")(function*(video: string, outDir: string, emit: Emit) {
+      const withWhisper = Effect.fn("Transcriber.whisper")(function*(video: string, outDir: string, progress: Progress) {
         const Line = Schema.fromJsonString(Schema.Union([
           Schema.Struct({ type: Schema.Literal("progress"), step: Schema.Literals(["audio", "transcribe"]) }),
           Schema.Struct({
@@ -87,7 +87,7 @@ export class Transcriber extends Context.Service<Transcriber, {
           Schema.decodeEffect(Line),
           (line): Effect.Effect<TranscribeResult | undefined> =>
             line.type === "progress"
-              ? progress(emit, line.step === "audio" ? 5 : 15).pipe(Effect.as(undefined))
+              ? progress(line.step === "audio" ? 5 : 15).pipe(Effect.as(undefined))
               : Effect.succeed({
                 provider: "whisper-local",
                 language: line.language,
@@ -97,7 +97,7 @@ export class Transcriber extends Context.Service<Transcriber, {
         ).pipe(Effect.mapError((error) => new TranscribeError({ code: error.code, message: error.message })))
       })
 
-      const withGrok = Effect.fn("Transcriber.grok")(function*(video: string, outDir: string, emit: Emit) {
+      const withGrok = Effect.fn("Transcriber.grok")(function*(video: string, outDir: string, progress: Progress) {
         const key = yield* secrets.get("xai")
         if (Option.isNone(key)) {
           return yield* new TranscribeError({ code: "no-provider", message: "no xAI API key for Grok transcription" })
@@ -105,7 +105,7 @@ export class Transcriber extends Context.Service<Transcriber, {
         const audio = path.join(outDir, "audio.mp3")
 
         // Mono 48 kbps mp3 keeps a 40-minute video around 15 MB, well under the API's 500 MB limit.
-        yield* progress(emit, 5)
+        yield* progress(5)
         const exit = yield* spawner.exitCode(ChildProcess.make("ffmpeg", [
           "-y", "-loglevel", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "48k", audio
         ])).pipe(Effect.mapError(fail("audio")))
@@ -113,7 +113,7 @@ export class Transcriber extends Context.Service<Transcriber, {
           return yield* new TranscribeError({ code: "audio", message: `ffmpeg exited with code ${exit}` })
         }
 
-        yield* progress(emit, 20)
+        yield* progress(20)
         const bytes = yield* fs.readFile(audio).pipe(Effect.mapError(fail("audio")))
         const form = new FormData()
         form.append("model", GROK_MODEL)
@@ -145,10 +145,10 @@ export class Transcriber extends Context.Service<Transcriber, {
         } satisfies TranscribeResult
       })
 
-      const transcribe = Effect.fn("Transcriber.transcribe")(function*(video: string, outDir: string, emit: Emit) {
+      const transcribe = Effect.fn("Transcriber.transcribe")(function*(video: string, outDir: string, progress: Progress) {
         const provider = yield* pickProvider
-        yield* emit({ _tag: "Log", stage: "transcribe", message: `transcribing with ${provider}` })
-        return yield* provider === "grok" ? withGrok(video, outDir, emit) : withWhisper(video, outDir, emit)
+        yield* progress(0, `transcribing with ${provider}`)
+        return yield* provider === "grok" ? withGrok(video, outDir, progress) : withWhisper(video, outDir, progress)
       })
 
       return Transcriber.of({ transcribe })

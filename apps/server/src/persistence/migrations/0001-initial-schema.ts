@@ -91,15 +91,19 @@ const SCHEMA = `
 
   CREATE TABLE runs (
     id          TEXT PRIMARY KEY,
-    project_id  TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+    -- a source run (source → … → story) or a short's run; exactly one owner
+    source_id   TEXT REFERENCES sources (id) ON DELETE CASCADE,
+    project_id  TEXT REFERENCES projects (id) ON DELETE CASCADE,
     status      TEXT NOT NULL
                   CHECK (status IN ('running', 'waiting', 'completed', 'failed', 'cancelled', 'interrupted')),
     from_stage  TEXT,                             -- set when resumed with --from <stage>
     error       TEXT,
     started_at  TEXT NOT NULL,
-    finished_at TEXT
+    finished_at TEXT,
+    CHECK ((source_id IS NULL) <> (project_id IS NULL))
   );
-  CREATE INDEX runs_by_project ON runs (project_id, started_at);
+  CREATE INDEX runs_by_source ON runs (source_id, started_at) WHERE source_id IS NOT NULL;
+  CREATE INDEX runs_by_project ON runs (project_id, started_at) WHERE project_id IS NOT NULL;
 
   CREATE TABLE stage_runs (
     id               TEXT PRIMARY KEY,
@@ -131,8 +135,8 @@ const SCHEMA = `
     reference_id TEXT REFERENCES reference_videos (id) ON DELETE CASCADE,  -- reference-video analysis
     stage_run_id TEXT REFERENCES stage_runs (id) ON DELETE SET NULL,
     kind         TEXT NOT NULL,
-                  -- source-level:  source-video | transcript | contact-sheet | ad-ranges
-                  -- project-level: story-map | script | cut-plan | voiceover | voiceover-transcript
+                  -- source-level:  source-video | transcript | contact-sheet | ad-ranges | story-map
+                  -- project-level: script | shot-plan | cut-plan | voiceover | voiceover-transcript
                   --                | narrated-plan | music-config | render | captions | metadata
                   --                | thumb-config | thumbnail | sound-cues
                   -- reference:     reference-video | reference-analysis

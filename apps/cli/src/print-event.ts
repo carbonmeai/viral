@@ -1,40 +1,40 @@
-import type { JobEvent } from "@viral/contracts"
-import { Console, Effect, Schema } from "effect"
+import type { RunUpdate } from "@viral/contracts"
+import { Console, Effect } from "effect"
 
-const EventJson = Schema.fromJsonString(Schema.Unknown)
-
-// One readable line per streamed event. Progress is printed in whole-percent steps to keep output short.
-export const printEvent = (): ((event: JobEvent) => Effect.Effect<void>) => {
+// One readable line per run update. Progress prints in 10% steps; agent messages print as they come.
+export const printUpdate = (): ((update: RunUpdate) => Effect.Effect<void>) => {
   let lastPct = -1
-  return (event) => {
-    switch (event._tag) {
+  return (update) => {
+    switch (update._tag) {
+      case "Snapshot":
+        return Console.log(`run ${update.run.id}  ${update.run.status}`)
       case "Progress": {
-        const pct = Math.floor(event.pct / 10) * 10
-        if (pct === lastPct) return Effect.void
-        lastPct = pct
-        return Console.log(`  ${event.stage} ${event.pct.toFixed(0)}%`)
+        if (update.pct === null) return update.message === null ? Effect.void : Console.log(`    ${update.message}`)
+        const step = Math.floor(update.pct / 10) * 10
+        if (step === lastPct) return Effect.void
+        lastPct = step
+        return Console.log(`    ${update.stage} ${update.pct.toFixed(0)}%${update.message === null ? "" : `  ${update.message}`}`)
       }
-      case "Log":
-        return Console.log(`  ${event.stage}: ${event.message}`)
-      case "AgentText":
-        return Console.log(`  claude: ${event.text}`)
-      case "ScriptProposed":
-        return Console.log(`  script:\n    ${[event.script.hook, ...event.script.lines].join("\n    ")}`)
-      case "StageStarted":
-        lastPct = -1
-        return Console.log(`▶ ${event.stage}`)
-      case "StageSkipped":
-        return Console.log(`⏭ ${event.stage}: ${event.reason}`)
-      case "Completed":
-        return Console.log(`✔ ${event.output}`)
-      case "Failed":
-        return Console.error(`✖ ${event.message}`)
-      default: {
-        const { _tag, ...rest } = event
-        return Schema.encodeEffect(EventJson)(rest).pipe(
-          Effect.flatMap((json) => Console.log(`[${_tag}] ${json}`)),
-          Effect.orDie
-        )
+      case "Event": {
+        const event = update.event
+        switch (event._tag) {
+          case "RunStarted":
+            return Effect.void
+          case "StageStarted":
+            lastPct = -1
+            return Console.log(`▶ ${event.stageRun.stage}${event.stageRun.attempt > 1 ? ` (attempt ${event.stageRun.attempt})` : ""}`)
+          case "StageFinished": {
+            const s = event.stageRun
+            const mark = s.status === "succeeded" ? "✔" : s.status === "reused" ? "↺" : s.status === "failed" ? "✖" : "■"
+            return Console.log(`${mark} ${s.stage} ${s.status}${s.error === null ? "" : `: ${s.error}`}`)
+          }
+          case "RequestRaised":
+            return Console.log(`? ${event.request.title}  →  approve ${event.request.id}  |  reject ${event.request.id} "note"`)
+          case "RequestAnswered":
+            return Console.log(`  answered: ${event.request.response?._tag ?? ""}`)
+          case "RunFinished":
+            return Console.log(`run ${event.run.status}${event.run.error === null ? "" : `: ${event.run.error}`}`)
+        }
       }
     }
   }
