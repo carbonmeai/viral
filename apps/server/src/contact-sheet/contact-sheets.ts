@@ -1,4 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
+import { ContactSheetSet } from "@viral/contracts"
 import { Context, Effect, Layer, Path, Schema } from "effect"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
 
@@ -22,18 +23,8 @@ export interface ContactSheetOptions {
 // The overview grid the skill uses to read a long video: a tile every 5s, 8×8 tiles per sheet.
 export const OVERVIEW: ContactSheetOptions = { every: 5, cols: 8, rows: 8 }
 
-export const ContactSheetSet = Schema.Struct({
-  every: Schema.Finite,
-  cols: Schema.Int,
-  rows: Schema.Int,
-  frames: Schema.Int,
-  // each sheet's file (relative to the artifact folder) and the source seconds of its first/last tile
-  sheets: Schema.Array(Schema.Struct({ file: Schema.String, start: Schema.Finite, end: Schema.Finite })),
-  // every frame on its own (relative to the artifact folder) with its source second, so a client can show
-  // or offer any one of them; absent on sheets made before frames were kept
-  stills: Schema.optionalKey(Schema.Array(Schema.Struct({ file: Schema.String, t: Schema.Finite })))
-})
-export type ContactSheetSet = typeof ContactSheetSet.Type
+// The artifact's data shape lives in contracts, since the app reads it too.
+export { ContactSheetSet } from "@viral/contracts"
 
 const Line = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("progress"), done: Schema.Int, total: Schema.Int }),
