@@ -36,6 +36,14 @@ const VO = ["This", "guy", "tasted", "it.", "It", "hurt."].map((word, i) => w(wo
 const asked: Array<AgentTask<Schema.Top>> = []
 const replay = AgentSession.replay((task) => {
   asked.push(task)
+  if (task.stage === "thumbnail") {
+    return {
+      background: { src: 10 },
+      hero: { src: 12, crop: [0.1, 0.1, 0.9, 0.9], circle: { x: 0.5, y: 0.5, r: 0.3 } },
+      face: { src: 20, crop: [0.3, 0, 0.8, 1] },
+      lines: [{ text: "it", color: "yellow" }, { text: "hurt", color: "white" }]
+    }
+  }
   if (task.stage === "metadata") {
     return {
       title: "He Tasted It",
@@ -135,6 +143,9 @@ test("a short renders, a rejected render goes back to the shots, and the approve
     // back at the shots, with the note
     yield* runs.respond((yield* nextGate("shots")).id, { _tag: "Approve" })
     yield* runs.respond((yield* nextGate("render")).id, { _tag: "Approve" })
+    const thumbnail = yield* nextGate("thumbnail")
+    assert.equal(thumbnail.payload?._tag, "ThumbnailGate")
+    yield* runs.respond(thumbnail.id, { _tag: "Approve" })
     const finished = yield* runs.subscribe(run.id, 0).pipe(
       Stream.filter((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RunFinished"),
       Stream.runHead
@@ -155,6 +166,10 @@ test("a short renders, a rejected render goes back to the shots, and the approve
   assert.equal(published.title, "He Tasted It")
   assert.equal(published.credit, null, "your own footage needs no credit")
   for (const file of [published.video, published.captions, published.notes]) assert.ok(existsSync(file), `${file} was published`)
+  // the approved thumbnail went next to the mp4
+  const jpg = published.video.replace(/\.mp4$/, ".jpg")
+  assert.ok(existsSync(jpg), "the thumbnail was published")
+  assert.equal(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", jpg]).toString().trim(), "1080,1920")
   assert.match(readFileSync(published.notes, "utf8"), /^# He Tasted It/)
   // 2s of narration + 1.2s and 0.4s inserts + a 0.4s outro
   const seconds = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", published.video]))

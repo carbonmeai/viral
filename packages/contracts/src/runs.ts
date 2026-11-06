@@ -26,7 +26,8 @@ export const StageName = Schema.Literals([
   "shots",
   "assemble",
   "render",
-  "metadata"
+  "metadata",
+  "thumbnail"
 ])
 export type StageName = typeof StageName.Type
 

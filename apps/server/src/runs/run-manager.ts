@@ -149,6 +149,7 @@ export class RunManager extends Context.Service<RunManager, {
 
             switch (response._tag) {
               case "Approve": {
+                if (stage.approved !== undefined) yield* stage.approved(ctx)
                 const done = yield* store.updateStageRun(stageRun.id, "succeeded", null)
                 yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
                 return Option.none()
@@ -158,6 +159,7 @@ export class RunManager extends Context.Service<RunManager, {
                   return yield* new StageFailure({ stage: stage.name, code: "not-editable", message: "this stage can't be edited" })
                 }
                 yield* stage.applyEdit(ctx, response.artifact)
+                if (stage.approved !== undefined) yield* stage.approved(ctx)
                 const done = yield* store.updateStageRun(stageRun.id, "succeeded", null)
                 yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
                 return Option.none()

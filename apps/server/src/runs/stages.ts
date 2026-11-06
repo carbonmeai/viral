@@ -39,6 +39,9 @@ export interface StageDefinition {
   // Where a rejection goes when this stage can't act on a note itself (the render follows its plan): that
   // earlier stage runs again with your note, and every stage after it follows.
   readonly rejectTo?: StageName
+  // What happens once you approve the stage's artifact (or approve your edit of it), e.g. the thumbnail being
+  // copied next to the published video. Runs before the stage counts as succeeded.
+  approved?(ctx: StageContext): Effect.Effect<void, StageFailure>
 }
 
 // The stages of a run, in order: the source run's for a source, and the project's approach decides a short's.

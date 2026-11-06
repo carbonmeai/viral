@@ -9,7 +9,8 @@ export const SkillName = Schema.Literals([
   "approach-question-recap",
   "approach-claim-interleaved",
   "approach-cut-down",
-  "short-metadata"
+  "short-metadata",
+  "thumbnails"
 ])
 export type SkillName = typeof SkillName.Type
 
