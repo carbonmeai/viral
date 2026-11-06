@@ -43,9 +43,10 @@ export function Sidebar() {
 
   return (
     <nav aria-label="Main" className="flex min-w-0 flex-col overflow-y-auto bg-win">
-      {/* one top row: the macOS window buttons (when shown), then the workspace; the row drags the window */}
+      {/* one top row that drags the window: the macOS window buttons alone in a normal window; the workspace
+          name only where they're hidden (full screen) or absent (a browser) */}
       <div className="drag flex h-11 shrink-0 items-center gap-1.5 pr-2.5" style={{ paddingLeft: inset + 8 }}>
-        <Tooltip content="One workspace for now">
+        {inset > 0 ? null : <Tooltip content="One workspace for now">
           <span className="no-drag flex items-center gap-[7px] rounded-ctl p-1 text-[14px] font-semibold">
             <span className="grid size-5 place-items-center rounded-[6px] bg-lemon">
               <svg viewBox="0 0 24 24" className="size-[9px] fill-lemon-ink"><path d="M7 4.5v15l12-7.5z" /></svg>
@@ -53,7 +54,7 @@ export function Sidebar() {
             Viral
             <ChevronRight className="size-3.5 text-fg-2" />
           </span>
-        </Tooltip>
+        </Tooltip>}
       </div>
 
       <Group>
