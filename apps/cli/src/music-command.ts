@@ -6,6 +6,7 @@ import { show } from "./show.ts"
 
 export const MUSIC_USAGE = `  music add <file> [--title <title>] [--rights owned|licensed]
   music rights <id> <unconfirmed|owned|licensed>
+  music beat <id> <bpm> <drop-seconds>   (tempo and drop time, until tracks are analysed)
   music list | show <id> | remove <id>`
 
 const decodeRights = Schema.decodeUnknownEffect(Rights)
@@ -35,6 +36,12 @@ export const musicCommand = Effect.fn("musicCommand")(function*() {
         id: MusicTrackId.make(arg ?? ""),
         rights: yield* decodeRights(value)
       })))
+    case "beat": {
+      const bpm = Number(value)
+      const drop = Number(positionals[4])
+      if (!(bpm > 0) || !(drop >= 0)) return yield* Console.error(MUSIC_USAGE)
+      return yield* Console.log(describe(yield* client.SetMusicTrackBeat({ id: MusicTrackId.make(arg ?? ""), bpm, dropS: drop })))
+    }
     case "list":
       return yield* Effect.forEach(yield* client.ListMusicTracks(), (t) => Console.log(describe(t)), { discard: true })
     case "show":

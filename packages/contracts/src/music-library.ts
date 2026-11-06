@@ -55,6 +55,13 @@ export class MusicLibraryRpcs extends RpcGroup.make(
     success: MusicTrack,
     error: MusicTrackNotFound
   }),
+  // Records a track's tempo and where its drop hits (seconds into the file), so a short's music can drop on
+  // the payoff. Set by hand until track analysis exists.
+  Rpc.make("SetMusicTrackBeat", {
+    payload: { id: MusicTrackId, bpm: Schema.Finite, dropS: Schema.Finite },
+    success: MusicTrack,
+    error: MusicTrackNotFound
+  }),
   Rpc.make("ListMusicTracks", { success: Schema.Array(MusicTrack) }),
   Rpc.make("GetMusicTrack", { payload: { id: MusicTrackId }, success: MusicTrack, error: MusicTrackNotFound }),
   // Removes the track and its file; shorts that used it keep going without music. False when unknown.

@@ -46,10 +46,11 @@ const toTrack = (row: typeof TrackRow.Type): MusicTrack => ({
 })
 
 // Tracks you supply. Each file is copied into ~/.viral/music/<id><ext> so a short never depends on the
-// original location. BPM and drop are filled in later by the music stage's analysis.
+// original location. BPM and drop are set by hand (SetMusicTrackBeat) until tracks are analysed.
 export class MusicLibrary extends Context.Service<MusicLibrary, {
   add(file: string, title: string | null, rights: Rights): Effect.Effect<MusicTrack, MusicFileUnreadable>
   setRights(id: MusicTrackId, rights: Rights): Effect.Effect<MusicTrack, MusicTrackNotFound>
+  setBeat(id: MusicTrackId, bpm: number, dropS: number): Effect.Effect<MusicTrack, MusicTrackNotFound>
   readonly list: Effect.Effect<ReadonlyArray<MusicTrack>>
   get(id: MusicTrackId): Effect.Effect<MusicTrack, MusicTrackNotFound>
   remove(id: MusicTrackId): Effect.Effect<boolean>
@@ -116,7 +117,12 @@ export class MusicLibrary extends Context.Service<MusicLibrary, {
         return yield* get(id)
       })
 
-      return MusicLibrary.of({ add, setRights, list, get, remove })
+      const setBeat = Effect.fn("MusicLibrary.setBeat")(function*(id: MusicTrackId, bpm: number, dropS: number) {
+        yield* sql`UPDATE music_tracks SET bpm = ${bpm}, drop_s = ${dropS} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
+      return MusicLibrary.of({ add, setRights, setBeat, list, get, remove })
     })
   ).pipe(Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto]))
 }
