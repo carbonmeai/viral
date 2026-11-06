@@ -138,8 +138,10 @@ export class AgentSession extends Context.Service<AgentSession, {
                   : Effect.void, { discard: true })
             case "result": {
               const usage = Object.values(message.modelUsage)
+              // the CLI also makes small calls on a cheaper model; the stage's model is the one that wrote the most
+              const main = Object.entries(message.modelUsage).sort(([, a], [, b]) => b.outputTokens - a.outputTokens)[0]
               const cost = hooks.recordCost({
-                model: Object.keys(message.modelUsage)[0] ?? model,
+                model: main?.[0] ?? model,
                 inputTokens: usage.reduce((n, u) => n + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0),
                 outputTokens: usage.reduce((n, u) => n + u.outputTokens, 0),
                 costUsd: message.total_cost_usd

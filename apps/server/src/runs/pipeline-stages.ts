@@ -1,15 +1,26 @@
 import type { RunOwner } from "@viral/contracts"
 import { Effect, Layer } from "effect"
+import { Projects } from "../projects/projects.ts"
+import { ScriptStage } from "../script/script-stage.ts"
 import { SourceStages } from "../sources/source-stages.ts"
 import { StageFailure, StageRegistry } from "./stages.ts"
 
 // The real stage lists. A source run is source → transcribe → contact-sheet (ads and story join them next);
-// a short's stages follow its approach once they exist.
+// a narrated short's run is script → (voice → shots → assemble → render → metadata, as they are built).
 export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(function*() {
   const source = yield* SourceStages
+  const script = yield* ScriptStage
+  const projects = yield* Projects
   const stagesFor = Effect.fn("StageRegistry.stagesFor")(function*(owner: RunOwner) {
     if (owner._tag === "Source") return source.stages
-    return yield* new StageFailure({ stage: "script", code: "not-built", message: "short runs aren't built yet" })
+    const project = yield* projects.get(owner.id).pipe(
+      Effect.mapError(() => new StageFailure({ stage: "script", code: "not-found", message: `no project ${owner.id}` }))
+    )
+    if (project.format === "cut-down") {
+      return yield* new StageFailure({ stage: "sections", code: "not-built", message: "cut-down shorts aren't built yet" })
+    }
+    // narrated: the stages after the script join as they are built
+    return [script.stage]
   })
   return StageRegistry.of({ stagesFor })
-})).pipe(Layer.provide(SourceStages.layer))
+})).pipe(Layer.provide([SourceStages.layer, ScriptStage.layer, Projects.layer]))

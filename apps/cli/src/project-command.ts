@@ -1,16 +1,19 @@
-import { ApproachName, MusicTrackId, PresetId, Project, ProjectId, SourceId } from "@viral/contracts"
+import { ApproachName, MusicTrackId, PresetId, Project, ProjectId, SourceId, StageName } from "@viral/contracts"
 import { Console, Effect, Schema } from "effect"
 import { option, positionals } from "./args.ts"
 import { Client } from "./client.ts"
+import { follow } from "./run-command.ts"
 import { show } from "./show.ts"
 
 export const PROJECT_USAGE = `  project create <source-id> <title> [--approach question-recap|claim-interleaved|cut-down]
                  [--preset <id>] [--music <track-id>]
+  project run <id> [--from <stage>]
   project list [--source <id>] | show <id> | delete <id>`
 
 const describe = (project: Project) => `${project.id}  ${project.approach.padEnd(17)} ${project.slug}`
 
 const decodeApproach = Schema.decodeUnknownEffect(ApproachName)
+const decodeStage = Schema.decodeUnknownEffect(StageName)
 
 const orNull = <A>(value: string | undefined, make: (value: string) => A) => value === undefined ? null : make(value)
 
@@ -29,6 +32,14 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
         musicTrackId: orNull(option("--music"), MusicTrackId.make)
       })
       return yield* Console.log(describe(project))
+    }
+    case "run": {
+      const from = option("--from")
+      const run = yield* client.StartProjectRun({
+        projectId: ProjectId.make(first ?? ""),
+        from: from === undefined ? null : yield* decodeStage(from)
+      })
+      return yield* follow(run.id)
     }
     case "list": {
       const projects = yield* client.ListProjects({ sourceId: orNull(option("--source"), SourceId.make) })

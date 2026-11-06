@@ -203,3 +203,25 @@ test("--from re-runs that stage and everything after it", async () => {
   assert.ok(replay.some(finished))
   await rt.dispose()
 })
+
+test("an answer sent the instant a gate appears is never missed", async () => {
+  const rt = boot()
+  const owner = await createSource(rt)
+  const status = await rt.runPromise(Effect.gen(function*() {
+    const manager = yield* RunManager
+    const run = yield* manager.start(owner, null)
+    // answer from inside the stream, with no delay at all
+    const seen = yield* manager.subscribe(run.id, 0).pipe(
+      Stream.tap((u) =>
+        u._tag === "Event" && u.event._tag === "RequestRaised"
+          ? manager.respond(u.event.request.id, { _tag: "Approve" }).pipe(Effect.orDie)
+          : Effect.void),
+      Stream.takeUntil(finished),
+      Stream.runCollect
+    )
+    const last = [...seen].findLast(finished)
+    return last?._tag === "Event" && last.event._tag === "RunFinished" ? last.event.run.status : "never finished"
+  }))
+  assert.equal(status, "completed")
+  await rt.dispose()
+})

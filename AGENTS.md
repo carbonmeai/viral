@@ -21,6 +21,7 @@ apps/server/src/
   artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/
   transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
   contact-sheet/       timestamped frame grids for picking b-roll by eye
+                       (transcribe/transcripts.ts reads a source's transcript for planning stages)
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
@@ -30,7 +31,8 @@ apps/server/src/
   references/          viral videos kept to learn from; their analyses are reference-owned artifacts
   runs/                runs a source or a short through its stages: reuse of approved work, gates (approve,
                        reject with a note, edit), cancel, resume after restart, events + live progress
-  script/              the script stage's prompt (script-prompt.ts); the stage itself runs on agent-session
+  script/              the script stage: prompt, quote matching against the transcript, per-approach rules, and
+                       a fix loop that hands rejected scripts back to the agent
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   agent-session/       runs every agent stage on the Claude CLI: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,

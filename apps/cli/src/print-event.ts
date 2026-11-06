@@ -1,5 +1,22 @@
-import type { RunUpdate } from "@viral/contracts"
-import { Console, Effect } from "effect"
+import { type RunUpdate, Script } from "@viral/contracts"
+import { Console, Effect, Option, Schema } from "effect"
+
+const ScriptPayload = Schema.Struct({ script: Script, narrationWords: Schema.NullOr(Schema.Int) })
+
+// What a gate is asking you to approve, in readable form; empty when there's nothing to show.
+const describePayload = (payload: unknown): string =>
+  Option.match(Schema.decodeUnknownOption(ScriptPayload)(payload), {
+    onNone: () => "",
+    onSome: ({ script, narrationWords }) => {
+      const headline = script.headline === null ? "" : `  HEADLINE  ${script.headline.join(" / ")}\n`
+      const beats = script.beats.map((beat) =>
+        beat._tag === "Narration"
+          ? `  NARRATOR  ${beat.text}`
+          : `    REAL    "${beat.quote}"  (${beat.start.toFixed(1)}–${beat.end.toFixed(1)}s)`
+      ).join("\n")
+      return `${headline}${beats}\n  ${narrationWords ?? "?"} narrated words\n`
+    }
+  })
 
 // One readable line per run update. Progress prints in 10% steps; agent messages print as they come.
 export const printUpdate = (): ((update: RunUpdate) => Effect.Effect<void>) => {
@@ -29,7 +46,9 @@ export const printUpdate = (): ((update: RunUpdate) => Effect.Effect<void>) => {
             return Console.log(`${mark} ${s.stage} ${s.status}${s.error === null ? "" : `: ${s.error}`}`)
           }
           case "RequestRaised":
-            return Console.log(`? ${event.request.title}  →  approve ${event.request.id}  |  reject ${event.request.id} "note"`)
+            return Console.log(
+              `${describePayload(event.request.payload)}? ${event.request.title}  →  approve ${event.request.id}  |  reject ${event.request.id} "note"`
+            )
           case "RequestAnswered":
             return Console.log(`  answered: ${event.request.response?._tag ?? ""}`)
           case "RunFinished":

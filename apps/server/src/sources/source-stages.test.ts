@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
+import { AgentSession } from "../agent-session/agent-session.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { PipelineStagesLive } from "../runs/pipeline-stages.ts"
 import { RunManager } from "../runs/run-manager.ts"
@@ -27,7 +28,7 @@ const runtime = () =>
   ManagedRuntime.make(
     RunManager.layer.pipe(
       Layer.provideMerge(PipelineStagesLive),
-      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer))
+      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, AgentSession.replay(() => null)))
     )
   )
 

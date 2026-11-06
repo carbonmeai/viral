@@ -5,6 +5,7 @@ import { HttpRouter } from "effect/http"
 import { RpcSerialization, RpcServer } from "effect/rpc"
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer needs a node:http server factory
 import { createServer } from "node:http"
+import { AgentSession } from "./agent-session/agent-session.ts"
 import { Artifacts } from "./artifacts/artifacts.ts"
 import { ArtifactsRpcLive } from "./artifacts/artifacts-rpc.ts"
 import { MusicLibrary } from "./music-library/music-library.ts"
@@ -37,7 +38,10 @@ const DomainsLive = Layer.mergeAll(
   RunStore.layer
 )
 
-const RunsLive = RunManager.layer.pipe(Layer.provideMerge(PipelineStagesLive), Layer.provideMerge(DomainsLive))
+const RunsLive = RunManager.layer.pipe(
+  Layer.provideMerge(PipelineStagesLive),
+  Layer.provideMerge(Layer.mergeAll(DomainsLive, AgentSession.layer))
+)
 
 const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: "websocket" }).pipe(
   Layer.provide([

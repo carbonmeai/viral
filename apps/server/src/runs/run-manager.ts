@@ -58,12 +58,10 @@ export class RunManager extends Context.Service<RunManager, {
         yield* PubSub.publish(updates, { runId, update: { _tag: "Event", seq, event } })
       })
 
-      const awaitAnswer = (requestId: RequestId) =>
-        Effect.gen(function*() {
-          const deferred = yield* Deferred.make<GateResponse>()
-          answers.set(requestId, deferred)
-          return yield* Deferred.await(deferred)
-        }).pipe(Effect.ensuring(Effect.sync(() => void answers.delete(requestId))))
+      // The waiter is registered before the gate is announced, so an answer that arrives the moment a client
+      // sees the gate is never missed.
+      const awaitAnswer = (deferred: Deferred.Deferred<GateResponse>, requestId: RequestId) =>
+        Deferred.await(deferred).pipe(Effect.ensuring(Effect.sync(() => void answers.delete(requestId))))
 
       const runStage = Effect.fn("RunManager.runStage")(
         function*(run: Run, stage: StageDefinition, forced: boolean, current: Ref.Ref<StageRun | null>) {
@@ -116,8 +114,10 @@ export class RunManager extends Context.Service<RunManager, {
             yield* store.updateStageRun(stageRun.id, "waiting", null)
             yield* store.setRunStatus(run.id, "waiting")
             const request = yield* store.createRequest(stageRun, stage.gate, payload)
+            const answer = yield* Deferred.make<GateResponse>()
+            answers.set(request.id, answer)
             yield* publish(run.id, { _tag: "RequestRaised", request })
-            const response = yield* awaitAnswer(request.id)
+            const response = yield* awaitAnswer(answer, request.id)
             yield* store.setRunStatus(run.id, "running")
 
             switch (response._tag) {
