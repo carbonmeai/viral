@@ -6,7 +6,7 @@ import { SettingRow, SettingsGroup } from "@viral/ui/primitives/setting-row"
 import { Status } from "@viral/ui/primitives/status"
 import { useState } from "react"
 import { accountsAtom, removeSecret, setSecret } from "../settings-api.ts"
-import { Loaded, SettingsPage } from "../settings-page.tsx"
+import { Loaded, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 
 const ABOUT: Record<Account["name"], { readonly label: string; readonly sub: string }> = {
   claude: { label: "Claude", sub: "Every agent runs on your Claude CLI, signed in as you." },
@@ -14,7 +14,7 @@ const ABOUT: Record<Account["name"], { readonly label: string; readonly sub: str
   xai: { label: "xAI", sub: "Grok transcription. Without it, Viral transcribes on this Mac with Whisper." },
   gateway: {
     label: "AI Gateway",
-    sub: "Experimental: tries agent steps on other models (Vercel AI Gateway). Sends the step’s material to that model’s provider."
+    sub: "Runs agent steps on other models: Haiku, GPT-6 Luna, Gemini… (Vercel AI Gateway). Sends the step’s material to that model’s provider."
   }
 }
 
@@ -27,7 +27,7 @@ export function AccountsPage() {
   const accounts = useAtomValue(accountsAtom)
   return (
     <SettingsPage section="accounts" description="The services Viral works with. Keys are kept in your Mac’s Keychain and never shown again.">
-      <Loaded result={accounts} what="your accounts">
+      <Loaded result={accounts} what="your accounts" skeleton={<SettingsSkeleton groups={[4]} />}>
         {(list) => (
           <SettingsGroup>
             {list.map((account) => account.name === "claude"
