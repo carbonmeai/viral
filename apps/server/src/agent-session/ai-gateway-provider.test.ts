@@ -29,11 +29,11 @@ after(() => rmSync(home, { recursive: true, force: true }))
 
 const Answer = Schema.Struct({ answer: Schema.Int })
 const usage = { inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 20, text: 20, reasoning: undefined } }
-const reply = (content: Array<Content>, cost: string) => ({
+const reply = (content: Array<Content>, cost: string, marketCost?: string) => ({
   content,
   finishReason: { unified: content.some((c) => c.type === "tool-call") ? "tool-calls" as const : "stop" as const, raw: undefined },
   usage,
-  providerMetadata: { gateway: { cost } },
+  providerMetadata: { gateway: marketCost === undefined ? { cost } : { cost, marketCost } },
   warnings: []
 })
 const call = (id: string, name: string, input: unknown): Content => ({ type: "tool-call", toolCallId: id, toolName: name, input: JSON.stringify(input) })
@@ -102,7 +102,8 @@ test("a gateway run sends the brief with its images, stops at the output tool, a
     })
   })
   const { calls, model } = scripted([
-    reply([call("c1", "look_closer", { at: 3 })], "0.002"),
+    // with your own Anthropic key the gateway charges nothing and Anthropic bills the market cost
+    reply([call("c1", "look_closer", { at: 3 })], "0", "0.002"),
     reply([call("c2", "propose_answer", { answer: 42 })], "0.0005"),
     reply([{ type: "text", text: "Done!" }], "0.1")
   ])

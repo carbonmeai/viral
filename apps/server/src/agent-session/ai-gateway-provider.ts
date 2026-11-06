@@ -21,8 +21,11 @@ const IMAGE_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "imag
 const MAX_BRIEF_IMAGES = 12
 const SESSION_PREFIX = "gateway:"
 
-// What the gateway reports a call cost, per step.
-const GatewayCost = Schema.Struct({ gateway: Schema.Struct({ cost: Schema.Union([Schema.String, Schema.Finite]) }) })
+// What the gateway reports a call cost, per step. `cost` is what it charged; with your own provider key (BYOK)
+// that's 0 and the provider bills you `marketCost` instead, so the higher of the two is the real spend.
+const Usd = Schema.Union([Schema.String, Schema.Finite])
+const GatewayCost = Schema.Struct({ gateway: Schema.Struct({ cost: Usd, marketCost: Schema.optional(Usd) }) })
+const stepCost = (m: typeof GatewayCost.Type) => Math.max(Number(m.gateway.cost) || 0, Number(m.gateway.marketCost ?? 0) || 0)
 const decodeCost = Schema.decodeUnknownOption(GatewayCost)
 const StoredHistory = Schema.fromJsonString(Schema.Array(Schema.Unknown))
 
@@ -147,7 +150,7 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
     })
 
     const costUsd = result.steps.reduce((sum, step) =>
-      sum + Option.match(decodeCost(step.providerMetadata), { onNone: () => 0, onSome: (m) => Number(m.gateway.cost) || 0 }), 0)
+      sum + Option.match(decodeCost(step.providerMetadata), { onNone: () => 0, onSome: stepCost }), 0)
     yield* hooks.recordCost({
       model,
       inputTokens: result.totalUsage.inputTokens ?? 0,
