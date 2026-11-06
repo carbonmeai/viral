@@ -33,7 +33,9 @@ apps/server/src/
   script/              script agent, its prompt and MCP tool  (script-agent.ts, script-prompt.ts)
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
-                       ported with JSON-line reporting; its golden test must keep matching the candy short)
+                       ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
+                       headline, chunk/quote captions, labels, credit). Two goldens: the original candy short
+                       (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
 packages/contracts/    wire schemas + RpcGroups, one file per domain
 repos/                 gitignored reference source checkouts — read-only

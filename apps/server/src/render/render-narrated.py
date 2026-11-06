@@ -73,8 +73,17 @@ def duration(path: str) -> float:
     return float(r.stdout.strip())
 
 
-def font(size: int) -> ImageFont.FreeTypeFont:
-    for p in FONTS:
+# Pinned headline font: heavy and condensed. Impact is macOS-only; VIRAL_HEADLINE_FONT overrides it.
+HEADLINE_FONTS = [
+    *([os.environ["VIRAL_HEADLINE_FONT"]] if os.environ.get("VIRAL_HEADLINE_FONT") else []),
+    "/System/Library/Fonts/Supplemental/Impact.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+]
+
+
+def font(size: int, fonts: list[str] = FONTS) -> ImageFont.FreeTypeFont:
+    for p in fonts:
         if Path(p).exists():
             return ImageFont.truetype(p, size)
     return ImageFont.load_default(size)
@@ -95,6 +104,10 @@ class Layout:
     def __init__(self, plan: dict):
         self.W, self.H = plan.get("canvas", [1080, 1920])
         self.main_h = int(plan.get("main_height", round(self.H * 2 / 3)))
+        # full framing: the sharp band is the whole frame, so footage fills 9:16 (graphics shot with `fit`
+        # still sit letterboxed on the blur)
+        if plan.get("framing") == "full":
+            self.main_h = self.H
         self.main_h -= self.main_h % 2
 
     def filter(self, crop_x: float = 0.5, crop_y: float = 0.5, zoom: float = 1.0, speed: float = 1.0,
@@ -176,6 +189,129 @@ def annotation_png(a: dict, lay: Layout, path: Path) -> None:
     elif a["type"] == "text":
         f = font(int(a.get("size", 0.12) * lay.W))
         d.text((x, y), a["text"], font=f, fill=red, stroke_width=6, stroke_fill="#FFFFFF", anchor="mm")
+    elif a["type"] == "label":
+        # small, widely spaced caps ("S T I C K Y"), white with a soft shadow
+        size = int(a.get("size", 0.042) * lay.W)
+        f = font(size)
+        text = a["text"].upper()
+        gap = size * 0.45
+        widths = [d.textlength(ch, font=f) for ch in text]
+        cx = x - (sum(widths) + gap * (len(text) - 1)) / 2
+        for ch, w in zip(text, widths):
+            d.text((cx + 2, y + 3), ch, font=f, fill=(0, 0, 0, 140), anchor="lm")
+            d.text((cx, y), ch, font=f, fill=a.get("color", "#FFFFFF"), anchor="lm")
+            cx += w + gap
+    img.save(path)
+
+
+# ---------------------------------------------------------------- styled captions, headline, credit
+
+STOPWORDS = {"a", "an", "the", "and", "or", "but", "so", "to", "of", "in", "on", "at", "it", "is", "was", "he", "she",
+             "his", "her", "they", "this", "that", "with", "for", "from", "into", "just", "then", "all", "one"}
+
+
+def cased(text: str, case: str) -> str:
+    return text.lower() if case == "lower" else text.upper() if case == "upper" else text
+
+
+def caption_chunks(words: list[dict], max_words: int) -> list[list[dict]]:
+    """Group words into short caption chunks, breaking after punctuation and at pauses."""
+    chunks, cur = [], []
+    for i, w in enumerate(words):
+        cur.append(w)
+        nxt = words[i + 1] if i + 1 < len(words) else None
+        if (len(cur) >= max_words or re.search(r"[.!?,;:]$", w["w"]) or nxt is None or nxt["s"] - w["e"] > 0.35):
+            chunks.append(cur)
+            cur = []
+    return chunks
+
+
+def chunk_png(words: list[dict], lay: Layout, path: Path, y_frac: float, highlights: dict[str, str], case: str,
+              highlight: str) -> None:
+    """2-4 caption words, bold with a black outline; one word picked out in the highlight colour."""
+    img = Image.new("RGBA", (lay.W, lay.H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    texts = [cased(re.sub(r"[,.;:]+$", "", w["w"]), case) for w in words]
+    colors = [color_for(w["w"], highlights) for w in words]
+    if not any(colors):  # no mapped word: emphasise the longest content word
+        content = [i for i, w in enumerate(words) if re.sub(r"\W", "", w["w"].lower()) not in STOPWORDS]
+        if content:
+            colors[max(content, key=lambda i: len(texts[i]))] = highlight
+    size = int(lay.W * 0.085)
+    f = font(size)
+    space = d.textlength(" ", font=f)
+    lines: list[list[int]] = [[]]
+    for i, t in enumerate(texts):  # wrap to two lines at most within 90% of the width
+        line_w = sum(d.textlength(texts[j], font=f) for j in lines[-1]) + space * len(lines[-1])
+        if lines[-1] and line_w + d.textlength(t, font=f) > lay.W * 0.9:
+            lines.append([])
+        lines[-1].append(i)
+    y = lay.H * y_frac - size * len(lines) / 2
+    for line in lines:
+        line_w = sum(d.textlength(texts[j], font=f) for j in line) + space * (len(line) - 1)
+        x = (lay.W - line_w) / 2
+        for j in line:
+            d.text((x + 4, y + 6), texts[j], font=f, fill=(0, 0, 0, 150), stroke_width=int(size * 0.12),
+                   stroke_fill=(0, 0, 0, 150))
+            d.text((x, y), texts[j], font=f, fill=colors[j] or "#FFFFFF", stroke_width=int(size * 0.1),
+                   stroke_fill="#000000")
+            x += d.textlength(texts[j], font=f) + space
+        y += size * 1.1
+    img.save(path)
+
+
+def quote_png(text: str, lay: Layout, path: Path, y_frac: float) -> None:
+    """A real voice's words in quotes, white on a dark rounded box, so viewers can tell who's talking."""
+    img = Image.new("RGBA", (lay.W, lay.H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    size = int(lay.W * 0.05)
+    f = font(size)
+    text = text.strip()
+    text = text[:1].upper() + text[1:]
+    words, lines = f"\u201c{text}\u201d".split(), [""]
+    for w in words:
+        trial = f"{lines[-1]} {w}".strip()
+        if lines[-1] and d.textlength(trial, font=f) > lay.W * 0.72:
+            lines.append(w)
+        else:
+            lines[-1] = trial
+    line_h = size * 1.25
+    box_w = max(d.textlength(line, font=f) for line in lines) + size * 1.4
+    box_h = line_h * len(lines) + size * 0.9
+    x0, y0 = (lay.W - box_w) / 2, lay.H * y_frac - box_h / 2
+    d.rounded_rectangle((x0, y0, x0 + box_w, y0 + box_h), radius=size * 0.5, fill=(0, 0, 0, 175))
+    for k, line in enumerate(lines):
+        d.text((lay.W / 2, y0 + size * 0.45 + line_h * k), line, font=f, fill="#FFFFFF", anchor="ma")
+    img.save(path)
+
+
+def headline_png(h: dict, lay: Layout, path: Path) -> None:
+    """The pinned headline: a big first line and a smaller second, each in its own colour."""
+    img = Image.new("RGBA", (lay.W, lay.H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    defaults = ["#FF2A2A", "#FFFFFF"]
+    y = lay.H * float(h.get("y", 0.035))
+    # each line grows to fill ~90% of the width, capped at `size` (first line) or 60% of it (the rest)
+    cap = int(lay.W * float(h.get("size", 0.13)))
+    for k, line in enumerate(h["lines"]):
+        size = cap if k == 0 else int(cap * 0.6)
+        f = font(size, HEADLINE_FONTS)
+        while d.textlength(line["text"], font=f) > lay.W * 0.9 and size > 20:
+            size -= 2
+            f = font(size, HEADLINE_FONTS)
+        d.text((lay.W / 2, y), line["text"], font=f, fill=line.get("color", defaults[min(k, 1)]), anchor="ma",
+               stroke_width=max(2, int(size * 0.08)), stroke_fill="#000000")
+        y += size * 1.08
+    img.save(path)
+
+
+def credit_png(text: str, lay: Layout, path: Path) -> None:
+    img = Image.new("RGBA", (lay.W, lay.H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    f = font(int(lay.W * 0.022))
+    x, y = lay.W * 0.035, lay.H * 0.012
+    d.text((x + 2, y + 2), text, font=f, fill=(0, 0, 0, 160))
+    d.text((x, y), text, font=f, fill=(255, 255, 255, 220))
     img.save(path)
 
 
@@ -300,6 +436,23 @@ def main() -> None:
     for item in plan["shots"] + plan.get("annotations", []):
         anchor(item)
 
+    # inserts: real-voice clips played during the narration, each after a voiceover word. The narration
+    # pauses at that word's end; everything timed on the voiceover after it shifts by the clip's length.
+    inserts = []
+    for k, ins in enumerate(plan.get("inserts", [])):
+        w = vo_words[int(ins["after_word"])]
+        if ins.get("after_word_text") and re.sub(r"\W", "", ins["after_word_text"].lower()) != re.sub(r"\W", "", w["w"].lower()):
+            fail("anchor-mismatch", f"insert {k}: word {ins['after_word']} is {w['w']!r}, plan expects {ins['after_word_text']!r}")
+        inserts.append({**ins, "at": round(w["e"], 3), "dur": float(ins["end"]) - float(ins["start"])})
+    inserts.sort(key=lambda i: i["at"])
+
+    def shifted(t: float) -> float:
+        """Voiceover time -> output time: add every insert that plays before t."""
+        return t + sum(i["dur"] for i in inserts if i["at"] < t)
+
+    for item in plan.get("annotations", []):
+        item["at"] = shifted(item["at"])
+
     # 1. b-roll under the voiceover
     shots = sorted(plan["shots"], key=lambda s: s["at"])
     if shots[0]["at"] > 0:
@@ -328,10 +481,35 @@ def main() -> None:
          "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2",
          "-t", f"{narr_end:.3f}", str(narr)])
 
-    # 2. outro clips with the creator's original audio
+    # 2. inserts and outro clips with the creator's original audio
     segs = [narr]
     caption_words = [w for w in vo_words if w["s"] < narr_end]
-    t = narr_end
+    real_clips = []  # (output start, output end, text) of real-voice clips, for quote-box captions
+    if inserts:
+        caption_words = [{"w": w["w"], "s": shifted(w["s"]), "e": shifted(w["e"])} for w in caption_words]
+        segs, prev = [], 0.0
+        for k, ins in enumerate(inserts):
+            progress("outro", k, len(inserts))
+            piece = tmp / f"narr_{k:02d}.mp4"
+            run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{prev:.3f}", "-to", f"{ins['at']:.3f}",
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
+            s0, e0 = float(ins["start"]), float(ins["end"])
+            check(f"insert {k}", s0, e0)
+            clip = tmp / f"insert_{k:02d}.mp4"
+            cut(src, s0, e0 - s0, lay, clip, ins, with_audio=True)
+            segs += [piece, clip]
+            t0 = shifted(ins["at"])  # where the clip starts in the output
+            said = [w for w in src_words if w["s"] >= s0 - 0.01 and w["e"] <= e0 + 0.01]
+            if ins.get("captions", True):
+                caption_words += [{"w": w["w"], "s": t0 + w["s"] - s0, "e": t0 + w["e"] - s0, "real": True} for w in said]
+                real_clips.append((t0, t0 + ins["dur"], " ".join(w["w"] for w in said)))
+            prev = ins["at"]
+        tail = tmp / "narr_tail.mp4"
+        run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{prev:.3f}",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(tail)])
+        segs.append(tail)
+        caption_words.sort(key=lambda w: w["s"])
+    t = shifted(narr_end)
     outro = plan.get("outro", [])
     for j, o in enumerate(outro):
         progress("outro", j, len(outro))
@@ -341,8 +519,9 @@ def main() -> None:
         cut(src, s, e - s, lay, p, o, with_audio=True)
         segs.append(p)
         if o.get("captions", True):
-            caption_words += [{"w": w["w"], "s": t + w["s"] - s, "e": t + w["e"] - s}
-                              for w in src_words if w["s"] >= s - 0.01 and w["e"] <= e + 0.01]
+            said = [w for w in src_words if w["s"] >= s - 0.01 and w["e"] <= e + 0.01]
+            caption_words += [{"w": w["w"], "s": t + w["s"] - s, "e": t + w["e"] - s, "real": True} for w in said]
+            real_clips.append((t, t + e - s, " ".join(w["w"] for w in said)))
         t += e - s
     total = t
 
@@ -361,11 +540,31 @@ def main() -> None:
     Image.new("RGBA", (lay.W, lay.H), (0, 0, 0, 0)).save(blank)
     highlights = {k.lower(): v for k, v in plan.get("highlights", {}).items()}
     events = []
-    for i, w in enumerate(caption_words):
-        png = tmp / f"w_{i:04d}.png"
-        word_png(w["w"], lay, png, float(plan.get("caption_y", 0.76)), highlights, plan.get("lowercase", True))
-        nxt = caption_words[i + 1]["s"] if i + 1 < len(caption_words) else total
-        events.append((w["s"], min(nxt, w["e"] + 0.5) if nxt - w["e"] > 0.5 else nxt, png))
+    caption_y = float(plan.get("caption_y", 0.76))
+    case = plan.get("caption_case", "lower" if plan.get("lowercase", True) else "as-spoken")
+    quote_box = bool(plan.get("quote_box", False))
+    # with quote boxes, real voices are captioned by their box, not word by word
+    spoken = [w for w in caption_words if not (quote_box and w.get("real"))]
+    if plan.get("caption_mode", "word") == "chunk":
+        chunks = caption_chunks(spoken, int(plan.get("caption_max_words", 3)))
+        for i, chunk in enumerate(chunks):
+            png = tmp / f"c_{i:04d}.png"
+            chunk_png(chunk, lay, png, caption_y, highlights, case, plan.get("caption_highlight", "#FFD400"))
+            nxt = chunks[i + 1][0]["s"] if i + 1 < len(chunks) else total
+            end = chunk[-1]["e"]
+            events.append((chunk[0]["s"], min(nxt, end + 0.5) if nxt - end > 0.5 else nxt, png))
+    else:
+        for i, w in enumerate(spoken):
+            png = tmp / f"w_{i:04d}.png"
+            word_png(w["w"], lay, png, caption_y, highlights, case == "lower")
+            nxt = spoken[i + 1]["s"] if i + 1 < len(spoken) else total
+            events.append((w["s"], min(nxt, w["e"] + 0.5) if nxt - w["e"] > 0.5 else nxt, png))
+    if quote_box:
+        for k, (q0, q1, text) in enumerate(real_clips):
+            if text.strip():
+                png = tmp / f"q_{k:02d}.png"
+                quote_png(text, lay, png, min(caption_y + 0.08, 0.9))
+                events.append((q0, q1, png))
     graph, inputs, last, n = [], ["-i", str(joined)], "0:v", 1
     if plan.get("captions", True) and events:
         inputs += ["-f", "concat", "-safe", "0", "-i", str(write_track(events, total, tmp, "caps", blank))]
@@ -377,6 +576,18 @@ def main() -> None:
         inputs += ["-loop", "1", "-t", f"{total:.3f}", "-i", str(png)]
         graph.append(f"[{last}][{n}:v]overlay=0:0:enable='between(t,{a['at']},{a['at'] + a.get('dur', 1.0)})'[c{n}]")
         last, n = f"c{n}", n + 1
+    for name, draw, until in (
+        ("headline", lambda png: headline_png(plan["headline"], lay, png),
+         float(plan["headline"].get("until", total)) if plan.get("headline") else 0),
+        ("credit", lambda png: credit_png(plan["credit"], lay, png), total),
+    ):
+        if not plan.get(name):
+            continue
+        png = tmp / f"{name}.png"
+        draw(png)
+        inputs += ["-loop", "1", "-t", f"{total:.3f}", "-i", str(png)]
+        graph.append(f"[{last}][{n}:v]overlay=0:0:enable='between(t,0,{until:.3f})'[c{n}]")
+        last, n = f"c{n}", n + 1
     # background music: looped, ducked under any speech (sidechain), faded in/out
     graph.append(f"[0:a]loudnorm=I={plan.get('lufs', -14)}:TP=-1.5:LRA=11,aresample=48000[aout]")
     audio_map, audio_codec = ["-map", "[aout]"], ["-c:a", "aac", "-b:a", "192k"]
@@ -386,7 +597,7 @@ def main() -> None:
         mcfg = plan["music"] if isinstance(plan["music"], dict) else {"file": plan["music"]}
         if "drop" in mcfg:
             if "drop_word" in mcfg:
-                drop_at = vo_words[int(mcfg["drop_word"])]["s"] + float(mcfg.get("drop_offset", 0))
+                drop_at = shifted(vo_words[int(mcfg["drop_word"])]["s"]) + float(mcfg.get("drop_offset", 0))
             else:
                 drop_at = float(mcfg.get("drop_at", narr_end))
             built = tmp / "music_built.wav"
@@ -427,7 +638,8 @@ def main() -> None:
     if not args.keep_temp:
         shutil.rmtree(tmp, ignore_errors=True)
     emit({"type": "done", "output": str(out), "captions": str(out.with_suffix(".srt")), "duration_s": round(total, 3),
-          "shots": len(parts), "narration_s": round(narr_end, 3), "outro_s": round(total - narr_end, 3)})
+          "shots": len(parts), "narration_s": round(narr_end, 3), "inserts_s": round(sum(i["dur"] for i in inserts), 3),
+          "outro_s": round(total - shifted(narr_end), 3)})
 
 
 def _ts(t: float) -> str:
