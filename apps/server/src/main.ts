@@ -24,6 +24,8 @@ import { SoundLibrary } from "./sound-library/sound-library.ts"
 import { SoundLibraryRpcLive } from "./sound-library/sound-library-rpc.ts"
 import { Sources } from "./sources/sources.ts"
 import { SourcesRpcLive } from "./sources/sources-rpc.ts"
+import { ShortWorkspaces } from "./projects/short-workspace.ts"
+import { ShortWorkspaceRpcLive } from "./projects/short-workspace-rpc.ts"
 import { SourceOverviews } from "./sources/source-overview.ts"
 import { SourceOverviewRpcLive } from "./sources/source-overview-rpc.ts"
 import { Transcriber } from "./transcribe/transcriber.ts"
@@ -60,6 +62,7 @@ const DomainsLive = Layer.mergeAll(
   StorageReport.layer,
   UsageReport.layer,
   SourceOverviews.layer,
+  ShortWorkspaces.layer,
   NodeServices.layer
 )
 
@@ -81,7 +84,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     VoicesRpcLive,
     ToolsRpcLive,
     SettingsRpcLive,
-    SourceOverviewRpcLive
+    SourceOverviewRpcLive,
+    ShortWorkspaceRpcLive
   ]),
   Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)
