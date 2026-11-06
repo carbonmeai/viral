@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { CutPlan, type ProjectId, type PublishedShort, RenderedShort, Script, ShortMetadata, StoryMap } from "@viral/contracts"
+import { CutPlan, type ProjectId, type PublishedShort, RenderedShort, Script, StoryMap } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
@@ -10,6 +10,7 @@ import { Projects } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
 import { checkMetadata, postNotes } from "./metadata-rules.ts"
+import { metadataTask } from "./metadata-task.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "metadata", code, message })
 
@@ -18,9 +19,6 @@ const projectOf = (ctx: StageContext): ProjectId => {
   return ctx.owner.id
 }
 
-const METADATA_PROMPT = `You write what a finished short is posted with, following the short-metadata skill below: a title,
-two or three alternate titles, a two-sentence description and hashtags. Work only from what the short says and the
-video details given. Call \`propose_metadata\` once.`
 
 // Titles and describes the approved render (Haiku), then publishes it: the mp4, srt and the post notes
 // (<slug>.md) are copied into ~/.viral/renders/.
@@ -60,21 +58,15 @@ export class MetadataStage extends Context.Service<MetadataStage, {
         const lines = project.format === "cut-down"
           ? (yield* latest("cut-plan", CutPlan)).sections.map((s) => `CREATOR (${s.beat}): "${s.text}"`).join("\n")
           : (yield* latest("script", Script)).beats.map((b) => b._tag === "Narration" ? `NARRATOR: ${b.text}` : `REAL: "${b.quote}"`).join("\n")
-        const brief = [
-          `Video: ${source.title ?? "untitled"}${source.channel === null ? "" : ` (by ${source.channel})`}`,
-          Option.match(story, { onNone: () => "", onSome: (s) => `What happens: ${s.summary}` }),
-          `The short (${project.approach}, ${render.durationS.toFixed(0)}s), working title "${project.title}":\n${lines}`
-        ].filter((part) => part !== "").join("\n\n")
-
-        const metadata = yield* runChecked(agent, ctx, {
-          stage: "metadata",
-          instructions: METADATA_PROMPT,
-          skills: ["short-metadata"],
-          brief,
-          output: { tool: "propose_metadata", description: "Submit the title, alternates, description and hashtags.", schema: ShortMetadata },
-          defaultModel: "haiku",
-          maxTurns: 3
-        }, (proposed) => Effect.succeed(checkMetadata(proposed))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        const metadata = yield* runChecked(agent, ctx, metadataTask({
+          title: source.title,
+          channel: source.channel,
+          summary: Option.match(story, { onNone: () => null, onSome: (s) => s.summary }),
+          approach: project.approach,
+          durationS: render.durationS,
+          workingTitle: project.title,
+          lines
+        }), (proposed) => Effect.succeed(checkMetadata(proposed))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
 
         // publish: the finished files side by side in ~/.viral/renders/
         const credit = source.rights !== "owned" ? source.channel : null

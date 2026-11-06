@@ -8,6 +8,9 @@ export interface Checked<A> {
   readonly problems: ReadonlyArray<string>
 }
 
+// What runChecked runs: an agent task whose first message is the brief.
+export type CheckedTask<S extends Schema.Top> = Omit<AgentTask<S>, "message" | "resumeSession"> & { readonly brief: string }
+
 // How many times the agent may fix a result the server rejected before the stage fails.
 const FIX_ATTEMPTS = 2
 
@@ -20,7 +23,7 @@ const fixPrompt = (tool: string, problems: ReadonlyArray<string>) =>
 export const runChecked = Effect.fn("runChecked")(function*<S extends Schema.Top, A>(
   agent: AgentSession["Service"],
   ctx: StageContext,
-  task: Omit<AgentTask<S>, "message" | "resumeSession"> & { readonly brief: string },
+  task: CheckedTask<S>,
   check: (proposed: S["Type"]) => Effect.Effect<Checked<A>>
 ) {
   let session = ctx.resumeSession

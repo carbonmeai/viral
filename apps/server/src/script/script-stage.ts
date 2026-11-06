@@ -1,7 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
 import { type Artifact, type GatePayload, type Project, type ProjectId, Script, StoryMap } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Schema } from "effect"
-import { approachSkill } from "../agent-skills/skill-pack.ts"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -9,8 +8,8 @@ import { Projects } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
-import { buildScriptPrompt, SCRIPT_WRITER_PROMPT } from "./script-prompt.ts"
 import { type AdRange, checkScript, narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
+import { scriptTask } from "./script-task.ts"
 
 const AdRanges = Schema.Struct({ ranges: Schema.Array(Schema.Struct({ start: Schema.Finite, end: Schema.Finite })) })
 
@@ -72,21 +71,13 @@ export class ScriptStage extends Context.Service<ScriptStage, {
         const { project, limits, transcript, ads, words } = yield* context(ctx)
         const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
         const angle = yield* chosenAngle(project)
-        const script = yield* runChecked(agent, ctx, {
-          stage: "script",
-          instructions: SCRIPT_WRITER_PROMPT,
-          skills: ["story-arc", approachSkill(project.approach)],
-          brief: buildScriptPrompt({
-            title: source.title,
-            channel: source.channel,
-            transcript: transcripts.timedText(transcript),
-            excluded: ads,
-            angle
-          }),
-          output: { tool: "propose_script", description: "Submit the whole script for review.", schema: Script },
-          defaultModel: null,
-          maxTurns: 4
-        }, (proposed) => Effect.sync(() => {
+        const script = yield* runChecked(agent, ctx, scriptTask(project.approach, {
+          title: source.title,
+          channel: source.channel,
+          transcript: transcripts.timedText(transcript),
+          excluded: ads,
+          angle
+        }), (proposed) => Effect.sync(() => {
           const checked = checkScript(proposed, limits, words, ads)
           return { value: checked.script, problems: checked.problems }
         })).pipe(Effect.mapError((error) => fail(error.code, error.message)))
