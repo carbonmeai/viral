@@ -30,7 +30,8 @@ apps/server/src/
   story/               the story stage: story beats with snapped quotes + 3 proposals (one per approach), each
                        of which `Projects.fromProposal` turns into a short
   assemble/            the assemble stage: shot plan + preset (+ music with a known drop) → the renderer's
-                       narrated plan, deterministic, so a short re-renders in another style without agent work
+                       narrated plan, or a cut-down short's sections + preset → the cut-down renderer's plan;
+                       deterministic, so a short re-renders in another style without agent work
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
                        srt and <slug>.md into ~/.viral/renders/
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
@@ -57,6 +58,10 @@ apps/server/src/
   voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
                        silence trimmed, atempo to the preset's words/sec, local-Whisper word timings, voice gate.
                        The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice
+  sections/            the sections stage (cut-down shorts): an agent picks the creator's best stretches of
+                       speech by story beat, hook first (`contact_sheet`, `preview_sections`); the server snaps
+                       them to the nearest whole words, checks length/order/overlaps/excluded ranges, and draws a
+                       storyboard with a frame per section. A cut-down run is sections → assemble → render → metadata
   shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
                        asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
                        script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate.
@@ -69,8 +74,10 @@ apps/server/src/
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
                        A task can offer helper tools (`agentTool`) besides its propose_* tool
   settings/            app preferences as JSON under keys (e.g. stage.story.model)
-  render/              the render stage (gated; a rejection goes back to the shots with your note, via the
-                       stage's `rejectTo`) + render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
+  render/              the render stage (gated; a rejection goes back to the shots, or the sections for a
+                       cut-down short, with your note, via the stage's `rejectTo`) + render engine + its Python
+                       scripts (render-short.py is the skill's cut-down renderer: word-snapped sections, crop or
+                       blurred fill, 3-word captions, hook title card, credit; render-narrated.py is the viral-shorts renderer,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
                        headline, chunk/quote captions, labels, credit). Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
