@@ -20,6 +20,8 @@ after(() => rmSync(home, { recursive: true, force: true }))
 
 // Fake stages: "source" records an artifact; "transcribe" is gated and remembers each call's note.
 const calls = { source: 0, transcribe: [] as Array<string | null> }
+// the session each transcribe attempt was asked to resume
+const sessions: Array<string | null> = []
 
 const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
   const artifacts = yield* Artifacts
@@ -41,6 +43,8 @@ const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
       gate: "Approve the transcript?",
       run: (ctx) =>
         Effect.sync(() => void calls.transcribe.push(ctx.note)).pipe(
+          Effect.andThen(Effect.suspend(() => ctx.recordSession(`session-${calls.transcribe.length}`))),
+          Effect.andThen(Effect.sync(() => void sessions.push(ctx.resumeSession))),
           Effect.andThen(ctx.progress(50, "halfway")),
           Effect.andThen(produce(ctx, "transcript", { text: ctx.note === null ? "first" : `redone: ${ctx.note}` }))
         ),
@@ -130,6 +134,7 @@ test("reject re-runs the stage with your note; edit records your version", async
   // the same stage's second gate
   const second = await until(rt, run.id, (u) => raised(u) && u._tag === "Event" && u.event._tag === "RequestRaised" && u.event.request.id !== first.id)
   assert.deepEqual(calls.transcribe, [null, "too long"])
+  assert.deepEqual(sessions.slice(-2), [null, "session-1"], "the re-run continues the rejected attempt's session")
   assert.deepEqual((await latestTranscript(rt, owner)).data, { text: "redone: too long" })
 
   await respond(rt, requestOf(second).id, { _tag: "Edit", artifact: { text: "my own words" } })

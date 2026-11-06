@@ -77,6 +77,7 @@ export class RunManager extends Context.Service<RunManager, {
           // An artifact made but never approved (its run was interrupted at the gate): ask again, don't redo it.
           let produce = forced || stage.gate === null || Option.isNone(latest)
           let note: string | null = null
+          let session: string | null = null
 
           for (let attempt = 1;; attempt++) {
             const stageRun = yield* store.createStageRun(run.id, stage.name, attempt, "running")
@@ -88,6 +89,9 @@ export class RunManager extends Context.Service<RunManager, {
               stageRunId: stageRun.id,
               attempt,
               note,
+              resumeSession: session,
+              recordSession: (id) =>
+                Effect.sync(() => void (session = id)).pipe(Effect.andThen(store.recordSession(stageRun.id, id))),
               progress: (pct, message) =>
                 PubSub.publish(updates, {
                   runId: run.id,

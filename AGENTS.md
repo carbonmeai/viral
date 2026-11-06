@@ -30,8 +30,12 @@ apps/server/src/
   references/          viral videos kept to learn from; their analyses are reference-owned artifacts
   runs/                runs a source or a short through its stages: reuse of approved work, gates (approve,
                        reject with a note, edit), cancel, resume after restart, events + live progress
-  script/              script agent, its prompt and MCP tool  (script-agent.ts, script-prompt.ts)
+  script/              the script stage's prompt (script-prompt.ts); the stage itself runs on agent-session
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
+  agent-session/       runs every agent stage on the Claude CLI: isolated session, skills in the prompt, one
+                       propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
+                       per-stage model, cost + session recording, resume; AgentSession.replay for tests
+  settings/            app preferences as JSON under keys (e.g. stage.story.model)
   render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
                        headline, chunk/quote captions, labels, credit). Two goldens: the original candy short

@@ -145,6 +145,7 @@ export class RunStore extends Context.Service<RunStore, {
   createStageRun(runId: RunId, stage: StageName, attempt: number, status: StageRunStatus): Effect.Effect<StageRun>
   updateStageRun(id: StageRunId, status: StageRunStatus, error: string | null): Effect.Effect<StageRun>
   recordCost(id: StageRunId, cost: StageCost): Effect.Effect<void>
+  recordSession(id: StageRunId, sessionId: string): Effect.Effect<void>
   listStageRuns(runId: RunId): Effect.Effect<ReadonlyArray<StageRun>>
   latestArtifact(owner: RunOwner, kind: ArtifactKind): Effect.Effect<Option.Option<LatestArtifact>>
   // Points the latest artifact of a kind at a stage run, e.g. when a resumed run approves an artifact an
@@ -268,6 +269,9 @@ export class RunStore extends Context.Service<RunStore, {
           WHERE id = ${id}
         `.pipe(Effect.asVoid, Effect.orDie)
 
+      const recordSession = (id: StageRunId, sessionId: string) =>
+        sql`UPDATE stage_runs SET agent_session_id = ${sessionId} WHERE id = ${id}`.pipe(Effect.asVoid, Effect.orDie)
+
       const listStageRuns = (runId: RunId) =>
         SqlSchema.findAll({
           Request: RunId,
@@ -374,6 +378,7 @@ export class RunStore extends Context.Service<RunStore, {
         createStageRun,
         updateStageRun,
         recordCost,
+        recordSession,
         listStageRuns,
         latestArtifact,
         linkLatestArtifact,

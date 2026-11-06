@@ -17,6 +17,9 @@ export interface StageContext {
   readonly attempt: number
   // your note when the previous attempt was rejected at its gate
   readonly note: string | null
+  // the previous attempt's agent session, so a rejected agent stage continues its conversation with your note
+  readonly resumeSession: string | null
+  recordSession(sessionId: string): Effect.Effect<void>
   progress(pct: number | null, message?: string): Effect.Effect<void>
   recordCost(cost: StageCost): Effect.Effect<void>
 }
