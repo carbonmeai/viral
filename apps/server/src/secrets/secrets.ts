@@ -5,7 +5,9 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process"
 // API keys Viral uses, with the environment variable that overrides the Keychain entry.
 export const SECRETS = {
   xai: "XAI_API_KEY",
-  elevenlabs: "ELEVENLABS_API_KEY"
+  elevenlabs: "ELEVENLABS_API_KEY",
+  // the Vercel AI Gateway, for running agent stages on other models (experimental; evals)
+  gateway: "AI_GATEWAY_API_KEY"
 } as const
 export type SecretName = keyof typeof SECRETS
 
