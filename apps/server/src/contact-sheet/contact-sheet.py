@@ -46,7 +46,9 @@ def main() -> None:
     cmd = ["ffmpeg", "-loglevel", "error", "-ss", str(args.start)]
     if args.end:
         cmd += ["-to", str(args.end)]
-    cmd += ["-i", args.video, "-vf", f"fps=1/{args.every},scale={TILE_W}:-2", "-start_number", "0", f"{td}/frame_%05d.jpg"]
+    # round=up takes each tile at the start of its slot, so a tile labelled 3:22 shows 3:22.0 (the default took
+    # the middle of the slot, half a second after its label, and shots picked from it started early)
+    cmd += ["-i", args.video, "-vf", f"fps=1/{args.every}:round=up,scale={TILE_W}:-2", "-start_number", "0", f"{td}/frame_%05d.jpg"]
     # -to before -i is relative to the input, so recompute when start is set
     if args.end:
         cmd[cmd.index("-to") + 1] = str(args.end)
