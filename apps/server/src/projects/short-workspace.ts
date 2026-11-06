@@ -58,12 +58,16 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const home = yield* ViralHome
       const thumbnails = yield* ThumbnailRenderer
 
-      // A file as the media route serves it: its path relative to the Viral home, or null when it's elsewhere.
-      const inHome = (file: string | null) => {
+      // A file as the media route serves it: its path relative to the Viral home. Stages record absolute paths,
+      // which go stale when the library moves, but always write the file into a known folder (the artifact's own,
+      // or the renders folder), so it's found there by name; null when it isn't there.
+      const fileIn = Effect.fn("ShortWorkspaces.fileIn")(function*(folder: string, file: string | null) {
         if (file === null) return null
-        const relative = path.relative(home.root, file)
-        return relative === "" || relative.startsWith("..") || path.isAbsolute(relative) ? null : relative
-      }
+        const relative = path.join(folder, path.basename(file))
+        const exists = yield* fs.exists(path.join(home.root, relative)).pipe(Effect.orElseSucceed(() => false))
+        return exists ? relative : null
+      })
+      const rendersFolder = path.relative(home.root, home.renders)
 
       // the voiceover's words as spoken, or none before there's a voiceover
       const voiceoverWords = Effect.fn("ShortWorkspaces.voiceoverWords")(function*(owner: { readonly _tag: "Project"; readonly id: ProjectId }) {
@@ -114,6 +118,27 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         // the approved thumbnail sits next to the published mp4
         const publishedThumbnail = path.join(home.renders, `${project.slug}.jpg`)
         const thumbnailPublished = yield* fs.exists(publishedThumbnail).pipe(Effect.orElseSucceed(() => false))
+        const renderMedia = yield* Option.match(render, {
+          onNone: () => Effect.succeed(null),
+          onSome: (a) => {
+            const folder = path.join("projects", projectId, path.dirname(a.path ?? path.join("render", `v${a.version}`, "x")))
+            return Effect.all({
+              video: fileIn(folder, a.data.video),
+              captions: fileIn(folder, a.data.captions),
+              checkSheet: fileIn(folder, a.data.checkSheet)
+            })
+          }
+        })
+        const publishedMedia = yield* Option.match(metadata, {
+          onNone: () => Effect.succeed(null),
+          onSome: (a) =>
+            Effect.all({
+              video: fileIn(rendersFolder, a.data.video),
+              captions: fileIn(rendersFolder, a.data.captions),
+              notes: fileIn(rendersFolder, a.data.notes),
+              thumbnail: fileIn(rendersFolder, thumbnailPublished ? publishedThumbnail : null)
+            })
+        })
         const sourceVideo = yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "source-video")
 
         return {
@@ -135,18 +160,13 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
             version: a.version,
             path: a.path,
             render: a.data,
-            media: { video: inHome(a.data.video), captions: inHome(a.data.captions), checkSheet: inHome(a.data.checkSheet) }
+            media: renderMedia ?? { video: null, captions: null, checkSheet: null }
           }))),
           metadata: Option.getOrNull(Option.map(metadata, (a) => ({
             version: a.version,
             path: a.path,
             metadata: a.data,
-            media: {
-              video: inHome(a.data.video),
-              captions: inHome(a.data.captions),
-              notes: inHome(a.data.notes),
-              thumbnail: thumbnailPublished ? inHome(publishedThumbnail) : null
-            },
+            media: publishedMedia ?? { video: null, captions: null, notes: null, thumbnail: null },
             files: { folder: home.renders, thumbnail: thumbnailPublished ? publishedThumbnail : null }
           }))),
           thumbnail: Option.getOrNull(Option.map(thumbnail, (a) => ({ version: a.version, path: a.path, thumbnail: a.data }))),

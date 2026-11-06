@@ -159,11 +159,15 @@ test("a published short shows its render, files and thumbnail as media paths, an
     // the render and the published files, as the render and metadata stages record them (absolute paths)
     const render = yield* artifacts.allocate(owner, "render")
     const mp4 = join(render.dir, `${project.slug}.mp4`)
+    for (const file of [mp4, join(render.dir, `${project.slug}.srt`), join(render.dir, "check.png")]) writeFileSync(file, "x")
     yield* artifacts.record(render, {
       data: { video: mp4, captions: join(render.dir, `${project.slug}.srt`), durationS: 12.5, shots: 6, checkSheet: join(render.dir, "check.png") },
       path: join(render.relDir, `${project.slug}.mp4`)
     })
     const renders = join(home, "renders")
+    for (const ext of ["mp4", "srt", "md"]) writeFileSync(join(renders, `${project.slug}.${ext}`), "x")
+    // recorded when the library lived somewhere else: the files are still found in the renders folder by name
+    const moved = "/Users/someone/old-viral/renders"
     yield* artifacts.record(yield* artifacts.allocate(owner, "metadata"), {
       data: {
         title: "It Broke Him",
@@ -171,9 +175,9 @@ test("a published short shows its render, files and thumbnail as media paths, an
         description: "This guy made a candy.",
         hashtags: ["#shorts"],
         credit: "NileBlue",
-        video: join(renders, `${project.slug}.mp4`),
-        captions: join(renders, `${project.slug}.srt`),
-        notes: join(renders, `${project.slug}.md`)
+        video: join(moved, `${project.slug}.mp4`),
+        captions: join(moved, `${project.slug}.srt`),
+        notes: join(moved, `${project.slug}.md`)
       },
       path: null
     })
@@ -202,7 +206,8 @@ test("a published short shows its render, files and thumbnail as media paths, an
   assert.match(ws.render?.media.video ?? "", /^projects\/[^/]+\/render\/v1\/[^/]+\.mp4$/, "relative to the Viral home, for the media route")
   assert.match(ws.render?.media.checkSheet ?? "", /render\/v1\/check\.png$/)
   assert.equal(ws.metadata?.metadata.title, "It Broke Him")
-  assert.match(ws.metadata?.media.video ?? "", /^renders\/.+\.mp4$/)
+  assert.match(ws.metadata?.media.video ?? "", /^renders\/.+\.mp4$/, "found by name even though the library moved")
+  assert.match(ws.metadata?.media.notes ?? "", /^renders\/.+\.md$/)
   assert.match(ws.metadata?.media.thumbnail ?? "", /^renders\/.+\.jpg$/, "the approved thumbnail next to the mp4")
   assert.equal(ws.metadata?.files.folder, join(home, "renders"))
   assert.equal(ws.thumbnail?.thumbnail.image, "thumbnail.jpg")
