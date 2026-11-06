@@ -68,14 +68,19 @@ export interface AgentTask<S extends Schema.Top> {
   readonly route?: AgentRoute
 }
 
+// What one agent job cost. The provider and billing are filled in by AgentSession, which knows the route.
+export interface AgentCost {
+  readonly model: string | null
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly costUsd: number
+  readonly provider?: string | null
+  readonly billing?: "billed" | "subscription" | null
+}
+
 export interface AgentHooks {
   progress(pct: number | null, message?: string): Effect.Effect<void>
-  recordCost(cost: {
-    readonly model: string | null
-    readonly inputTokens: number
-    readonly outputTokens: number
-    readonly costUsd: number
-  }): Effect.Effect<void>
+  recordCost(cost: AgentCost): Effect.Effect<void>
   recordSession(sessionId: string): Effect.Effect<void>
 }
 

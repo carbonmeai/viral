@@ -15,11 +15,16 @@ const ForeignKeysOn = Layer.effectDiscard(Effect.gen(function*() {
   yield* sql`PRAGMA foreign_keys = ON`
 }))
 
-// SQLite at ~/.viral/viral.db (node:sqlite, WAL), with foreign keys on and migrations applied.
+// A library's database at `filename` (node:sqlite, WAL), with foreign keys on and migrations applied. Evals use
+// it to record their spend in your library while they run in a scratch one.
+export const databaseAt = (filename: string) =>
+  SqliteMigrator.layer({ loader: migrations }).pipe(
+    Layer.provideMerge(ForeignKeysOn),
+    Layer.provideMerge(SqliteClient.layer({ filename }))
+  )
+
+// SQLite at ~/.viral/viral.db.
 export const DatabaseLive = Layer.unwrap(Effect.gen(function*() {
   const home = yield* ViralHome
-  return SqliteMigrator.layer({ loader: migrations }).pipe(
-    Layer.provideMerge(ForeignKeysOn),
-    Layer.provideMerge(SqliteClient.layer({ filename: home.database }))
-  )
+  return databaseAt(home.database)
 })).pipe(Layer.provide(ViralHome.layer))

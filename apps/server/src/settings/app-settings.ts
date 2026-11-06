@@ -1,17 +1,44 @@
-import { AgentProvider, AgentStage, type AppSettings, TranscriberChoice } from "@viral/contracts"
+import {
+  AgentChoice,
+  AgentProvider,
+  AgentStage,
+  type AppSettings,
+  CLI_ONLY_STAGES,
+  resolveAgentRoute,
+  SettingsError,
+  TranscriberChoice
+} from "@viral/contracts"
 import { Config, Context, Effect, Layer, Option, Schema } from "effect"
 import { Settings } from "./settings.ts"
 
-// The keys the server's own preferences live under.
-export const stageModelKey = (stage: AgentStage) => `stage.${stage}.model`
-export const stageProviderKey = (stage: AgentStage) => `stage.${stage}.provider`
+// The keys the server's own preferences live under. A step's own choice is its provider plus its model; the
+// default for every step is `agents.default`.
+export const stageModelKey = (stage: string) => `stage.${stage}.model`
+export const stageProviderKey = (stage: string) => `stage.${stage}.provider`
+export const DEFAULT_AGENT_KEY = "agents.default"
 export const TRANSCRIBER_KEY = "transcription.provider"
+
+const CLI_DEFAULT: AgentChoice = { provider: "claude-cli", model: null }
+
+const invalid = (message: string) => new SettingsError({ message })
+
+// A choice the server will accept: the gateway needs a model; the vision steps stay on the Claude CLI.
+export const checkChoice = (stage: AgentStage | null, choice: AgentChoice) => {
+  const model = choice.model?.trim() ?? ""
+  if (choice.provider === "ai-gateway" && model === "") {
+    return Effect.fail(invalid("choose a model for the AI Gateway, e.g. anthropic/claude-haiku-5.5"))
+  }
+  if (stage !== null && CLI_ONLY_STAGES.includes(stage) && choice.provider !== "claude-cli") {
+    return Effect.fail(invalid(`the ${stage} step looks at images, which only the Claude CLI can do for now`))
+  }
+  return Effect.succeed({ provider: choice.provider, model: model === "" ? null : model } satisfies AgentChoice)
+}
 
 // The typed view of the app's preferences that Settings › Agents and Transcription edit.
 export class AppSettingsStore extends Context.Service<AppSettingsStore, {
   readonly get: Effect.Effect<AppSettings>
-  setStageModel(stage: AgentStage, model: string | null): Effect.Effect<AppSettings>
-  setStageProvider(stage: AgentStage, provider: AgentProvider, model: string | null): Effect.Effect<AppSettings>
+  setDefaultAgent(agent: AgentChoice): Effect.Effect<AppSettings, SettingsError>
+  setStageAgent(stage: AgentStage, agent: AgentChoice | null): Effect.Effect<AppSettings, SettingsError>
   setTranscriber(choice: TranscriberChoice): Effect.Effect<AppSettings>
 }>()("@viral/server/settings/app-settings/AppSettingsStore") {
   static readonly layer = Layer.effect(
@@ -20,11 +47,16 @@ export class AppSettingsStore extends Context.Service<AppSettingsStore, {
       const settings = yield* Settings
       const env = yield* Config.option(Config.String("VIRAL_TRANSCRIBER")).pipe(Effect.orDie)
 
-      const model = (stage: AgentStage) =>
-        settings.get(stageModelKey(stage), Schema.String).pipe(Effect.map(Option.getOrNull))
+      // A step's own choice: its provider (claude-cli when only a CLI model was set, as older settings did) and
+      // model, or null when it has neither and uses the default.
+      const stageAgent = Effect.fn("AppSettingsStore.stageAgent")(function*(stage: AgentStage) {
+        const provider = yield* settings.get(stageProviderKey(stage), AgentProvider)
+        const model = yield* settings.get(stageModelKey(stage), Schema.String)
+        if (Option.isNone(provider) && Option.isNone(model)) return null
+        return { provider: Option.getOrElse(provider, () => "claude-cli" as const), model: Option.getOrNull(model) } satisfies AgentChoice
+      })
+      const defaultAgent = settings.get(DEFAULT_AGENT_KEY, AgentChoice).pipe(Effect.map(Option.getOrElse(() => CLI_DEFAULT)))
 
-      const provider = (stage: AgentStage) =>
-        settings.get(stageProviderKey(stage), AgentProvider).pipe(Effect.map(Option.getOrElse(() => "claude-cli" as const)))
       const perStage = <A>(read: (stage: AgentStage) => Effect.Effect<A>) =>
         Effect.map(
           Effect.all(AgentStage.literals.map((stage) => Effect.map(read(stage), (value) => [stage, value] as const))),
@@ -32,37 +64,48 @@ export class AppSettingsStore extends Context.Service<AppSettingsStore, {
         )
 
       const get = Effect.gen(function*() {
-        const stageModels = yield* perStage(model)
-        const stageProviders = yield* perStage(provider)
+        const fallback = yield* defaultAgent
+        const stageAgents = yield* perStage(stageAgent)
+        const routes = Object.fromEntries(
+          AgentStage.literals.map((stage) => [stage, resolveAgentRoute(stage, fallback, stageAgents[stage])])
+        ) as AppSettings["routes"]
         const transcriber = Option.getOrElse(yield* settings.get(TRANSCRIBER_KEY, TranscriberChoice), () => "auto" as const)
         return {
-          stageModels,
-          stageProviders,
+          defaultAgent: fallback,
+          stageAgents,
+          routes,
           transcriber,
           transcriberFromEnvironment: Option.getOrNull(env)
         } satisfies AppSettings
       }).pipe(Effect.withSpan("AppSettingsStore.get"))
 
-      const setStageModel = Effect.fn("AppSettingsStore.setStageModel")(function*(stage: AgentStage, value: string | null) {
-        const trimmed = value?.trim() ?? ""
-        yield* trimmed === "" ? settings.remove(stageModelKey(stage)) : settings.set(stageModelKey(stage), trimmed)
+      const setDefaultAgent = Effect.fn("AppSettingsStore.setDefaultAgent")(function*(agent: AgentChoice) {
+        const checked = yield* checkChoice(null, agent)
+        yield* checked.provider === "claude-cli" && checked.model === null
+          ? settings.remove(DEFAULT_AGENT_KEY)
+          : settings.set(DEFAULT_AGENT_KEY, checked)
         return yield* get
       })
 
       // The provider and its model change together: a gateway id means nothing to the CLI, and the reverse.
-      const setStageProvider = Effect.fn("AppSettingsStore.setStageProvider")(
-        function*(stage: AgentStage, provider: AgentProvider, value: string | null) {
-          yield* provider === "claude-cli" ? settings.remove(stageProviderKey(stage)) : settings.set(stageProviderKey(stage), provider)
-          return yield* setStageModel(stage, value)
+      const setStageAgent = Effect.fn("AppSettingsStore.setStageAgent")(function*(stage: AgentStage, agent: AgentChoice | null) {
+        if (agent === null) {
+          yield* settings.remove(stageProviderKey(stage))
+          yield* settings.remove(stageModelKey(stage))
+          return yield* get
         }
-      )
+        const checked = yield* checkChoice(stage, agent)
+        yield* settings.set(stageProviderKey(stage), checked.provider)
+        yield* checked.model === null ? settings.remove(stageModelKey(stage)) : settings.set(stageModelKey(stage), checked.model)
+        return yield* get
+      })
 
       const setTranscriber = Effect.fn("AppSettingsStore.setTranscriber")(function*(choice: TranscriberChoice) {
         yield* settings.set(TRANSCRIBER_KEY, choice)
         return yield* get
       })
 
-      return AppSettingsStore.of({ get, setStageModel, setStageProvider, setTranscriber })
+      return AppSettingsStore.of({ get, setDefaultAgent, setStageAgent, setTranscriber })
     })
   ).pipe(Layer.provide(Settings.layer))
 }

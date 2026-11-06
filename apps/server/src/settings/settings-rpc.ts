@@ -4,6 +4,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Presets } from "../presets/presets.ts"
 import { Secrets } from "../secrets/secrets.ts"
 import { StorageReport } from "../storage/storage.ts"
+import { EvalRecords } from "../eval/eval-records.ts"
 import { UsageReport } from "../usage/usage.ts"
 import { AppSettingsStore } from "./app-settings.ts"
 
@@ -13,6 +14,7 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
   const presets = yield* Presets
   const storage = yield* StorageReport
   const usage = yield* UsageReport
+  const evals = yield* EvalRecords
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
   // The Claude CLI is usable when it's on the PATH; its version is what we can learn without changing anything.
@@ -46,8 +48,9 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
       secrets.set(name, Redacted.make(value)).pipe(Effect.mapError(keyError), Effect.andThen(keyAccount(name))),
     RemoveSecret: ({ name }) => secrets.remove(name).pipe(Effect.mapError(keyError), Effect.andThen(keyAccount(name))),
     GetSettings: () => store.get,
-    SetStageModel: ({ stage, model }) => store.setStageModel(stage, model),
-    SetStageProvider: ({ stage, provider, model }) => store.setStageProvider(stage, provider, model),
+    SetDefaultAgent: ({ agent }) => store.setDefaultAgent(agent),
+    SetStageAgent: ({ stage, agent }) => store.setStageAgent(stage, agent),
+    GetModelEvals: () => evals.byModel,
     SetTranscriber: ({ choice }) => store.setTranscriber(choice),
     SetDefaultVoice: ({ voiceId, wordsPerSecond }) => setDefaultVoice(voiceId, wordsPerSecond),
     GetStorage: () => storage.get,

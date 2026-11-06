@@ -116,13 +116,18 @@ const SCHEMA = `
     status           TEXT NOT NULL
                        CHECK (status IN ('running', 'waiting', 'succeeded', 'failed', 'cancelled', 'skipped', 'reused')),
                                                   -- reused = a source-level artifact already existed
-    model            TEXT,                        -- agent stages: the model used
+    model            TEXT,                        -- agent stages: the model used; voice: the TTS model
+    provider         TEXT,                        -- who ran it: claude-cli | ai-gateway | elevenlabs (later codex-cli, opencode-cli)
+    billing          TEXT CHECK (billing IN ('billed', 'subscription')),
+                                                  -- billed: real money (an API key, the gateway); subscription: the
+                                                  --   API-equivalent value a CLI plan reports, not charged per use
     agent_session_id TEXT,                        -- agent stages: Claude session id, for resume
     error            TEXT,
     -- cost, so we can measure what a short costs
     input_tokens     INTEGER,
     output_tokens    INTEGER,
-    cost_usd         REAL,                        -- as reported by the Agent SDK
+    cost_usd         REAL,                        -- as reported by the provider (the gateway: the higher of its charge and
+                                                  --   the BYOK market cost)
     tts_characters   INTEGER,                     -- ElevenLabs usage
     duration_ms      INTEGER,
     started_at       TEXT NOT NULL,
@@ -176,6 +181,51 @@ const SCHEMA = `
     created_at TEXT NOT NULL
   );
   CREATE INDEX run_events_by_run ON run_events (run_id, seq);
+
+  -- What model evals (cli eval) spent, recorded in your library even though an eval runs in a scratch one, so
+
+  -- Settings › Usage shows it, and Settings › Agents shows each model's pass rate and cost.
+
+  CREATE TABLE eval_runs (
+
+    id             TEXT PRIMARY KEY,
+
+    eval_id        TEXT NOT NULL,                -- one cli eval: its report folder's name
+
+    stage          TEXT NOT NULL,                -- ads | story | script | metadata
+
+    provider       TEXT NOT NULL,                -- claude-cli | ai-gateway
+
+    model          TEXT NOT NULL,                -- as asked for: claude-cli, openai/gpt-6-luna
+
+    reported_model TEXT,                         -- what the provider says it ran
+
+    run            INTEGER NOT NULL,
+
+    status         TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'skipped')),
+
+    first_try_pass INTEGER,                      -- 1 | 0 | null (skipped)
+
+    fix_rounds     INTEGER NOT NULL DEFAULT 0,
+
+    input_tokens   INTEGER,
+
+    output_tokens  INTEGER,
+
+    cost_usd       REAL NOT NULL DEFAULT 0,
+
+    billing        TEXT CHECK (billing IN ('billed', 'subscription')),
+
+    duration_ms    INTEGER,
+
+    created_at     TEXT NOT NULL,
+
+    UNIQUE (eval_id, stage, model, run)
+
+  );
+
+  CREATE INDEX eval_runs_by_created ON eval_runs (created_at);
+
 
   CREATE TABLE settings (
     key        TEXT PRIMARY KEY,                  -- e.g. "stage.story.model"

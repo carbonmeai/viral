@@ -1,3 +1,4 @@
+import { resolveAgentRoute } from "@viral/contracts"
 import { Effect, ManagedRuntime } from "effect"
 import assert from "node:assert/strict"
 import { mkdtempSync, rmSync } from "node:fs"
@@ -13,21 +14,46 @@ before(() => {
 })
 after(() => rmSync(home, { recursive: true, force: true }))
 
-test("every agent stage starts on the Claude CLI, and can be switched to the gateway and back", async () => {
+test("every step starts on the Claude CLI; a gateway default moves the text steps but not the vision ones", async () => {
   const rt = ManagedRuntime.make(AppSettingsStore.layer)
-  const [fresh, onGateway, back] = await rt.runPromise(Effect.gen(function*() {
+  const [fresh, gatewayDefault, ownStory, backToDefault, noModel, visionOnGateway] = await rt.runPromise(Effect.gen(function*() {
     const store = yield* AppSettingsStore
     const fresh = yield* store.get
-    const onGateway = yield* store.setStageProvider("story", "ai-gateway", "openai/gpt-6-luna")
-    const back = yield* store.setStageProvider("story", "claude-cli", null)
-    return [fresh, onGateway, back] as const
+    const gatewayDefault = yield* store.setDefaultAgent({ provider: "ai-gateway", model: "anthropic/claude-haiku-5.5" })
+    const ownStory = yield* store.setStageAgent("story", { provider: "claude-cli", model: "opus" })
+    const backToDefault = yield* store.setStageAgent("story", null)
+    const noModel = yield* Effect.flip(store.setDefaultAgent({ provider: "ai-gateway", model: " " }))
+    const visionOnGateway = yield* Effect.flip(store.setStageAgent("shots", { provider: "ai-gateway", model: "openai/gpt-6-luna" }))
+    return [fresh, gatewayDefault, ownStory, backToDefault, noModel, visionOnGateway] as const
   }))
-  assert.deepEqual(Object.keys(fresh.stageProviders).sort(), ["ads", "metadata", "script", "sections", "shots", "story", "thumbnail"])
-  assert.ok(Object.values(fresh.stageProviders).every((p) => p === "claude-cli"))
-  assert.equal(onGateway.stageProviders.story, "ai-gateway")
-  assert.equal(onGateway.stageModels.story, "openai/gpt-6-luna")
-  assert.equal(onGateway.stageProviders.script, "claude-cli", "other stages are untouched")
-  assert.equal(back.stageProviders.story, "claude-cli")
-  assert.equal(back.stageModels.story, null, "back to the stage's own default model")
+
+  assert.deepEqual(fresh.defaultAgent, { provider: "claude-cli", model: null })
+  assert.ok(Object.values(fresh.stageAgents).every((a) => a === null), "no step has its own choice")
+  assert.ok(Object.values(fresh.routes).every((r) => r.provider === "claude-cli" && r.inherited))
+
+  assert.deepEqual(gatewayDefault.routes.script, { provider: "ai-gateway", model: "anthropic/claude-haiku-5.5", inherited: true, forcedCli: false })
+  assert.deepEqual(gatewayDefault.routes.shots, { provider: "claude-cli", model: null, inherited: true, forcedCli: true }, "vision stays on the CLI")
+
+  assert.deepEqual(ownStory.stageAgents.story, { provider: "claude-cli", model: "opus" })
+  assert.deepEqual(ownStory.routes.story, { provider: "claude-cli", model: "opus", inherited: false, forcedCli: false })
+  assert.equal(ownStory.routes.ads.provider, "ai-gateway", "other steps keep the default")
+
+  assert.equal(backToDefault.stageAgents.story, null)
+  assert.equal(backToDefault.routes.story.provider, "ai-gateway")
+
+  assert.match(noModel.message, /choose a model for the AI Gateway/)
+  assert.match(visionOnGateway.message, /only the Claude CLI/)
   await rt.dispose()
+})
+
+test("the route rule: own choice, then the default, with vision steps kept on the CLI", () => {
+  const gateway = { provider: "ai-gateway" as const, model: "openai/gpt-6-luna" }
+  assert.deepEqual(resolveAgentRoute("metadata", gateway, null), { provider: "ai-gateway", model: "openai/gpt-6-luna", inherited: true, forcedCli: false })
+  assert.deepEqual(resolveAgentRoute("thumbnail", gateway, null), { provider: "claude-cli", model: null, inherited: true, forcedCli: true })
+  assert.deepEqual(resolveAgentRoute("thumbnail", gateway, { provider: "claude-cli", model: "sonnet" }), {
+    provider: "claude-cli",
+    model: "sonnet",
+    inherited: false,
+    forcedCli: false
+  })
 })

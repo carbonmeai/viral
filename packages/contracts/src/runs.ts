@@ -72,6 +72,9 @@ export const StageRun = Schema.Struct({
   attempt: Schema.Int,
   status: StageRunStatus,
   model: Schema.NullOr(Schema.String),
+  // who ran it (claude-cli, ai-gateway, elevenlabs), and whether its cost is real money or a CLI plan's value
+  provider: Schema.NullOr(Schema.String),
+  billing: Schema.NullOr(Schema.Literals(["billed", "subscription"])),
   error: Schema.NullOr(Schema.String),
   inputTokens: Schema.NullOr(Schema.Int),
   outputTokens: Schema.NullOr(Schema.Int),

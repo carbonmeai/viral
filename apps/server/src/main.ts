@@ -41,6 +41,8 @@ import { AppSettingsStore } from "./settings/app-settings.ts"
 import { SettingsRpcLive } from "./settings/settings-rpc.ts"
 import { StorageReport } from "./storage/storage.ts"
 import { UsageReport } from "./usage/usage.ts"
+import { EvalRecords } from "./eval/eval-records.ts"
+import { DatabaseLive } from "./persistence/database.ts"
 
 // The port clients connect to; VIRAL_PORT moves it (the desktop app passes its own).
 const PORT = 3410
@@ -62,6 +64,7 @@ const DomainsLive = Layer.mergeAll(
   AppSettingsStore.layer,
   StorageReport.layer,
   UsageReport.layer,
+  EvalRecords.layer.pipe(Layer.provide(DatabaseLive)),
   SourceOverviews.layer,
   ShortWorkspaces.layer,
   FramesAround.layer,

@@ -60,6 +60,8 @@ const StageRunRow = Schema.Struct({
   attempt: Schema.Int,
   status: StageRunStatusSchema,
   model: Schema.NullOr(Schema.String),
+  provider: Schema.NullOr(Schema.String),
+  billing: Schema.NullOr(Schema.Literals(["billed", "subscription"])),
   error: Schema.NullOr(Schema.String),
   input_tokens: Schema.NullOr(Schema.Int),
   output_tokens: Schema.NullOr(Schema.Int),
@@ -76,6 +78,8 @@ const toStageRun = (row: typeof StageRunRow.Type): StageRun => ({
   attempt: row.attempt,
   status: row.status,
   model: row.model,
+  provider: row.provider,
+  billing: row.billing,
   error: row.error,
   inputTokens: row.input_tokens,
   outputTokens: row.output_tokens,
@@ -123,6 +127,9 @@ export interface LatestArtifact {
 
 export interface StageCost {
   readonly model?: string | null
+  // who ran it, and whether the cost is real money or a CLI plan's value
+  readonly provider?: string | null
+  readonly billing?: "billed" | "subscription" | null
   readonly inputTokens?: number | null
   readonly outputTokens?: number | null
   readonly costUsd?: number | null
@@ -264,6 +271,8 @@ export class RunStore extends Context.Service<RunStore, {
         sql`
           UPDATE stage_runs SET
             model = coalesce(${cost.model ?? null}, model),
+            provider = coalesce(${cost.provider ?? null}, provider),
+            billing = coalesce(${cost.billing ?? null}, billing),
             input_tokens = coalesce(input_tokens, 0) + coalesce(${cost.inputTokens ?? null}, 0),
             output_tokens = coalesce(output_tokens, 0) + coalesce(${cost.outputTokens ?? null}, 0),
             cost_usd = coalesce(cost_usd, 0) + coalesce(${cost.costUsd ?? null}, 0),

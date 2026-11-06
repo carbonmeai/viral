@@ -85,7 +85,7 @@ export class VoiceStage extends Context.Service<VoiceStage, {
         // 1. one take
         yield* ctx.progress(0, `speaking ${text.length} characters`)
         const speech = yield* eleven.speak({ voiceId, model, text }).pipe(Effect.mapError((e) => fail(e.code, e.message)))
-        yield* ctx.recordCost({ model, ttsCharacters: speech.characters })
+        yield* ctx.recordCost({ model, ttsCharacters: speech.characters, provider: "elevenlabs", billing: "billed" })
         const slot = yield* artifacts.allocate(ctx.owner, "voiceover")
         const raw = path.join(slot.dir, "vo_raw.mp3")
         const trimmed = path.join(slot.dir, "vo_trim.wav")

@@ -28,7 +28,7 @@ test("creates every table from the design in one migration", async () => {
   assert.deepEqual(
     tables.map((t) => t.name).filter((name) => name !== "effect_sql_migrations"),
     [
-      "artifacts", "music_tracks", "presets", "projects", "reference_videos", "requests", "run_events", "runs",
+      "artifacts", "eval_runs", "music_tracks", "presets", "projects", "reference_videos", "requests", "run_events", "runs",
       "settings", "sound_effects", "sources", "stage_runs"
     ]
   )

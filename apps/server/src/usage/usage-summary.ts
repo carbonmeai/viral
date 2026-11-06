@@ -6,6 +6,9 @@ export interface UsageRow {
   readonly stage: string
   readonly status: string
   readonly model: string | null
+  // who ran it (claude-cli, ai-gateway, elevenlabs) and whether its cost is real money; null for older runs
+  readonly provider: string | null
+  readonly billing: "billed" | "subscription" | null
   readonly costUsd: number | null
   readonly ttsCharacters: number | null
   readonly inputTokens: number | null
@@ -16,6 +19,16 @@ export interface UsageRow {
   readonly projectTitle: string | null
 }
 
+// One eval run (cli eval) as the usage page sees it.
+export interface EvalUsageRow {
+  readonly model: string
+  readonly provider: string
+  readonly billing: "billed" | "subscription" | null
+  readonly costUsd: number
+  // ISO time it was recorded
+  readonly createdAt: string
+}
+
 const DAY_MS = 86_400_000
 // the UTC day (YYYY-MM-DD) of an epoch millisecond
 export const dayKey = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms)).slice(0, 10)
@@ -24,7 +37,12 @@ const round = (usd: number) => Math.round(usd * 1e6) / 1e6
 
 // Adds up the stage runs of the last `days` days (ending `today`, a YYYY-MM-DD) for Settings › Usage: totals,
 // every day of the period (empty days too), the shorts that cost most, and what each step cost.
-export const summarizeUsage = (rows: ReadonlyArray<UsageRow>, days: number, today: string): Usage => {
+export const summarizeUsage = (
+  rows: ReadonlyArray<UsageRow>,
+  days: number,
+  today: string,
+  evalRows: ReadonlyArray<EvalUsageRow> = []
+): Usage => {
   const end = Date.parse(`${today}T00:00:00Z`)
   const dayKeys = Array.from({ length: days }, (_, i) => dayKey(end - (days - 1 - i) * DAY_MS))
   const inPeriod = rows.filter((r) => dayKeys.includes(dayOf(r.startedAt)))
@@ -68,6 +86,60 @@ export const summarizeUsage = (rows: ReadonlyArray<UsageRow>, days: number, toda
   const rendered = new Set(inPeriod.filter((r) => r.stage === "render" && r.status === "succeeded" && r.projectId !== null).map((r) => r.projectId))
   const renderedCost = sum(inPeriod.filter((r) => r.projectId !== null && rendered.has(r.projectId)), cost)
 
+  // real money, a CLI plan's value, and costs recorded before billing was tracked
+  const billing = {
+    billedUsd: round(sum(inPeriod.filter((r) => r.billing === "billed"), cost)),
+    subscriptionUsd: round(sum(inPeriod.filter((r) => r.billing === "subscription"), cost)),
+    unknownUsd: round(sum(inPeriod.filter((r) => r.billing === null), cost))
+  }
+
+  // the runs that did work (not reused) and either cost something or spoke something
+  const spent = inPeriod.filter((r) => r.status !== "reused" && (cost(r) > 0 || chars(r) > 0))
+  const providers = new Map<string, Array<UsageRow>>()
+  for (const r of spent) {
+    const key = `${r.provider ?? "unknown"}|${r.billing ?? ""}`
+    providers.set(key, [...(providers.get(key) ?? []), r])
+  }
+  const byProvider = [...providers.entries()]
+    .map(([key, list]) => {
+      const [provider = "unknown", bill = ""] = key.split("|")
+      return {
+        provider,
+        billing: bill === "" ? null : bill as "billed" | "subscription",
+        runs: list.length,
+        costUsd: round(sum(list, cost)),
+        ttsCharacters: sum(list, chars)
+      }
+    })
+    .sort((a, b) => b.costUsd - a.costUsd || b.ttsCharacters - a.ttsCharacters)
+
+  const models = new Map<string, Array<UsageRow>>()
+  for (const r of spent) if (r.model !== null) models.set(r.model, [...(models.get(r.model) ?? []), r])
+  const byModel = [...models.entries()]
+    .map(([model, list]) => ({
+      model,
+      provider: list.find((r) => r.provider !== null)?.provider ?? null,
+      runs: list.length,
+      costUsd: round(sum(list, cost)),
+      inputTokens: sum(list, (r) => r.inputTokens ?? 0),
+      outputTokens: sum(list, (r) => r.outputTokens ?? 0)
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd)
+
+  const evalsInPeriod = evalRows.filter((r) => dayKeys.includes(dayOf(r.createdAt)))
+  const evalSum = (list: ReadonlyArray<EvalUsageRow>) => list.reduce((n, r) => n + r.costUsd, 0)
+  const evalModels = new Map<string, Array<EvalUsageRow>>()
+  for (const r of evalsInPeriod) evalModels.set(r.model, [...(evalModels.get(r.model) ?? []), r])
+  const evals = {
+    costUsd: round(evalSum(evalsInPeriod)),
+    billedUsd: round(evalSum(evalsInPeriod.filter((r) => r.billing === "billed"))),
+    subscriptionUsd: round(evalSum(evalsInPeriod.filter((r) => r.billing === "subscription"))),
+    runs: evalsInPeriod.length,
+    byModel: [...evalModels.entries()]
+      .map(([model, list]) => ({ model, provider: list[0]!.provider, runs: list.length, costUsd: round(evalSum(list)) }))
+      .sort((a, b) => b.costUsd - a.costUsd)
+  }
+
   return {
     days,
     totals: {
@@ -80,6 +152,10 @@ export const summarizeUsage = (rows: ReadonlyArray<UsageRow>, days: number, toda
     },
     byDay,
     byShort,
-    byStage
+    byStage,
+    billing,
+    byProvider,
+    byModel,
+    evals
   }
 }

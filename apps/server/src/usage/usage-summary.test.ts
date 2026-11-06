@@ -6,6 +6,8 @@ const row = (over: Partial<UsageRow>): UsageRow => ({
   stage: "script",
   status: "succeeded",
   model: null,
+  provider: null,
+  billing: null,
   costUsd: null,
   ttsCharacters: null,
   inputTokens: null,
@@ -54,4 +56,46 @@ test("an empty period is all zeros, with no cost per short", () => {
   assert.equal(usage.byDay.length, 30)
   assert.equal(usage.totals.costPerShortUsd, null)
   assert.deepEqual(usage.byShort, [])
+})
+
+test("usage splits real money from a CLI plan's value, by provider and model, and keeps evals apart", () => {
+  const tagged: ReadonlyArray<UsageRow> = [
+    row({ stage: "story", model: "claude-opus-5-5", provider: "claude-cli", billing: "subscription", costUsd: 0.4, inputTokens: 50, outputTokens: 5 }),
+    row({ stage: "script", model: "anthropic/claude-haiku-5.5", provider: "ai-gateway", billing: "billed", costUsd: 0.01, inputTokens: 20, outputTokens: 2 }),
+    row({ stage: "voice", model: "eleven_v4", provider: "elevenlabs", billing: "billed", ttsCharacters: 180 }),
+    // recorded before billing was tracked
+    row({ stage: "ads", model: "claude-haiku-4-5", costUsd: 0.1 }),
+    // reused: no work done
+    row({ stage: "script", status: "reused", provider: "claude-cli", billing: "subscription" })
+  ]
+  const evals = [
+    { model: "openai/gpt-6-luna", provider: "ai-gateway", billing: "billed" as const, costUsd: 0.002, createdAt: "2026-11-06T09:00:00.000Z" },
+    { model: "claude-cli", provider: "claude-cli", billing: "subscription" as const, costUsd: 0.5, createdAt: "2026-11-06T09:00:00.000Z" },
+    { model: "claude-cli", provider: "claude-cli", billing: "subscription" as const, costUsd: 9, createdAt: "2026-09-01T09:00:00.000Z" }
+  ]
+  const usage = summarizeUsage(tagged, 7, "2026-11-06", evals)
+  assert.deepEqual(usage.billing, { billedUsd: 0.01, subscriptionUsd: 0.4, unknownUsd: 0.1 })
+  assert.deepEqual(usage.byProvider.map((p) => [p.provider, p.billing, p.runs, p.costUsd, p.ttsCharacters]), [
+    ["claude-cli", "subscription", 1, 0.4, 0],
+    ["unknown", null, 1, 0.1, 0],
+    ["ai-gateway", "billed", 1, 0.01, 0],
+    ["elevenlabs", "billed", 1, 0, 180]
+  ])
+  assert.deepEqual(usage.byModel.find((m) => m.model === "anthropic/claude-haiku-5.5"), {
+    model: "anthropic/claude-haiku-5.5",
+    provider: "ai-gateway",
+    runs: 1,
+    costUsd: 0.01,
+    inputTokens: 20,
+    outputTokens: 2
+  })
+  // evals: only the period, kept out of the pipeline's totals
+  assert.deepEqual(usage.evals, {
+    costUsd: 0.502,
+    billedUsd: 0.002,
+    subscriptionUsd: 0.5,
+    runs: 2,
+    byModel: [{ model: "claude-cli", provider: "claude-cli", runs: 1, costUsd: 0.5 }, { model: "openai/gpt-6-luna", provider: "ai-gateway", runs: 1, costUsd: 0.002 }]
+  })
+  assert.equal(usage.totals.costUsd, 0.51)
 })

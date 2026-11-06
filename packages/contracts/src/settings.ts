@@ -3,7 +3,7 @@ import { Rpc, RpcGroup } from "effect/rpc"
 import { PresetNotFound } from "./presets.ts"
 
 // The services Viral talks to. Claude runs through your CLI; ElevenLabs, xAI and the AI Gateway use API keys.
-// The AI Gateway is experimental: it runs agent stages on other models, for evals.
+// The AI Gateway runs agent steps on other models (Haiku, GPT-6 Luna, Gemini…).
 export const AccountName = Schema.Literals(["claude", "elevenlabs", "xai", "gateway"])
 export type AccountName = typeof AccountName.Type
 export const KeyName = Schema.Literals(["elevenlabs", "xai", "gateway"])
@@ -25,19 +25,67 @@ export type Account = typeof Account.Type
 export const AgentStage = Schema.Literals(["ads", "story", "script", "shots", "sections", "metadata", "thumbnail"])
 export type AgentStage = typeof AgentStage.Type
 
-// Who runs an agent stage. The Claude CLI is every stage's default; the AI Gateway is experimental, for trying
-// other models (evals).
+// Who runs an agent stage. The Claude CLI is the out-of-the-box default; the AI Gateway runs other models (Haiku,
+// GPT-6 Luna, Gemini…) on your gateway key. More CLIs (Codex, OpenCode) are planned and join this list.
 export const AgentProvider = Schema.Literals(["claude-cli", "ai-gateway"])
 export type AgentProvider = typeof AgentProvider.Type
 
+// Whether a cost is real money (an API key, the gateway) or the API-equivalent value a CLI plan reports.
+export const CostBilling = Schema.Literals(["billed", "subscription"])
+export type CostBilling = typeof CostBilling.Type
+
+// Stages that look at images (contact sheets, previews): only the Claude CLI can run them until the gateway
+// gets vision tools.
+export const CLI_ONLY_STAGES: ReadonlyArray<AgentStage> = ["shots", "sections", "thumbnail"]
+
+// The Claude CLI's model choices; null is your CLI's own default (or the stage's, e.g. Haiku for ads).
+export const CLI_MODELS: ReadonlyArray<{ readonly id: string | null; readonly label: string }> = [
+  { id: null, label: "CLI default" },
+  { id: "opus", label: "Opus" },
+  { id: "sonnet", label: "Sonnet" },
+  { id: "haiku", label: "Haiku" }
+]
+
 // The gateway models offered in Settings › Agents (any other gateway id can be typed in).
 export const GATEWAY_MODELS: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
-  { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" },
   { id: "anthropic/claude-haiku-5.5", label: "Claude Haiku 5.5" },
-  { id: "openai/gpt-6-luna", label: "GPT-6 Luna" },
+  { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" },
   { id: "anthropic/claude-sonnet-5.5", label: "Claude Sonnet 5.5" },
+  { id: "anthropic/claude-opus-5.5", label: "Claude Opus 5.5" },
+  { id: "openai/gpt-6-luna", label: "GPT-6 Luna" },
   { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash" }
 ]
+
+// A provider and the model on it. A null model means the CLI's (or the stage's) default; on the gateway a model
+// must be chosen.
+export const AgentChoice = Schema.Struct({ provider: AgentProvider, model: Schema.NullOr(Schema.String) })
+export type AgentChoice = typeof AgentChoice.Type
+
+// What actually runs a stage: its own choice, or the default for all steps. `inherited` is true when the stage
+// uses the default; `forcedCli` when the default is the gateway but the stage needs the CLI (vision).
+export const AgentRoute = Schema.Struct({
+  provider: AgentProvider,
+  model: Schema.NullOr(Schema.String),
+  inherited: Schema.Boolean,
+  forcedCli: Schema.Boolean
+})
+export type AgentRoute = typeof AgentRoute.Type
+
+// One rule for every client and the server: a stage's own choice wins, then the default for all steps; stages
+// that need vision stay on the Claude CLI (keeping their own CLI model) whatever the default says.
+export const resolveAgentRoute = (
+  stage: AgentStage,
+  defaultAgent: AgentChoice,
+  own: AgentChoice | null
+): AgentRoute => {
+  const cliOnly = CLI_ONLY_STAGES.includes(stage)
+  if (own !== null) {
+    const forced = cliOnly && own.provider !== "claude-cli"
+    return { provider: forced ? "claude-cli" : own.provider, model: forced ? null : own.model, inherited: false, forcedCli: forced }
+  }
+  if (cliOnly && defaultAgent.provider !== "claude-cli") return { provider: "claude-cli", model: null, inherited: true, forcedCli: true }
+  return { provider: defaultAgent.provider, model: defaultAgent.model, inherited: true, forcedCli: false }
+}
 
 const perStage = <S extends Schema.Top>(value: S) =>
   Schema.Struct({
@@ -53,12 +101,14 @@ const perStage = <S extends Schema.Top>(value: S) =>
 export const TranscriberChoice = Schema.Literals(["auto", "grok", "whisper-local"])
 export type TranscriberChoice = typeof TranscriberChoice.Type
 
-// App preferences the server keeps. A stage's model is null when it uses its default (your CLI's model, or
-// Haiku for ads and metadata).
+// App preferences the server keeps.
 export const AppSettings = Schema.Struct({
-  stageModels: perStage(Schema.NullOr(Schema.String)),
-  // claude-cli unless you switched a stage to the experimental AI Gateway
-  stageProviders: perStage(AgentProvider),
+  // what runs every agent step unless the step has its own choice; the Claude CLI out of the box
+  defaultAgent: AgentChoice,
+  // a step's own choice, or null to use the default
+  stageAgents: perStage(Schema.NullOr(AgentChoice)),
+  // what each step will actually run on (resolveAgentRoute over the two above)
+  routes: perStage(AgentRoute),
   transcriber: TranscriberChoice,
   // VIRAL_TRANSCRIBER was set when the server started, which overrides the choice above
   transcriberFromEnvironment: Schema.NullOr(Schema.String)
@@ -100,9 +150,52 @@ export const Usage = Schema.Struct({
     runs: Schema.Int,
     costUsd: Schema.Number,
     ttsCharacters: Schema.Int
-  }))
+  })),
+  // real money vs the value of a CLI plan, from the pipeline's stage runs (not evals)
+  billing: Schema.Struct({ billedUsd: Schema.Number, subscriptionUsd: Schema.Number, unknownUsd: Schema.Number }),
+  byProvider: Schema.Array(Schema.Struct({
+    provider: Schema.String,
+    billing: Schema.NullOr(CostBilling),
+    runs: Schema.Int,
+    costUsd: Schema.Number,
+    ttsCharacters: Schema.Int
+  })),
+  byModel: Schema.Array(Schema.Struct({
+    model: Schema.String,
+    provider: Schema.NullOr(Schema.String),
+    runs: Schema.Int,
+    costUsd: Schema.Number,
+    inputTokens: Schema.Int,
+    outputTokens: Schema.Int
+  })),
+  // what model evals spent in the period, kept apart from making shorts
+  evals: Schema.Struct({
+    costUsd: Schema.Number,
+    billedUsd: Schema.Number,
+    subscriptionUsd: Schema.Number,
+    runs: Schema.Int,
+    byModel: Schema.Array(Schema.Struct({
+      model: Schema.String,
+      provider: Schema.String,
+      runs: Schema.Int,
+      costUsd: Schema.Number
+    }))
+  })
 })
 export type Usage = typeof Usage.Type
+
+// A model's record across your evals.
+export const ModelEval = Schema.Struct({
+  model: Schema.String,
+  provider: AgentProvider,
+  runs: Schema.Int,
+  passed: Schema.Int,
+  firstTryPassed: Schema.Int,
+  avgCostUsd: Schema.Number,
+  stages: Schema.Array(Schema.String),
+  lastRunAt: Schema.String
+})
+export type ModelEval = typeof ModelEval.Type
 
 export class SettingsError extends Schema.TaggedError<SettingsError>()("SettingsError", {
   message: Schema.String
@@ -114,14 +207,16 @@ export class SettingsRpcs extends RpcGroup.make(
   Rpc.make("SetSecret", { payload: { name: KeyName, value: Schema.String }, success: Account, error: SettingsError }),
   Rpc.make("RemoveSecret", { payload: { name: KeyName }, success: Account, error: SettingsError }),
   Rpc.make("GetSettings", { success: AppSettings }),
-  // null goes back to the stage's default model
-  Rpc.make("SetStageModel", { payload: { stage: AgentStage, model: Schema.NullOr(Schema.String) }, success: AppSettings }),
-  // Switches a stage between the Claude CLI and the experimental AI Gateway, with the model to use there (a
-  // gateway id; null for the CLI's default).
-  Rpc.make("SetStageProvider", {
-    payload: { stage: AgentStage, provider: AgentProvider, model: Schema.NullOr(Schema.String) },
-    success: AppSettings
+  // The provider and model for every step that hasn't got its own. The gateway needs a model and its key.
+  Rpc.make("SetDefaultAgent", { payload: { agent: AgentChoice }, success: AppSettings, error: SettingsError }),
+  // A step's own provider and model, or null to use the default. Vision steps can't move to the gateway yet.
+  Rpc.make("SetStageAgent", {
+    payload: { stage: AgentStage, agent: Schema.NullOr(AgentChoice) },
+    success: AppSettings,
+    error: SettingsError
   }),
+  // How each model did in your evals (cli eval), for choosing one: runs, passes and average cost per step.
+  Rpc.make("GetModelEvals", { success: Schema.Array(ModelEval) }),
   Rpc.make("SetTranscriber", { payload: { choice: TranscriberChoice }, success: AppSettings }),
   // The default style's voice and pace, used by every short that doesn't pick its own voice.
   Rpc.make("SetDefaultVoice", {
