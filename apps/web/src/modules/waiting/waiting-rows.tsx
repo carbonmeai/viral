@@ -5,6 +5,7 @@ import { Row, RowTitle } from "@viral/ui/primitives/row"
 import { Status } from "@viral/ui/primitives/status"
 import { Thumb } from "@viral/ui/primitives/thumb"
 import { ago } from "../../lib/format.ts"
+import { stepOfStage } from "../shorts/editor-values.ts"
 import { actionLabel, waitingSub, waitingTitle } from "./waiting.ts"
 
 export interface WaitingRowsProps {
@@ -17,6 +18,8 @@ export interface WaitingRowsProps {
 }
 
 // Steps waiting for you, one row each; opening a row goes to that short (or video) at that step.
+const stepSearch = (step: ReturnType<typeof stepOfStage>) => step === undefined ? {} : { step }
+
 export function WaitingRows({ items, showVideo, thumbs, now }: WaitingRowsProps) {
   const navigate = useNavigate()
   if (items.length === 0) {
@@ -26,7 +29,7 @@ export function WaitingRows({ items, showVideo, thumbs, now }: WaitingRowsProps)
     const open = () =>
       item.projectId === null
         ? navigate({ to: "/videos/$sourceId", params: { sourceId: item.sourceId } })
-        : navigate({ to: "/shorts/$projectId", params: { projectId: item.projectId }, search: { step: item.request.stage } })
+        : navigate({ to: "/shorts/$projectId", params: { projectId: item.projectId }, search: stepSearch(stepOfStage(item.request.stage)) })
     return (
       <Row key={item.request.id} onOpen={open} className="grid-cols-[minmax(0,1fr)_170px_90px_auto]">
         <RowTitle

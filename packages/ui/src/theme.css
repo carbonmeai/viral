@@ -15,6 +15,8 @@
   --shadow-pop-v: 0 12px 32px rgba(10, 18, 23, .12), 0 2px 6px rgba(10, 18, 23, .06);
   --lemon: #b8d400; --lemon-ink: #151900; --lemon-fg: #5a6800; --lemon-soft: rgba(184, 212, 0, .2);
   --ok: #00851a; --ok-dot: #00c950; --wait: #9a5b00; --wait-dot: #f5a524; --run: #2a6fd6; --run-dot: #2a78d6; --danger: #c4262c;
+  /* the editor timeline's tracks: narration, shots, real lines, captions, music */
+  --t-narr: #9cb800; --t-shot: #4f7fe0; --t-real: #e07b32; --t-cap: #1aa39a; --t-music: #8b5cf6; --seg-tint: 14%;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -31,6 +33,7 @@
     --shadow-pop-v: 0 14px 36px rgba(0, 0, 0, .6), 0 0 0 1px rgba(232, 232, 232, .04);
     --lemon: #d9f94a; --lemon-ink: #151900; --lemon-fg: #d9f94a; --lemon-soft: rgba(217, 249, 74, .13);
     --ok: #3ddc78; --ok-dot: #00c950; --wait: #f5b84f; --wait-dot: #f5a524; --run: #7aa7ff; --run-dot: #3987e5; --danger: #ff7479;
+    --t-narr: #d9f94a; --t-shot: #6e9cff; --t-real: #f59e5b; --t-cap: #4fd1c5; --t-music: #a78bfa; --seg-tint: 20%;
     color-scheme: dark;
   }
 }
@@ -47,6 +50,7 @@
   --shadow-pop-v: 0 14px 36px rgba(0, 0, 0, .6), 0 0 0 1px rgba(232, 232, 232, .04);
   --lemon: #d9f94a; --lemon-ink: #151900; --lemon-fg: #d9f94a; --lemon-soft: rgba(217, 249, 74, .13);
   --ok: #3ddc78; --ok-dot: #00c950; --wait: #f5b84f; --wait-dot: #f5a524; --run: #7aa7ff; --run-dot: #3987e5; --danger: #ff7479;
+  --t-narr: #d9f94a; --t-shot: #6e9cff; --t-real: #f59e5b; --t-cap: #4fd1c5; --t-music: #a78bfa; --seg-tint: 20%;
   color-scheme: dark;
 }
 
@@ -88,6 +92,11 @@
   --color-wait-dot: var(--wait-dot);
   --color-run: var(--run);
   --color-run-dot: var(--run-dot);
+  --color-t-narr: var(--t-narr);
+  --color-t-shot: var(--t-shot);
+  --color-t-real: var(--t-real);
+  --color-t-cap: var(--t-cap);
+  --color-t-music: var(--t-music);
 
   --shadow-chip: var(--shadow-chip-v);
   --shadow-seg-on: var(--shadow-seg-on-v);

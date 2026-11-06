@@ -95,6 +95,11 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        videos/: New source and a video's page (GetSourceOverview; the source run followed live
                        by folding SubscribeRun in run-progress.ts); frames come from contact-sheet stills, or from
                        sheet tiles on older sheets
+                       shorts/: a short's editor, one fixed frame for every step (editor-frame.tsx: step bar, stage,
+                       inspector, timeline), from GetShortWorkspace and the run followed live. Script and Voice
+                       answer their gates (approve, ask with a note, edit; a script edit is checked first with
+                       CheckScriptEdit so a bad one never fails the run); editor-values.ts lays the short out on
+                       its timeline the way the renderer plays it
   api/                 the RPC client (AtomRpc over one WebSocket) and the atom registry
   lib/  config/        small shared helpers (media URLs, formatting); where the server is
 apps/desktop/          the Electron shell: starts the server (node in dev; Electron's own Node packaged), opens the
