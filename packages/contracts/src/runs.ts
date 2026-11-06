@@ -140,6 +140,20 @@ export const RunUpdate = Schema.Union([
 ])
 export type RunUpdate = typeof RunUpdate.Type
 
+// A gate waiting for you, with what it belongs to, so a client can list it globally or per video.
+export const WaitingItem = Schema.Struct({
+  request: RunRequest,
+  owner: RunOwner,
+  // the video it's for: the source itself, or the source of the short
+  sourceId: SourceId,
+  sourceTitle: Schema.NullOr(Schema.String),
+  // the short, for a short's gate
+  projectId: Schema.NullOr(ProjectId),
+  projectTitle: Schema.NullOr(Schema.String),
+  projectNumber: Schema.NullOr(Schema.Int)
+})
+export type WaitingItem = typeof WaitingItem.Type
+
 export class RunNotFound extends Schema.TaggedError<RunNotFound>()("RunNotFound", { id: RunId }) {}
 
 export class RequestNotPending extends Schema.TaggedError<RequestNotPending>()("RequestNotPending", {
@@ -165,6 +179,8 @@ export class RunsRpcs extends RpcGroup.make(
     stream: true
   }),
   Rpc.make("ListPendingRequests", { success: Schema.Array(RunRequest) }),
+  // Every waiting gate with its video and short, oldest first. Filter by sourceId for one video's list.
+  Rpc.make("ListWaiting", { success: Schema.Array(WaitingItem) }),
   Rpc.make("RespondToRequest", {
     payload: { requestId: RequestId, response: GateResponse },
     success: RunRequest,

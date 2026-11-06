@@ -4,6 +4,7 @@ import { Projects } from "../projects/projects.ts"
 import { Sources } from "../sources/sources.ts"
 import { RunManager } from "./run-manager.ts"
 import { RunStore } from "./run-store.ts"
+import { listWaiting } from "./waiting.ts"
 
 export const RunsRpcLive = RunsRpcs.toLayer(Effect.gen(function*() {
   const runs = yield* RunManager
@@ -27,6 +28,7 @@ export const RunsRpcLive = RunsRpcs.toLayer(Effect.gen(function*() {
     ListRuns: ({ owner }) => store.listRuns(owner),
     SubscribeRun: ({ runId, afterSeq }) => runs.subscribe(runId, afterSeq),
     ListPendingRequests: () => store.listPendingRequests,
+    ListWaiting: () => listWaiting().pipe(Effect.provideService(RunStore, store), Effect.provideService(Sources, sources), Effect.provideService(Projects, projects)),
     RespondToRequest: ({ requestId, response }) => runs.respond(requestId, response)
   })
 }))
