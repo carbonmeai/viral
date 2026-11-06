@@ -29,7 +29,7 @@ test("restarts back off from half a second to ten", () => {
 test("the policy allows only the app and the local server", () => {
   const csp = contentSecurityPolicy("viral", "http://127.0.0.1:3410")
   assert.match(csp, /connect-src 'self' http:\/\/127\.0\.0\.1:3410 ws:\/\/127\.0\.0\.1:3410/)
-  assert.match(csp, /media-src 'self' viral: blob: http:\/\/127\.0\.0\.1:3410/)
+  assert.match(csp, /media-src 'self' viral: blob: http:\/\/127\.0\.0\.1:3410 https:\/\/storage\.googleapis\.com\/eleven-public-prod\/ https:\/\/\*\.elevenlabs\.io/)
   assert.match(csp, /script-src 'self';/)
 })
 

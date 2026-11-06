@@ -1,10 +1,11 @@
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { app } from "electron"
-import { userInfo } from "node:os"
+import { homedir, userInfo } from "node:os"
 import { join, resolve } from "node:path"
 import { ServerProcess } from "./backend/server-process.ts"
 import { APP_ORIGIN, registerAppSchemePrivileges, serveAppProtocol } from "./electron/app-protocol.ts"
+import { handleShowInFinder } from "./electron/finder.ts"
 import { startUpdates } from "./electron/updater.ts"
 import { createMainWindow, preloadPath } from "./electron/window.ts"
 
@@ -40,6 +41,8 @@ const userName = () => {
 const start = Effect.gen(function*() {
   const server = yield* ServerProcess
   yield* Effect.promise(() => app.whenReady())
+  // the server's library: VIRAL_HOME (inherited by the server) or ~/.viral
+  handleShowInFinder(process.env["VIRAL_HOME"] ?? join(homedir(), ".viral"))
   if (packaged) serveAppProtocol(join(process.resourcesPath, "web"), server.url)
   yield* server.ready.pipe(Effect.timeout("60 seconds"), Effect.orElseSucceed(() => undefined))
   createMainWindow({

@@ -45,7 +45,11 @@ export const serverLaunch = (input: LaunchInput): Launch =>
 // Waits between restarts after the server exits: 0.5s, 1s, 2s … up to 10s.
 export const restartDelayMs = (attempt: number) => Math.min(10_000, 500 * 2 ** Math.max(0, attempt))
 
-// The app's content security policy: its own files, and the local server for data, frames, audio and video.
+// ElevenLabs' free voice samples (Settings › Voice plays them); nothing else from outside is loaded.
+const VOICE_SAMPLES = "https://storage.googleapis.com/eleven-public-prod/ https://*.elevenlabs.io"
+
+// The app's content security policy: its own files, the local server for data, frames, audio and video, and
+// ElevenLabs' voice samples.
 export const contentSecurityPolicy = (scheme: string, server: string) => {
   const ws = server.replace(/^http/, "ws")
   return [
@@ -53,7 +57,7 @@ export const contentSecurityPolicy = (scheme: string, server: string) => {
     "script-src 'self'",
     `connect-src 'self' ${server} ${ws}`,
     `img-src 'self' ${scheme}: data: blob: ${server}`,
-    `media-src 'self' ${scheme}: blob: ${server}`,
+    `media-src 'self' ${scheme}: blob: ${server} ${VOICE_SAMPLES}`,
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${scheme}: data:`,
     "object-src 'none'",
