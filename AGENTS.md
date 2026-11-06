@@ -44,7 +44,10 @@ apps/server/src/
                        ListTools / InstallTools
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
   presets/             style profiles; one default, seeded on first start
-  music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/
+  music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;
+                       analyse-track.py (librosa) measures tempo (beats fitted to a line), the drop (where the bass
+                       below 150 Hz jumps, snapped to a beat; null when unclear) and LUFS, in the background on
+                       add and via AnalyseMusicTrack. A beat set by hand (beat_source manual) is never overwritten
   sound-library/       sound-effect samples by category, with variants, in ~/.viral/sounds/
   references/          viral videos kept to learn from; their analyses are reference-owned artifacts
   runs/                runs a source or a short through its stages: reuse of approved work, gates (approve,
