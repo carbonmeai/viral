@@ -8,7 +8,7 @@ import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { ChevronRight, Film, Home, Inbox, Mic, Music, Palette, Plus, Settings } from "lucide-react"
 import type { ReactNode } from "react"
-import { desktop } from "../../config/server-url.ts"
+import { useWindowControlsInset } from "./window-controls.ts"
 import { overviewAtom } from "../home/overview.ts"
 import { modeAtom } from "../system/preferences.ts"
 
@@ -38,14 +38,14 @@ export function Sidebar() {
   const data = Option.getOrNull(AsyncResult.value(overview))
   const connected = AsyncResult.isSuccess(overview)
   const waiting = data?.waiting ?? []
+  const inset = useWindowControlsInset()
 
   return (
     <nav aria-label="Main" className="flex min-w-0 flex-col overflow-y-auto bg-win">
-      {/* the macOS window buttons sit in this row; it also drags the window */}
-      <div className="drag h-11 shrink-0" style={desktop ? { paddingLeft: desktop.windowControlsInset } : undefined} />
-      <div className="flex h-11 items-center gap-1.5 pr-2.5 pl-2">
+      {/* one top row: the macOS window buttons (when shown), then the workspace; the row drags the window */}
+      <div className="drag flex h-11 shrink-0 items-center gap-1.5 pr-2.5" style={{ paddingLeft: inset + 8 }}>
         <Tooltip content="One workspace for now">
-          <span className="flex items-center gap-[7px] rounded-ctl p-1 text-[14px] font-semibold">
+          <span className="no-drag flex items-center gap-[7px] rounded-ctl p-1 text-[14px] font-semibold">
             <span className="grid size-5 place-items-center rounded-[6px] bg-lemon">
               <svg viewBox="0 0 24 24" className="size-[9px] fill-lemon-ink"><path d="M7 4.5v15l12-7.5z" /></svg>
             </span>

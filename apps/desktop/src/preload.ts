@@ -1,4 +1,4 @@
-import { contextBridge } from "electron"
+import { contextBridge, ipcRenderer } from "electron"
 
 // What the UI learns from the desktop app: where the server is, the platform, how much room the window
 // buttons take in the sidebar, and the user's name. Nothing else crosses into the page.
@@ -8,5 +8,11 @@ contextBridge.exposeInMainWorld("viralDesktop", {
   platform: process.platform,
   serverUrl: arg("viral-server"),
   userName: arg("viral-user"),
-  windowControlsInset: Number(arg("viral-inset")) || 0
+  windowControlsInset: Number(arg("viral-inset")) || 0,
+  // calls back with true/false whenever the window enters or leaves full screen; returns an unsubscribe
+  onFullScreenChange: (listener: (fullScreen: boolean) => void) => {
+    const handler = (_event: unknown, fullScreen: unknown) => listener(fullScreen === true)
+    ipcRenderer.on("viral:full-screen", handler)
+    return () => void ipcRenderer.removeListener("viral:full-screen", handler)
+  }
 })

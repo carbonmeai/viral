@@ -5,6 +5,8 @@ export interface DesktopBridge {
   readonly serverUrl: string
   // how far the macOS window buttons reach into the sidebar, in px
   readonly windowControlsInset: number
+  // the window entered (true) or left (false) full screen, where macOS hides the window buttons
+  onFullScreenChange(listener: (fullScreen: boolean) => void): () => void
   // the signed-in Mac user's name, shown at the bottom of the sidebar
   readonly userName: string
 }

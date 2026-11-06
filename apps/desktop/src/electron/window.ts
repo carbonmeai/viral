@@ -6,6 +6,8 @@ import { isAppUrl } from "../backend/server-launch.ts"
 const TOP_ROW = 44
 const BUTTON = 12
 export const WINDOW_CONTROLS_INSET = 76
+// main → page: whether the window is in full screen (true/false)
+export const FULL_SCREEN_CHANNEL = "viral:full-screen"
 
 export interface WindowInput {
   readonly url: string
@@ -41,6 +43,11 @@ export const createMainWindow = (input: WindowInput) => {
     }
   })
   window.once("ready-to-show", () => window.show())
+  // macOS hides the window buttons in full screen; the UI reclaims their space in the sidebar's top row
+  const sendFullScreen = () => window.webContents.send(FULL_SCREEN_CHANNEL, window.isFullScreen())
+  window.on("enter-full-screen", sendFullScreen)
+  window.on("leave-full-screen", sendFullScreen)
+  window.webContents.on("did-finish-load", sendFullScreen)
   window.webContents.on("will-navigate", (event, url) => {
     if (!isAppUrl(url, input.appOrigins)) event.preventDefault()
   })
