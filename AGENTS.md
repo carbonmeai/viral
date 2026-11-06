@@ -13,7 +13,10 @@ directly.
 
 ```
 apps/server/src/
-  main.ts              wires domain layers + the RPC server
+  main.ts              wires domain layers + the RPC server; listens on 127.0.0.1 (VIRAL_PORT, default 3410) and
+                       stops when the app that started it (VIRAL_PARENT_PID) is gone
+  media/               GET /media/<path>: read-only files from the Viral home for the app (never viral.db,
+                       symlinks checked, byte ranges for seeking) + GET /healthz
   home/                ~/.viral paths ($VIRAL_HOME overrides; tests use a temp dir)
   persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one)
   sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short from them;
@@ -62,7 +65,20 @@ apps/server/src/
                        headline, chunk/quote captions, labels, credit). Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
+apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atoms over the RPC client), feature-based
+                       like CarbonMe's dashboard:
+  routes/              thin file routes; each renders one module's page
+  modules/<feature>/   a feature's page, parts, data atoms, pure values and tests (layout, system, home, waiting,
+                       settings, …). layout/ is the fixed frame: sidebar, title bar, page column
+  api/                 the RPC client (AtomRpc over one WebSocket) and the atom registry
+  lib/  config/        small shared helpers (media URLs, formatting); where the server is
+apps/desktop/          the Electron shell: starts the server (node in dev; Electron's own Node packaged), opens the
+                       UI (the dev server, or viral://app/ from Resources/web with a strict CSP), window buttons
+                       over the sidebar, preload bridge (server URL, user name, inset), electron-updater.
+                       vp pack bundles main/preload and the server (dist-server); electron-builder makes Viral.app
 packages/contracts/    wire schemas + RpcGroups, one file per domain
+packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,
+                       28/32px controls) and primitives on Base UI + cva
 repos/                 gitignored reference source checkouts — read-only
 scripts/               repo tooling (sync-repos.ts)
 ```
@@ -109,8 +125,13 @@ bun install           # also patches TypeScript with @effect/tsgo
 cp .env.example .env  # API keys (gitignored); or store them in the Keychain:
                       #   security add-generic-password -s viral -a xai -w
 bun run repos:sync    # clone reference source into repos/ (gitignored)
-bun run typecheck     # effect-tsgo tsc (TS7 + Effect diagnostics)
-bun run dev:server    # node --watch apps/server/src/main.ts  (port 3410)
+bun run typecheck     # effect-tsgo tsc per project: node (server, cli, contracts), ui, web, desktop
+bun run dev           # the web dev server (:5733) + the desktop app, which starts the server; Ctrl-C stops all
+                      #   (VIRAL_HOME=~/.viral/work/live-check bun run dev to open another library)
+bun run dev:server    # node --watch apps/server/src/main.ts  (port 3410), for the CLI or the browser
+bun run dev:web       # the UI alone at http://127.0.0.1:5733 (against a running server)
+bun run --cwd apps/desktop fetch-tools  # download ffmpeg, ffprobe, uv, yt-dlp (checksummed) into resources/bin
+bun run package:desktop # build the UI and Viral.app (apps/desktop/release/mac-arm64, unsigned)
 bun run cli           # dev client; prints every command
 bun run test          # node --test over apps and packages
 bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
