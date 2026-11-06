@@ -65,3 +65,27 @@ test("reports a file that can't be read", async () => {
   assert.ok(Exit.isFailure(exit))
   assert.match(JSON.stringify(exit), /MusicFileUnreadable/)
 })
+
+test("a folder adds every audio file in it, new tracks are songs, and the type can change", async () => {
+  const folder = join(home, "Songs")
+  const { mkdirSync } = await import("node:fs")
+  mkdirSync(join(folder, "nested"), { recursive: true })
+  writeFileSync(join(folder, "Beat One.mp3"), "a")
+  writeFileSync(join(folder, "Beat Two.WAV"), "b")
+  writeFileSync(join(folder, "cover.jpg"), "not audio")
+  writeFileSync(join(folder, ".hidden.mp3"), "skipped")
+  writeFileSync(join(folder, "nested", "deeper.mp3"), "not picked up")
+
+  const [result, clip, missing] = await run(Effect.gen(function*() {
+    const music = yield* MusicLibrary
+    const result = yield* music.addFolder(folder, "owned")
+    const clip = yield* music.setKind(result.added[0]!.id, "clip")
+    const missing = yield* music.addFolder(join(home, "nope"), "owned").pipe(Effect.flip)
+    return [result, clip, missing] as const
+  }))
+  assert.deepEqual(result.added.map((t) => t.title), ["Beat One", "Beat Two"])
+  assert.deepEqual(result.added.map((t) => t.kind), ["song", "song"])
+  assert.deepEqual(result.skipped, [])
+  assert.equal(clip.kind, "clip")
+  assert.equal(missing._tag, "MusicFileUnreadable")
+})

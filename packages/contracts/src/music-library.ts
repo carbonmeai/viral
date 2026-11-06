@@ -19,6 +19,11 @@ export type MusicTrackOrigin = typeof MusicTrackOrigin.Type
 export const BeatSource = Schema.Literals(["analysis", "manual"])
 export type BeatSource = typeof BeatSource.Type
 
+// What a track is: a raw song you own or have rights to (the library holds these), or a clip already edited
+// to a length. Music fitted to one short is that short's own bed, never a library track.
+export const MusicTrackKind = Schema.Literals(["song", "clip"])
+export type MusicTrackKind = typeof MusicTrackKind.Type
+
 // A track in your library, copied into ~/.viral/music/. BPM, drop and loudness are filled in by analysis.
 export const MusicTrack = Schema.Struct({
   id: MusicTrackId,
@@ -28,6 +33,7 @@ export const MusicTrack = Schema.Struct({
   origin: MusicTrackOrigin,
   // a short using an `unconfirmed` track is warned about Content ID claims
   rights: Rights,
+  kind: MusicTrackKind,
   referenceId: Schema.NullOr(ReferenceVideoId),
   durationS: Schema.NullOr(Schema.Finite),
   bpm: Schema.NullOr(Schema.Finite),
@@ -60,6 +66,21 @@ export class MusicLibraryRpcs extends RpcGroup.make(
     payload: { file: Schema.String, title: Schema.NullOr(Schema.String), rights: Rights },
     success: MusicTrack,
     error: MusicFileUnreadable
+  }),
+  // Every audio file in a folder (not its subfolders), each added like AddMusicTrack; files that can't be
+  // read are skipped with the reason.
+  Rpc.make("AddMusicFolder", {
+    payload: { folder: Schema.String, rights: Rights },
+    success: Schema.Struct({
+      added: Schema.Array(MusicTrack),
+      skipped: Schema.Array(Schema.Struct({ file: Schema.String, reason: Schema.String }))
+    }),
+    error: MusicFileUnreadable
+  }),
+  Rpc.make("SetMusicTrackKind", {
+    payload: { id: MusicTrackId, kind: MusicTrackKind },
+    success: MusicTrack,
+    error: MusicTrackNotFound
   }),
   Rpc.make("SetMusicTrackRights", {
     payload: { id: MusicTrackId, rights: Rights },

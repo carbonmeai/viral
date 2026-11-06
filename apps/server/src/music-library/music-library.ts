@@ -5,6 +5,7 @@ import {
   type MusicTrack,
   MusicFileUnreadable,
   MusicTrackId,
+  MusicTrackKind,
   MusicTrackNotFound,
   MusicTrackOrigin,
   ReferenceVideoId,
@@ -19,12 +20,21 @@ import { TrackAnalyser } from "./track-analyser.ts"
 
 const OriginJson = Schema.fromJsonString(MusicTrackOrigin)
 
+// The audio files a folder add picks up.
+export const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".aiff", ".aif"])
+
+export interface FolderResult {
+  readonly added: ReadonlyArray<MusicTrack>
+  readonly skipped: ReadonlyArray<{ readonly file: string; readonly reason: string }>
+}
+
 const TrackRow = Schema.Struct({
   id: MusicTrackId,
   title: Schema.String,
   path: Schema.String,
   origin: OriginJson,
   rights: Rights,
+  kind: MusicTrackKind,
   reference_id: Schema.NullOr(ReferenceVideoId),
   duration_s: Schema.NullOr(Schema.Finite),
   bpm: Schema.NullOr(Schema.Finite),
@@ -40,6 +50,7 @@ const toTrack = (row: typeof TrackRow.Type): MusicTrack => ({
   path: row.path,
   origin: row.origin,
   rights: row.rights,
+  kind: row.kind,
   referenceId: row.reference_id,
   durationS: row.duration_s,
   bpm: row.bpm,
@@ -55,7 +66,10 @@ const toTrack = (row: typeof TrackRow.Type): MusicTrack => ({
 // set by hand (SetMusicTrackBeat) win over analysis and are never overwritten by it.
 export class MusicLibrary extends Context.Service<MusicLibrary, {
   add(file: string, title: string | null, rights: Rights): Effect.Effect<MusicTrack, MusicFileUnreadable>
+  // every audio file directly in a folder; the ones that can't be read are skipped with why
+  addFolder(folder: string, rights: Rights): Effect.Effect<FolderResult, MusicFileUnreadable>
   setRights(id: MusicTrackId, rights: Rights): Effect.Effect<MusicTrack, MusicTrackNotFound>
+  setKind(id: MusicTrackId, kind: MusicTrackKind): Effect.Effect<MusicTrack, MusicTrackNotFound>
   setBeat(id: MusicTrackId, bpm: number, dropS: number): Effect.Effect<MusicTrack, MusicTrackNotFound>
   analyse(id: MusicTrackId): Effect.Effect<MusicTrack, MusicTrackNotFound | MusicAnalysisError>
   readonly list: Effect.Effect<ReadonlyArray<MusicTrack>>
@@ -125,6 +139,26 @@ export class MusicLibrary extends Context.Service<MusicLibrary, {
         return true
       }, Effect.orDie)
 
+      const addFolder = Effect.fn("MusicLibrary.addFolder")(function*(folder: string, rights: Rights) {
+        const names = yield* fs.readDirectory(folder).pipe(
+          Effect.mapError((error) => new MusicFileUnreadable({ file: folder, message: error.message }))
+        )
+        const files = names
+          .filter((name) => !name.startsWith(".") && AUDIO_EXTENSIONS.has(path.extname(name).toLowerCase()))
+          .sort()
+          .map((name) => path.join(folder, name))
+        const results = yield* Effect.forEach(files, (file) => add(file, null, rights).pipe(Effect.result))
+        return {
+          added: results.flatMap((r) => r._tag === "Success" ? [r.success] : []),
+          skipped: results.flatMap((r, i) => r._tag === "Failure" ? [{ file: files[i]!, reason: r.failure.message }] : [])
+        } satisfies FolderResult
+      })
+
+      const setKind = Effect.fn("MusicLibrary.setKind")(function*(id: MusicTrackId, kind: MusicTrackKind) {
+        yield* sql`UPDATE music_tracks SET kind = ${kind} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const setRights = Effect.fn("MusicLibrary.setRights")(function*(id: MusicTrackId, rights: Rights) {
         yield* sql`UPDATE music_tracks SET rights = ${rights} WHERE id = ${id}`.pipe(Effect.orDie)
         return yield* get(id)
@@ -158,7 +192,7 @@ export class MusicLibrary extends Context.Service<MusicLibrary, {
         return yield* get(id)
       })
 
-      return MusicLibrary.of({ add, setRights, setBeat, analyse, list, get, remove })
+      return MusicLibrary.of({ add, addFolder, setRights, setKind, setBeat, analyse, list, get, remove })
     })
 
   static readonly layer = Layer.effect(MusicLibrary, MusicLibrary.make).pipe(

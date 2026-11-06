@@ -9,3 +9,14 @@ export const openFileDialog = (kind: unknown): { readonly title: string; readonl
   kind === "audio"
     ? { title: "Choose a music track", name: "Audio", extensions: AUDIO_EXTENSIONS }
     : { title: "Choose a video", name: "Videos", extensions: VIDEO_EXTENSIONS }
+
+// How many things the panel picks: one file, several files, or a folder.
+export type OpenMode = "one" | "many" | "folder"
+
+// The page asks with a kind, or { kind, mode }; anything else is one video.
+export const openRequest = (arg: unknown): { readonly kind: OpenFileKind; readonly mode: OpenMode } => {
+  const value = typeof arg === "object" && arg !== null ? arg as { readonly kind?: unknown; readonly mode?: unknown } : { kind: arg }
+  const kind: OpenFileKind = value.kind === "audio" ? "audio" : "video"
+  const mode: OpenMode = value.mode === "many" || value.mode === "folder" ? value.mode : "one"
+  return { kind, mode }
+}

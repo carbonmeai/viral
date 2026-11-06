@@ -12,6 +12,9 @@ export interface DesktopBridge {
   // the macOS open panel for a video file: its path, or null when cancelled
   // the open panel for a video, or with "audio" a music file; its path, or null when cancelled
   openFile(kind?: "video" | "audio"): Promise<string | null>
+  // several files at once (empty when cancelled), or a folder's path
+  openFiles(kind: "video" | "audio"): Promise<ReadonlyArray<string>>
+  openFolder(): Promise<string | null>
   // the signed-in Mac user's name, shown at the bottom of the sidebar
   readonly userName: string
 }

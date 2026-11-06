@@ -49,6 +49,7 @@ const SCHEMA = `
                                                   --   | {"_tag":"Bundled","plan":…}
     rights        TEXT NOT NULL DEFAULT 'unconfirmed'
                     CHECK (rights IN ('unconfirmed', 'owned', 'licensed')),
+    kind          TEXT NOT NULL DEFAULT 'song' CHECK (kind IN ('song', 'clip')),  -- song: a raw song; clip: already edited
     reference_id  TEXT REFERENCES reference_videos (id) ON DELETE SET NULL,  -- imported from a reference video
     duration_s    REAL,
     bpm           REAL,                           -- filled by analysis; null until analysed

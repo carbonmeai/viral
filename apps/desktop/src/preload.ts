@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld("viralDesktop", {
   showInFinder: (path: string): Promise<boolean> => ipcRenderer.invoke("viral:show-in-finder", path),
   // the macOS open panel for a video (or, with "audio", a music) file: its path, or null when cancelled
   openFile: (kind: "video" | "audio" = "video"): Promise<string | null> => ipcRenderer.invoke("viral:open-file", kind),
+  // several files at once (empty when cancelled), or a folder's path
+  openFiles: (kind: "video" | "audio"): Promise<ReadonlyArray<string>> => ipcRenderer.invoke("viral:open-file", { kind, mode: "many" }),
+  openFolder: (): Promise<string | null> => ipcRenderer.invoke("viral:open-file", { kind: "audio", mode: "folder" }),
   onFullScreenChange: (listener: (fullScreen: boolean) => void) => {
     const handler = (_event: unknown, fullScreen: unknown) => listener(fullScreen === true)
     ipcRenderer.on("viral:full-screen", handler)
