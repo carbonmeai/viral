@@ -1,13 +1,24 @@
 ---
 name: thumbnails
-description: How to make a short's thumbnail. 2–4 words of huge text, the hero object big and circled, a reaction face inset, picked from real frames of the video and true to what the short delivers. Use when choosing a short's thumbnail frames, crops and words.
+description: How to make a short's thumbnail. The bold layout by default (a colour gradient, the hero and an extreme reaction face cut out with outlines, curiosity words, an arrow or emoji), picked from real frames of the video and true to what the short delivers. Use when choosing a short's thumbnail layout, frames, crops, colours and words.
 ---
 
 # Thumbnails for shorts
 
-The thumbnail is read in a fraction of a second at phone size, next to a dozen others. It has three parts, in a
-fixed layout: huge text at the top, the hero object big in the middle, and a reaction face tilted in the lower
-right, all over a blurred, darkened frame of the video.
+The thumbnail is read in a fraction of a second at phone size, next to a dozen others. It has three parts: huge
+text at the top, the hero object big in the middle, and a reaction face.
+
+## Bold (the default) or classic
+
+- **Bold** stops the scroll: a saturated colour gradient instead of footage, the hero and the face lifted out of
+  their frames with thick white outlines, the face big and overlapping the hero, and a red arrow or one emoji.
+  Use it whenever the video has a strong reaction face.
+- **Classic** (a blurred frame behind framed insets, the face tilted in the lower right) is for a video with no
+  face worth showing.
+- **Pick the gradient** to contrast with the hero and to suit the mood: red for pain or danger, yellow or orange for
+  fun and disgust, blue or purple for mystery, green for gross. Avoid the hero's own colour.
+- **Arrow or emoji:** the arrow points at the hero, the thing to look at. One emoji can carry the emotion instead
+  (🤢 disgust, 😱 shock, 🔥 heat). Not both unless the space is empty.
 
 ## The hero object
 
@@ -20,19 +31,24 @@ right, all over a blurred, darkened frame of the video.
 
 ## The face
 
-- **A strong, real emotion** on a real face from the video: disgust, shock, pain or joy at its peak. A neutral
-  face is worse than none; leave the face out if the video has no strong reaction.
-- **Crop to the head and shoulders.** The face must read at about a third of the thumbnail's width.
+- **The most extreme real reaction in the video,** at its peak: eyes squeezed shut, mouth open, tongue out,
+  doubled over. Scan the story's reaction beats and step through them a second at a time; the peak often lasts
+  under a second. A neutral or talking face is worse than none.
+- **Crop to the head and shoulders,** with nothing else attached (a gas bottle behind a shoulder comes along with
+  the cut-out). In bold the face fills about half the thumbnail's height, so it must stay sharp that big.
+- **Body language counts** when the face is hidden: someone doubled over reads instantly.
 - **The person must match the short.** Show the creator for the creator's reaction, the friend for the friend's.
 
 ## The words
 
-- **2–4 words in all,** on one or two lines, the first in yellow and the second in white (red only for a warning
-  like "DON'T"). Numbers beat words: "7 TASTES / 1 CANDY".
+- **A curiosity tease, not a statement:** a question or a consequence the viewer has to tap to resolve
+  ("IT BROKE HIM", "WORST CANDY EVER?", "7 TASTES AT ONCE?!"), 2–5 words on one or two lines. Statements
+  ("7 TASTES / 1 CANDY") suit classic.
+- **Yellow then white** for the two lines; red for the word that carries the threat or the question ("EVER?").
 - **They restate the open loop,** not the title word for word, and never spoil the ending.
 - **No clickbait the short doesn't deliver.** Every claim in the words and every frame must be in the video.
 
-## The background
+## The background (classic)
 
 - **A busy, colourful frame** from the same moment as the hero (it's blurred and darkened), so the colours
   match; never a frame from an ad or the end screen.

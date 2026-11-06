@@ -6,6 +6,7 @@ import { checkThumbnail, thumbConfig } from "./thumbnail-rules.ts"
 const ctx = { width: 854, height: 480, sourceSeconds: 2296, excluded: [{ start: 2158, end: 2296 }] }
 // the hand-made candy thumbnail, as fractions
 const candy: ThumbnailProposal = {
+  layout: "classic",
   background: { src: 1935 },
   hero: { src: 1632, crop: [0.2, 0, 0.95, 1], circle: { x: 0.5, y: 0.51, r: 0.27 } },
   face: { src: 1807.3, crop: [0.27, 0, 0.83, 0.9], },
@@ -26,6 +27,7 @@ test("the candy thumbnail passes and becomes the renderer's config in pixels", (
 
 test("reports moments in the ads, bad crops, and text that's too long or too short", () => {
   const text = checkThumbnail({
+    layout: "classic",
     background: { src: 2200 },
     hero: { src: 9999, crop: [0.5, 0, 0.6, 1], circle: { x: 2, y: 0.5, r: 0.8 } },
     face: { src: 100, crop: [0.8, 0, 0.2, 1] },
@@ -47,4 +49,37 @@ test("a thumbnail without a face or a circle leaves them out", () => {
   const config = thumbConfig(value, "/v/source.mp4", ctx)
   assert.equal(config.inset, undefined)
   assert.equal(config.hero.circle, false)
+})
+
+// variation A of the candy thumbnail: the bold layout, the default
+const bold: ThumbnailProposal = {
+  background: { src: 1632, color: "red" },
+  hero: { src: 1632, crop: [0.35, 0.1, 0.82, 1], circle: null },
+  face: { src: 1694.25, crop: [0.29, 0.04, 0.66, 1], side: "right" },
+  lines: [{ text: "it broke", color: "yellow" }, { text: "him", color: "white" }]
+}
+
+test("a bold thumbnail becomes the bold layout: a gradient, cut-outs, the face on its side, an arrow", () => {
+  const { value, problems } = checkThumbnail(bold, ctx)
+  assert.deepEqual(problems, [])
+  const config = thumbConfig(value, "/v/source.mp4", ctx)
+  assert.equal(config.layout, "bold")
+  assert.deepEqual(config.backdrop, { colors: ["#FF3B30", "#3A0000"], burst: true })
+  assert.equal(config.inset?.side, "right")
+  assert.equal(config.inset?.x, 0.74)
+  assert.equal(config.arrow, true, "an arrow when there's no emoji")
+  assert.equal(config.emoji, undefined)
+
+  const withEmoji = thumbConfig(checkThumbnail({ ...bold, emoji: "🤢", face: { ...bold.face!, side: "left" } }, ctx).value, "/v", ctx)
+  assert.deepEqual(withEmoji.emoji, { char: "🤢", x: 0.8, y: 0.78, size: 250 }, "on the side opposite the face")
+  assert.equal(withEmoji.arrow, false)
+})
+
+test("bold needs a face and a real emoji, and allows five words", () => {
+  const text = checkThumbnail({ ...bold, face: null, emoji: "yuck", lines: [{ text: "worst candy ever", color: "white" }, { text: "made here?", color: "red" }] }, ctx)
+    .problems.join("\n")
+  assert.match(text, /needs the video's strongest reaction face/)
+  assert.match(text, /"yuck" isn't a single emoji/)
+  assert.doesNotMatch(text, /words; use/)
+  assert.match(checkThumbnail({ ...bold, lines: [{ text: "a b c", color: "white" }, { text: "d e f", color: "red" }] }, ctx).problems.join(), /6 words; use 2–5/)
 })

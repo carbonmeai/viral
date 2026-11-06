@@ -1,4 +1,4 @@
-import type { FrameCrop, ThumbConfig, ThumbnailColor, ThumbnailProposal } from "@viral/contracts"
+import type { BackdropColor, FrameCrop, ThumbConfig, ThumbnailColor, ThumbnailProposal } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 
 export type Range = { readonly start: number; readonly end: number }
@@ -12,6 +12,8 @@ export interface ThumbnailContext {
 }
 
 const WORDS: readonly [number, number] = [2, 4]
+// a bold thumbnail's tease can take one more word ("WORST CANDY EVER?")
+const BOLD_WORDS: readonly [number, number] = [2, 5]
 // longest line that still reads at a big size on a 1080px-wide thumbnail
 const LINE_CHARS = 12
 // smallest crop side, as a fraction of the frame: anything less is too soft once blown up
@@ -20,8 +22,32 @@ const MIN_CROP = 0.2
 // and the face, one much wider would leave it a thin strip
 const HERO_ASPECT: readonly [number, number] = [0.9, 2.4]
 const FACE_ASPECT: readonly [number, number] = [0.7, 2]
+// bold cuts the subject out, so any reasonable shape works; the face is head and shoulders, about portrait
+const BOLD_HERO_ASPECT: readonly [number, number] = [0.5, 2.6]
+const BOLD_FACE_ASPECT: readonly [number, number] = [0.45, 1.5]
 
 const COLORS: Record<ThumbnailColor, string> = { yellow: "#FFD400", white: "#FFFFFF", red: "#FF3B30" }
+// bold gradients, centre colour then edge colour: saturated, so the outlined cut-outs and the text pop
+const BACKDROPS: Record<BackdropColor, readonly [string, string]> = {
+  red: ["#FF3B30", "#3A0000"],
+  yellow: ["#FFE45C", "#FF7A00"],
+  orange: ["#FFA53A", "#5A1A00"],
+  blue: ["#3D8BFF", "#04102E"],
+  purple: ["#6B4CFF", "#0B0630"],
+  green: ["#3DDC6B", "#032B10"],
+  pink: ["#FF5FB4", "#3A0020"]
+}
+// the bold layout, as tuned on the candy variations: a turned hero above centre, the face big and bleeding off
+// its side and the bottom, the arrow or emoji on the empty side
+const BOLD = {
+  hero: { y: 0.47, width: 0.64, rotate: -7 },
+  face: { height: 0.5 },
+  faceX: { right: 0.74, left: 0.26 },
+  sizes: [210, 220],
+  emoji: { y: 0.78, size: 250 }
+} as const
+const EMOJI = /^\p{Extended_Pictographic}(\u{FE0F}|\u{200D}\p{Extended_Pictographic})*$/u
+
 // the hand-made candy thumbnail's layout
 const LAYOUT = {
   hero: { y: 0.45, width: 0.92 },
@@ -54,27 +80,33 @@ export const checkThumbnail = (proposal: ThumbnailProposal, ctx: ThumbnailContex
     }
   }
 
-  moment("the background", proposal.background.src)
+  const bold = proposal.layout !== "classic"
+  if (!bold) moment("the background", proposal.background.src)
   moment("the hero", proposal.hero.src)
-  crop("the hero", proposal.hero.crop, HERO_ASPECT)
+  crop("the hero", proposal.hero.crop, bold ? BOLD_HERO_ASPECT : HERO_ASPECT)
   const circle = proposal.hero.circle
   if (circle !== null && !(circle.x >= 0 && circle.x <= 1 && circle.y >= 0 && circle.y <= 1 && circle.r >= 0.1 && circle.r <= 0.5)) {
     problems.push("the circle's x and y are fractions of the hero image (0–1), and r is 0.1–0.5")
   }
   if (proposal.face !== null) {
     moment("the face", proposal.face.src)
-    crop("the face", proposal.face.crop, FACE_ASPECT)
+    crop("the face", proposal.face.crop, bold ? BOLD_FACE_ASPECT : FACE_ASPECT)
+  } else if (bold) {
+    problems.push("a bold thumbnail needs the video's strongest reaction face; use layout \"classic\" if it has none")
   }
+  const emoji = proposal.emoji?.trim() ?? ""
+  if (emoji !== "" && !EMOJI.test(emoji)) problems.push(`"${emoji}" isn't a single emoji`)
 
   const lines = proposal.lines.map((l) => ({ ...l, text: l.text.trim().toUpperCase() }))
   if (lines.length < 1 || lines.length > 2) problems.push(`use one or two lines of text, not ${lines.length}`)
   const words = lines.reduce((n, l) => n + countWords(l.text), 0)
-  if (words < WORDS[0] || words > WORDS[1]) problems.push(`the text is ${words} words; use ${WORDS[0]}–${WORDS[1]}`)
+  const range = bold ? BOLD_WORDS : WORDS
+  if (words < range[0] || words > range[1]) problems.push(`the text is ${words} words; use ${range[0]}–${range[1]}`)
   for (const line of lines) {
     if (line.text === "") problems.push("a line of text is empty")
     else if (line.text.length > LINE_CHARS) problems.push(`"${line.text}" is ${line.text.length} characters; keep a line to ${LINE_CHARS} so it stays huge`)
   }
-  return { value: { ...proposal, lines }, problems }
+  return { value: { ...proposal, lines, ...(proposal.emoji === undefined ? {} : { emoji: emoji === "" ? null : emoji }) }, problems }
 }
 
 const box = (crop: FrameCrop, width: number, height: number): readonly [number, number, number, number] => [
@@ -84,8 +116,38 @@ const box = (crop: FrameCrop, width: number, height: number): readonly [number, 
   Math.round(crop[3] * height)
 ]
 
-// The renderer's config for a checked proposal, in the fixed layout.
-export const thumbConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<ThumbnailContext, "width" | "height">): ThumbConfig => ({
+// The renderer's config for a checked proposal: the bold layout unless it asks for classic.
+export const thumbConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<ThumbnailContext, "width" | "height">): ThumbConfig =>
+  proposal.layout === "classic" ? classicConfig(proposal, source, ctx) : boldConfig(proposal, source, ctx)
+
+const boldConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<ThumbnailContext, "width" | "height">): ThumbConfig => {
+  const side = proposal.face?.side ?? "right"
+  const emoji = proposal.emoji ?? null
+  return {
+    layout: "bold",
+    source,
+    background: { src: proposal.hero.src },
+    backdrop: { colors: [...BACKDROPS[proposal.background.color ?? "red"]], burst: true },
+    hero: {
+      src: proposal.hero.src,
+      box: box(proposal.hero.crop, ctx.width, ctx.height),
+      x: 0.5,
+      ...BOLD.hero,
+      ...(proposal.hero.circle === null
+        ? {}
+        : { circle: true, circle_x: proposal.hero.circle.x, circle_y: proposal.hero.circle.y, circle_r: proposal.hero.circle.r })
+    },
+    ...(proposal.face === null ? {} : {
+      inset: { src: proposal.face.src, box: box(proposal.face.crop, ctx.width, ctx.height), y: 1, ...BOLD.face, side, x: BOLD.faceX[side] }
+    }),
+    lines: proposal.lines.map((line, i) => ({ text: line.text, color: COLORS[line.color], size: BOLD.sizes[Math.min(i, 1)]! })),
+    text_y: 0.025,
+    arrow: proposal.arrow ?? emoji === null,
+    ...(emoji === null ? {} : { emoji: { char: emoji, x: side === "right" ? 0.2 : 0.8, ...BOLD.emoji } })
+  }
+}
+
+const classicConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<ThumbnailContext, "width" | "height">): ThumbConfig => ({
   source,
   background: { src: proposal.background.src },
   hero: {

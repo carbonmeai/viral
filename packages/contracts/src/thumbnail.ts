@@ -8,11 +8,20 @@ export type FrameCrop = typeof FrameCrop.Type
 export const ThumbnailColor = Schema.Literals(["yellow", "white", "red"])
 export type ThumbnailColor = typeof ThumbnailColor.Type
 
-// What the thumbnail agent proposes. The layout is fixed (the hand-made candy thumbnail's); the agent picks
-// the moments, the crops and the words. Times are source seconds.
+// The bold layout's gradient, by name: red, yellow (orange edge), orange, blue, purple, green or pink.
+export const BackdropColor = Schema.Literals(["red", "yellow", "orange", "blue", "purple", "green", "pink"])
+export type BackdropColor = typeof BackdropColor.Type
+
+// What the thumbnail agent proposes: the layout, the moments, the crops and the words; the server places
+// everything. Times are source seconds.
+//   bold (the default): a saturated gradient, the hero and the face cut out of their frames with thick outlines,
+//     the face big and overlapping the hero, curiosity words, an arrow to the hero and/or one emoji.
+//   classic: the hand-made candy thumbnail's layout (a blurred frame, framed hero, tilted face inset).
 export const ThumbnailProposal = Schema.Struct({
-  // blurred and darkened behind everything
-  background: Schema.Struct({ src: Schema.Finite }),
+  // absent = bold
+  layout: Schema.optionalKey(Schema.Literals(["bold", "classic"])),
+  // classic: the frame blurred and darkened behind everything. bold: `color` names the gradient (src unused)
+  background: Schema.Struct({ src: Schema.Finite, color: Schema.optionalKey(BackdropColor) }),
   // the hero object, big in the middle; `circle` rings it (centre and radius as fractions of the cropped
   // image), or null for no circle
   hero: Schema.Struct({
@@ -20,10 +29,14 @@ export const ThumbnailProposal = Schema.Struct({
     crop: FrameCrop,
     circle: Schema.NullOr(Schema.Struct({ x: Schema.Finite, y: Schema.Finite, r: Schema.Finite }))
   }),
-  // a reaction face, tilted in the lower right; null when the video has none worth showing
-  face: Schema.NullOr(Schema.Struct({ src: Schema.Finite, crop: FrameCrop })),
-  // one or two lines of huge text at the top, 2–4 words in all
-  lines: Schema.Array(Schema.Struct({ text: Schema.String, color: ThumbnailColor }))
+  // the strongest reaction face, cropped to head and shoulders; bold puts it big on `side` (default right).
+  // null when the video has none worth showing (classic only: bold needs a face)
+  face: Schema.NullOr(Schema.Struct({ src: Schema.Finite, crop: FrameCrop, side: Schema.optionalKey(Schema.Literals(["left", "right"])) })),
+  // one or two lines of huge text at the top: 2–4 words (classic) or 2–5 (bold)
+  lines: Schema.Array(Schema.Struct({ text: Schema.String, color: ThumbnailColor })),
+  // bold: a red arrow from the empty side to the hero (default on), and/or one emoji there
+  arrow: Schema.optionalKey(Schema.Boolean),
+  emoji: Schema.optionalKey(Schema.NullOr(Schema.String))
 })
 export type ThumbnailProposal = typeof ThumbnailProposal.Type
 

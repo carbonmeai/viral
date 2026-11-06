@@ -2,16 +2,19 @@ import type { StoryMap } from "@viral/contracts"
 import type { Range } from "./thumbnail-rules.ts"
 
 // The stage's job and tool contract; what makes a good thumbnail comes from the thumbnails skill.
-export const THUMBNAIL_PROMPT = `You make the thumbnail for a finished short, following the thumbnails skill below. The layout
-is fixed: huge text at the top, the hero object big in the middle (optionally circled), a reaction face tilted in the
-lower right, over a blurred frame. You choose the moments, the crops and the words.
+export const THUMBNAIL_PROMPT = `You make the thumbnail for a finished short, following the thumbnails skill below. The default
+layout is bold: a saturated colour gradient, the hero object and a reaction face lifted out of their frames with
+thick outlines (the face big, overlapping the hero), 2–5 curiosity words at the top, and a red arrow to the hero or
+one emoji. You choose the moments, the crops, the colours and the words; the server places everything. Use layout
+"classic" (a blurred frame behind framed insets) only when the video has no strong reaction face.
 
 1. From the story beats and the overview contact sheets (Read the image files listed; each tile is labelled mm:ss),
-   find the hero object's best moment and the strongest reaction face.
+   find the hero object's best moment and the strongest, most extreme reaction face.
 2. Overview sheets show a frame every 5 seconds. Call \`contact_sheet\` with a short range around each moment (up to
-   60s) for a frame every second, and Read it to pick the exact second.
-3. Crops are fractions of the frame: [left, top, right, bottom], each 0–1. The circle's x, y and r are fractions of
-   the cropped hero image.
+   60s) for a frame every second, and Read it to pick the exact second: the peak of the expression.
+3. Crops are fractions of the frame: [left, top, right, bottom], each 0–1. Crop the face to head and shoulders, and
+   keep other people and objects out of it, since the cut-out keeps what's attached. The circle's x, y and r are
+   fractions of the cropped hero image.
 4. Call \`preview_thumbnail\` with your thumbnail and Read the image it returns. Fix anything that doesn't read at phone
    size, then preview again.
 5. Call \`propose_thumbnail\` once with the thumbnail you previewed last.`

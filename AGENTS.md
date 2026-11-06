@@ -35,10 +35,14 @@ apps/server/src/
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
                        srt and <slug>.md into ~/.viral/renders/
   thumbnail/           the thumbnail stage, last in both pipelines (gated): a vision agent (thumbnails skill) picks
-                       the hero moment and crop, a reaction face and 2–4 words, with `contact_sheet` and
-                       `preview_thumbnail`; crops are frame fractions turned into pixels in the skill's fixed layout;
-                       render-thumbnail.py (the skill's thumbnail.py, JSON-line); once approved (the stage's
-                       `approved` hook) the jpg is published as ~/.viral/renders/<slug>.jpg
+                       the layout, the hero moment and crop, the strongest reaction face, the colours and the words,
+                       with `contact_sheet` and `preview_thumbnail`; crops are frame fractions turned into pixels.
+                       render-thumbnail.py draws two layouts: `bold` (the default: a gradient, the hero and the face
+                       cut out with outlines by cutout.py (rembg, models cached in ~/Library/Caches/Viral/models,
+                       VIRAL_MODELS_DIR overrides), curiosity words, an arrow or emoji; a failed cut-out falls back
+                       to a framed inset, VIRAL_CUTOUT=off forces that) and `classic` (the skill's thumbnail.py,
+                       unchanged). Once approved (the stage's `approved` hook) the jpg is published as
+                       ~/.viral/renders/<slug>.jpg
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/

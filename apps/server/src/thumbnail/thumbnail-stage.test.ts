@@ -21,6 +21,8 @@ let home: string
 before(() => {
   home = mkdtempSync(join(tmpdir(), "viral-thumbnail-"))
   process.env.VIRAL_HOME = home
+  // the default (bold) layout draws without cut-outs here: no model download in tests
+  process.env.VIRAL_CUTOUT = "off"
 })
 after(() => rmSync(home, { recursive: true, force: true }))
 
