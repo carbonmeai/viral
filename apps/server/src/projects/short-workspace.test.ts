@@ -76,3 +76,24 @@ test("a short's workspace gathers its style, voice, run, waiting gate and what t
   assert.equal(made.shotPlan, null)
   await rt.dispose()
 })
+
+test("an edited script is checked against the approach and the transcript before it's sent", async () => {
+  const rt = ManagedRuntime.make(Layer.mergeAll(ShortWorkspaces.layer, Sources.layer, Projects.layer, Artifacts.layer))
+  const problems = await rt.runPromise(Effect.gen(function*() {
+    const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/y" }, rights: "owned", rightsNote: null })
+    const artifacts = yield* Artifacts
+    const tx = yield* artifacts.allocate({ _tag: "Source", id: source.id }, "transcript")
+    writeFileSync(join(tx.dir, "transcript.json"), JSON.stringify({
+      source: "x",
+      language: "en",
+      segments: [{ start: 200, end: 201, text: "It worked.", words: [{ w: "It", s: 200, e: 200.3 }, { w: "worked.", s: 200.3, e: 200.9 }] }]
+    }))
+    yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
+    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Edit", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    return yield* (yield* ShortWorkspaces).checkScript(project.id, script)
+  }))
+  assert.ok(problems.some((p) => /narration is 5 words/.test(p)), problems.join("; "))
+  assert.ok(problems.some((p) => /there are 1 real lines/.test(p)))
+  assert.equal(problems.some((p) => /isn't in the transcript/.test(p)), false, "the real line was found")
+  await rt.dispose()
+})

@@ -57,5 +57,12 @@ export const ShortWorkspace = Schema.Struct({
 export type ShortWorkspace = typeof ShortWorkspace.Type
 
 export class ShortWorkspaceRpcs extends RpcGroup.make(
-  Rpc.make("GetShortWorkspace", { payload: { projectId: ProjectId }, success: ShortWorkspace, error: ProjectNotFound })
+  Rpc.make("GetShortWorkspace", { payload: { projectId: ProjectId }, success: ShortWorkspace, error: ProjectNotFound }),
+  // Checks an edited script against the approach and the transcript before it's sent to the script gate, so a
+  // problem is shown instead of failing the run. Empty problems = good to send.
+  Rpc.make("CheckScriptEdit", {
+    payload: { projectId: ProjectId, script: Script },
+    success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
+    error: ProjectNotFound
+  })
 ) {}

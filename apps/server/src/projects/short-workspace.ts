@@ -1,5 +1,6 @@
 import { NodeServices } from "@effect/platform-node"
 import {
+  AdRanges,
   type ArtifactKind,
   CutPlan,
   type ProjectId,
@@ -16,7 +17,8 @@ import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
-import { SCRIPT_LIMITS } from "../script/script-rules.ts"
+import { checkScript as checkScriptRules, SCRIPT_LIMITS } from "../script/script-rules.ts"
+import { Transcripts } from "../transcribe/transcripts.ts"
 import { Sources } from "../sources/sources.ts"
 import { Projects } from "./projects.ts"
 
@@ -27,6 +29,8 @@ const TranscriptJson = Schema.fromJsonString(Transcript)
 // an old version never breaks the editor).
 export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
   get(projectId: ProjectId): Effect.Effect<ShortWorkspace, ProjectNotFound>
+  // the script stage's own rules, for an edit before it's sent
+  checkScript(projectId: ProjectId, script: Script): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
 }>()("@viral/server/projects/short-workspace/ShortWorkspaces") {
   static readonly layer = Layer.effect(
     ShortWorkspaces,
@@ -36,6 +40,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const presets = yield* Presets
       const artifacts = yield* Artifacts
       const store = yield* RunStore
+      const transcripts = yield* Transcripts
       const fs = yield* FileSystem.FileSystem
 
       const get = Effect.fn("ShortWorkspaces.get")(function*(projectId: ProjectId) {
@@ -97,7 +102,20 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         } satisfies ShortWorkspace
       })
 
-      return ShortWorkspaces.of({ get })
+      const checkScript = Effect.fn("ShortWorkspaces.checkScript")(function*(projectId: ProjectId, script: Script) {
+        const project = yield* projects.get(projectId)
+        const limits = SCRIPT_LIMITS[project.approach]
+        if (limits === undefined) return [`${project.approach} shorts don't have a narrated script`]
+        const transcript = yield* transcripts.forSource(project.sourceId).pipe(Effect.option)
+        if (Option.isNone(transcript)) return ["the video has no transcript to check the real lines against"]
+        const ads = Option.match(
+          Option.flatMap(yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "ad-ranges"), (a) => Schema.decodeUnknownOption(AdRanges)(a.data)),
+          { onNone: () => [], onSome: (a) => a.ranges }
+        )
+        return checkScriptRules(script, limits, transcript.value.segments.flatMap((s) => s.words), ads).problems
+      })
+
+      return ShortWorkspaces.of({ get, checkScript })
     })
-  ).pipe(Layer.provide([Projects.layer, Sources.layer, Presets.layer, Artifacts.layer, RunStore.layer, NodeServices.layer]))
+  ).pipe(Layer.provide([Projects.layer, Sources.layer, Presets.layer, Artifacts.layer, RunStore.layer, Transcripts.layer, NodeServices.layer]))
 }
