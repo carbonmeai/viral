@@ -145,6 +145,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
           Effect.mapError(failWith("write"))
         )
         const brief = buildThumbnailBrief({
+          creatorBrief: c.project.brief,
           title: Option.match(published, { onNone: () => c.project.title, onSome: (p) => p.title }),
           alternates: Option.match(published, { onNone: () => [], onSome: (p) => p.alternates }),
           video: { title: c.source.title, channel: c.source.channel, width: c.thumbContext.width, height: c.thumbContext.height },

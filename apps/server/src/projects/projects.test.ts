@@ -123,3 +123,21 @@ test("a short's music can be set to a library track or back to voice only", asyn
   assert.equal(unknown, "MusicTrackNotFound")
   assert.equal(cleared, null)
 })
+
+test("a short keeps your brief, trimmed; a blank one clears it", async () => {
+  const [created, none, changed, cleared] = await run(Effect.gen(function*() {
+    const sources = yield* Sources
+    const projects = yield* Projects
+    const source = yield* sources.create({ origin: { _tag: "File", path: "/videos/candy.mp4" }, rights: "owned", rightsNote: null })
+    const base = { sourceId: source.id, approach: "question-recap" as const, presetId: null, musicTrackId: null }
+    const created = yield* projects.create({ ...base, title: "With a brief", brief: "  Focus on the friend's reactions.  " })
+    const none = yield* projects.create({ ...base, title: "Without one" })
+    const changed = yield* projects.setBrief(created.id, "End on the joke.")
+    const cleared = yield* projects.setBrief(created.id, "   ")
+    return [created, none, changed, cleared] as const
+  }))
+  assert.equal(created.brief, "Focus on the friend's reactions.")
+  assert.equal(none.brief, null)
+  assert.equal(changed.brief, "End on the joke.")
+  assert.equal(cleared.brief, null)
+})

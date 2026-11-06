@@ -87,6 +87,7 @@ const SCHEMA = `
     preset_id       TEXT REFERENCES presets (id) ON DELETE SET NULL,     -- null = use the default preset
     music_track_id  TEXT REFERENCES music_tracks (id) ON DELETE SET NULL, -- optional; null = a voice-only short
     voice_id        TEXT,                         -- ElevenLabs voice id; null = the preset's voice
+    brief           TEXT,                         -- what the short should achieve, in your words; steers its agents
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,                -- for "last touched" sorting
     UNIQUE (source_id, number)

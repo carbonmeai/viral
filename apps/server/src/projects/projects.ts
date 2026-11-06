@@ -32,6 +32,14 @@ export interface CreateProjectInput {
   readonly approach: ApproachName
   readonly presetId: PresetId | null
   readonly musicTrackId: MusicTrackId | null
+  // what the short should achieve, in your words; null or blank = none
+  readonly brief?: string | null
+}
+
+// A brief is kept as written, minus surrounding space; a blank one is no brief.
+export const cleanBrief = (brief: string | null | undefined) => {
+  const trimmed = brief?.trim() ?? ""
+  return trimmed === "" ? null : trimmed
 }
 
 const ProjectRow = Schema.Struct({
@@ -45,6 +53,7 @@ const ProjectRow = Schema.Struct({
   preset_id: Schema.NullOr(PresetId),
   music_track_id: Schema.NullOr(MusicTrackId),
   voice_id: Schema.NullOr(Schema.String),
+  brief: Schema.NullOr(Schema.String),
   created_at: Schema.DateTimeUtcFromString,
   updated_at: Schema.DateTimeUtcFromString
 })
@@ -59,6 +68,7 @@ const toProject = (row: typeof ProjectRow.Type): Project => ({
   presetId: row.preset_id,
   musicTrackId: row.music_track_id,
   voiceId: row.voice_id,
+  brief: row.brief,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 })
@@ -68,7 +78,8 @@ const toProject = (row: typeof ProjectRow.Type): Project => ({
 export class Projects extends Context.Service<Projects, {
   create(input: CreateProjectInput): Effect.Effect<Project, SourceNotFound | PresetNotFound | MusicTrackNotFound>
   // A short from the source story's proposal number `proposal` (0-based): its approach and title.
-  fromProposal(sourceId: SourceId, proposal: number): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
+  fromProposal(sourceId: SourceId, proposal: number, brief?: string | null): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
+  setBrief(id: ProjectId, brief: string | null): Effect.Effect<Project, ProjectNotFound>
   setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
   setPreset(id: ProjectId, presetId: PresetId | null): Effect.Effect<Project, ProjectNotFound | PresetNotFound>
   setMusic(id: ProjectId, musicTrackId: MusicTrackId | null): Effect.Effect<Project, ProjectNotFound | MusicTrackNotFound>
@@ -128,17 +139,17 @@ export class Projects extends Context.Service<Projects, {
           const { next } = yield* nextNumber(input.sourceId)
           yield* sql`
             INSERT INTO projects (id, source_id, number, slug, title, approach, format, preset_id, music_track_id,
-                                  created_at, updated_at)
+                                  brief, created_at, updated_at)
             VALUES (${id}, ${input.sourceId}, ${next}, ${projectSlug(next, input.title)}, ${input.title},
                     ${input.approach}, ${APPROACHES[input.approach].format}, ${input.presetId}, ${input.musicTrackId},
-                    ${now}, ${now})
+                    ${cleanBrief(input.brief)}, ${now}, ${now})
           `
         })).pipe(Effect.orDie)
         yield* fs.makeDirectory(home.projectDir(id), { recursive: true }).pipe(Effect.orDie)
         return yield* get(id).pipe(Effect.orDie)
       })
 
-      const fromProposal = Effect.fn("Projects.fromProposal")(function*(sourceId: SourceId, proposal: number) {
+      const fromProposal = Effect.fn("Projects.fromProposal")(function*(sourceId: SourceId, proposal: number, brief?: string | null) {
         yield* sources.get(sourceId)
         const story = yield* artifacts.latest({ _tag: "Source", id: sourceId }, "story-map")
         const chosen = Option.flatMap(story, (a) => Schema.decodeUnknownOption(StoryMap)(a.data)).pipe(
@@ -150,7 +161,8 @@ export class Projects extends Context.Service<Projects, {
           title: chosen.value.title,
           approach: chosen.value.approach,
           presetId: null,
-          musicTrackId: null
+          musicTrackId: null,
+          brief: brief ?? null
         }).pipe(Effect.catchTag(["PresetNotFound", "MusicTrackNotFound"], Effect.die))
       })
 
@@ -160,6 +172,12 @@ export class Projects extends Context.Service<Projects, {
           onSome: findBySource
         }).pipe(Effect.orDie)
         return rows.map(toProject)
+      })
+
+      const setBrief = Effect.fn("Projects.setBrief")(function*(id: ProjectId, brief: string | null) {
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql`UPDATE projects SET brief = ${cleanBrief(brief)}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
       })
 
       const setVoice = Effect.fn("Projects.setVoice")(function*(id: ProjectId, voiceId: string | null) {
@@ -191,7 +209,7 @@ export class Projects extends Context.Service<Projects, {
         return true
       }, Effect.orDie)
 
-      return Projects.of({ create, fromProposal, setVoice, setPreset, setMusic, list, get, remove })
+      return Projects.of({ create, fromProposal, setBrief, setVoice, setPreset, setMusic, list, get, remove })
     })
   ).pipe(
     Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer]),

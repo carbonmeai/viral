@@ -1,5 +1,6 @@
 import type { ApproachName, StoryMap, TranscriptWord } from "@viral/contracts"
 import type { Range, ShotDraft } from "./shot-rules.ts"
+import { creatorBriefLine } from "../projects/creator-brief.ts"
 
 // The stage's job and tool contract; how to plan shots comes from the narrated-shots skill.
 export const SHOTS_PROMPT = `You plan the b-roll for a narrated short: which moment of the long video plays under each part
@@ -22,6 +23,8 @@ of the voiceover, following the narrated-shots skill below.
 Never use footage inside the excluded ranges. Call \`propose_shots\` once with the whole plan.`
 
 export interface ShotsBrief {
+  // the creator's brief for the short ("what should it achieve?"), put first; null or absent = none
+  readonly creatorBrief?: string | null
   readonly title: string | null
   readonly approach: ApproachName
   readonly framing: "band" | "full"
@@ -63,6 +66,7 @@ export const buildShotsBrief = (brief: ShotsBrief) => {
     ? ""
     : `Story beats (source seconds):\n${brief.story.beats.map((b) => `- ${b.beat} ${fmt(b.start)}–${fmt(b.end)}s: ${b.summary}`).join("\n")}`
   return [
+    creatorBriefLine(brief.creatorBrief),
     `Video: ${brief.title ?? "untitled"} (${fmt(brief.sourceSeconds)}s long). Approach: ${brief.approach}. Framing: ${brief.framing}` +
     (brief.framing === "full" ? " (the 16:9 footage is cropped to fill 9:16; set cropX when the subject is off-centre, fit for graphics)." : "."),
     `Aim for shots of about ${brief.shotSeconds}s on average; none longer than 3s.`,

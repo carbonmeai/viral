@@ -59,6 +59,7 @@ export class MetadataStage extends Context.Service<MetadataStage, {
           ? (yield* latest("cut-plan", CutPlan)).sections.map((s) => `CREATOR (${s.beat}): "${s.text}"`).join("\n")
           : (yield* latest("script", Script)).beats.map((b) => b._tag === "Narration" ? `NARRATOR: ${b.text}` : `REAL: "${b.quote}"`).join("\n")
         const metadata = yield* runChecked(agent, ctx, metadataTask({
+          creatorBrief: project.brief,
           title: source.title,
           channel: source.channel,
           summary: Option.match(story, { onNone: () => null, onSome: (s) => s.summary }),

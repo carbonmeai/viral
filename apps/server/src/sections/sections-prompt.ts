@@ -1,5 +1,6 @@
 import type { StoryMap } from "@viral/contracts"
 import { SECTION_LIMITS, type Range } from "./section-rules.ts"
+import { creatorBriefLine } from "../projects/creator-brief.ts"
 
 // The stage's job and tool contract; how to cut comes from the approach-cut-down and story-arc skills.
 export const SECTIONS_PROMPT = `You cut a long video down into one short made only of the creator's own speech, following the
@@ -19,6 +20,8 @@ approach-cut-down skill and the story-arc skill below.
 Never use anything inside the excluded ranges.`
 
 export interface SectionsBrief {
+  // the creator's brief for the short ("what should it achieve?"), put first; null or absent = none
+  readonly creatorBrief?: string | null
   readonly title: string | null
   readonly channel: string | null
   // the story stage's proposal this short was made from, when it was
@@ -36,6 +39,7 @@ const fmt = (t: number) => t.toFixed(1)
 
 export const buildSectionsBrief = (brief: SectionsBrief) =>
   [
+    creatorBriefLine(brief.creatorBrief),
     `Video: ${brief.title ?? "untitled"}${brief.channel === null ? "" : ` (by ${brief.channel})`}, ${fmt(brief.sourceSeconds)}s long.`,
     brief.angle === null
       ? ""

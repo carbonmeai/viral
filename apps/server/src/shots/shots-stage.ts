@@ -221,6 +221,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         const preview = previewTool(c.video, c.shotContext, c.reals, previewRoot, ctx.attempt)
 
         const brief = buildShotsBrief({
+          creatorBrief: c.project.brief,
           title: c.source.title,
           approach: c.project.approach,
           framing: preset.config.framing,

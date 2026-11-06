@@ -175,6 +175,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
           Effect.mapError(failWith("write"))
         )
         const brief = buildSectionsBrief({
+          creatorBrief: c.project.brief,
           title: c.source.title,
           channel: c.source.channel,
           angle: Option.match(proposal, { onNone: () => null, onSome: ({ title, hook, why }) => ({ title, hook, why }) }),

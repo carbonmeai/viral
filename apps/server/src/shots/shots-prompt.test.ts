@@ -31,3 +31,27 @@ test("the brief numbers the voiceover words and shows where the real lines play"
   assert.match(brief, /about 2\.2s on average/)
   assert.match(brief, /cropX/)
 })
+
+test("the creator's brief comes first when the short has one, and not at all when it doesn't", () => {
+  const words = ["This", "guy.", "It", "hurt."].map((w, i) => ({ w, s: i, e: i + 0.5 }))
+  const input = {
+    title: "Candy",
+    approach: "claim-interleaved",
+    framing: "full",
+    shotSeconds: 2.2,
+    words,
+    narrationEnds: [1, 3],
+    inserts: [{ start: 10, end: 12, quote: "Ow.", afterWord: 1, afterWordText: "guy." }],
+    outro: [{ start: 20, end: 22, quote: "Nasty." }],
+    story: null,
+    excluded: [{ start: 0, end: 3 }],
+    sourceSeconds: 100,
+    sheets: ["- /x/sheet_000.png  (0–315s)"],
+    transcript: "[10.0–12.0] Ow."
+  }
+  const withBrief = buildShotsBrief({ ...input, creatorBrief: "Focus on the friend's reactions." })
+  assert.ok(withBrief.startsWith("The creator's brief for this short: Focus on the friend's reactions."))
+  for (const none of [null, "   ", undefined]) {
+    assert.doesNotMatch(buildShotsBrief({ ...input, creatorBrief: none }), /creator's brief/)
+  }
+})

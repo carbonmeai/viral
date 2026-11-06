@@ -1,5 +1,6 @@
 import type { StoryMap } from "@viral/contracts"
 import type { Range } from "./thumbnail-rules.ts"
+import { creatorBriefLine } from "../projects/creator-brief.ts"
 
 // The stage's job and tool contract; what makes a good thumbnail comes from the thumbnails skill.
 export const THUMBNAIL_PROMPT = `You make the thumbnail for a finished short, following the thumbnails skill below. The default
@@ -20,6 +21,8 @@ one emoji. You choose the moments, the crops, the colours and the words; the ser
 5. Call \`propose_thumbnail\` once with the thumbnail you previewed last.`
 
 export interface ThumbnailBrief {
+  // the creator's brief for the short ("what should it achieve?"), put first; null or absent = none
+  readonly creatorBrief?: string | null
   readonly title: string
   readonly alternates: ReadonlyArray<string>
   readonly video: { readonly title: string | null; readonly channel: string | null; readonly width: number; readonly height: number }
@@ -35,6 +38,7 @@ const fmt = (t: number) => t.toFixed(1)
 
 export const buildThumbnailBrief = (brief: ThumbnailBrief) =>
   [
+    creatorBriefLine(brief.creatorBrief),
     `The short: "${brief.title}"${brief.alternates.length === 0 ? "" : ` (also tried: ${brief.alternates.map((a) => `"${a}"`).join(", ")})`}`,
     `From: ${brief.video.title ?? "untitled"}${brief.video.channel === null ? "" : ` by ${brief.video.channel}`}, ` +
     `${fmt(brief.sourceSeconds)}s long, frames ${brief.video.width}×${brief.video.height}.`,

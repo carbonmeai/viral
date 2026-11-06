@@ -29,6 +29,8 @@ export const Project = Schema.Struct({
   musicTrackId: Schema.NullOr(MusicTrackId),
   // the ElevenLabs voice for the voiceover; null = the preset's voice
   voiceId: Schema.NullOr(Schema.String),
+  // what the short should achieve, in your words ("focus on the friend's reactions"); steers its agents
+  brief: Schema.NullOr(Schema.String),
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString
 })
@@ -50,16 +52,23 @@ export class ProjectsRpcs extends RpcGroup.make(
       title: Schema.String,
       approach: ApproachName,
       presetId: Schema.NullOr(PresetId),
-      musicTrackId: Schema.NullOr(MusicTrackId)
+      musicTrackId: Schema.NullOr(MusicTrackId),
+      brief: Schema.optionalKey(Schema.NullOr(Schema.String))
     },
     success: Project,
     error: Schema.Union([SourceNotFound, PresetNotFound, MusicTrackNotFound])
   }),
   // Creates a short from one of the story stage's proposals: its approach, with the proposal's title.
   Rpc.make("CreateProjectFromProposal", {
-    payload: { sourceId: SourceId, proposal: Schema.Int },
+    payload: { sourceId: SourceId, proposal: Schema.Int, brief: Schema.optionalKey(Schema.NullOr(Schema.String)) },
     success: Project,
     error: Schema.Union([SourceNotFound, ProposalNotFound])
+  }),
+  // Sets what the short should achieve (null or blank clears it). It steers the agents from their next run.
+  Rpc.make("SetProjectBrief", {
+    payload: { id: ProjectId, brief: Schema.NullOr(Schema.String) },
+    success: Project,
+    error: ProjectNotFound
   }),
   // Picks the short's style (null = the default preset).
   Rpc.make("SetProjectPreset", {

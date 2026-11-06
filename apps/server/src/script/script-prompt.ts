@@ -1,3 +1,5 @@
+import { creatorBriefLine } from "../projects/creator-brief.ts"
+
 // The script stage's job and tool contract. How to write the script (structure, rules, length) comes from
 // the `story-arc` skill and the project's approach skill, which follow this in the system prompt.
 export const SCRIPT_WRITER_PROMPT = `You write the script for one short made from a long video, following the
@@ -22,10 +24,13 @@ export interface ScriptBrief {
   readonly excluded: ReadonlyArray<{ readonly start: number; readonly end: number }>
   // the story stage's proposal this short was made from, when it was
   readonly angle: { readonly title: string; readonly hook: string; readonly why: string } | null
+  // the creator's brief for the short ("what should it achieve?"), put first; null or absent = none
+  readonly creatorBrief?: string | null
 }
 
 export const buildScriptPrompt = (brief: ScriptBrief) =>
   [
+    creatorBriefLine(brief.creatorBrief),
     `Video: ${brief.title ?? "untitled"}${brief.channel === null ? "" : ` (by ${brief.channel})`}`,
     brief.excluded.length === 0
       ? ""

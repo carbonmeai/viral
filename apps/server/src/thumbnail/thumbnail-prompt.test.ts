@@ -24,3 +24,21 @@ test("the brief carries the short, the video's frame size, the story, the ads an
   assert.match(brief, /Excluded ranges \(never use\): 2158\.0–2296\.0s/)
   assert.match(brief, /sheet_000\.png/)
 })
+
+test("the creator's brief comes first when the short has one, and not at all when it doesn't", () => {
+  const input = {
+    title: "He Put 7 Tastes Into 1 Candy",
+    alternates: ["One Candy, 7 Tastes"],
+    video: { title: "Extreme candy", channel: "NileBlue", width: 854, height: 480 },
+    lines: ["NARRATOR: This guy made a candy."],
+    story: null,
+    excluded: [{ start: 2158, end: 2296 }],
+    sourceSeconds: 2296,
+    sheets: ["- /x/sheet_000.png  (0–315s)"]
+  }
+  const withBrief = buildThumbnailBrief({ ...input, creatorBrief: "Focus on the friend's reactions." })
+  assert.ok(withBrief.startsWith("The creator's brief for this short: Focus on the friend's reactions."))
+  for (const none of [null, "   ", undefined]) {
+    assert.doesNotMatch(buildThumbnailBrief({ ...input, creatorBrief: none }), /creator's brief/)
+  }
+})

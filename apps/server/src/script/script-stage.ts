@@ -72,6 +72,7 @@ export class ScriptStage extends Context.Service<ScriptStage, {
         const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
         const angle = yield* chosenAngle(project)
         const script = yield* runChecked(agent, ctx, scriptTask(project.approach, {
+          creatorBrief: project.brief,
           title: source.title,
           channel: source.channel,
           transcript: transcripts.timedText(transcript),
