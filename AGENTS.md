@@ -86,7 +86,10 @@ apps/server/src/
                        the script gate
   voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
                        silence trimmed, atempo to the preset's words/sec, local-Whisper word timings, voice gate.
-                       The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice
+                       The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice.
+                       Library › Voices: Explore ElevenLabs' shared library (ExploreVoices; Narration first), add one
+                       (AddLibraryVoice; a full plan's voice slots fail as code "limit"), RemoveVoice (never premade).
+                       Tests run against a fake HTTP server via ELEVENLABS_API_URL — never add voices to a real account
   sections/            the sections stage (cut-down shorts): an agent picks the creator's best stretches of
                        speech by story beat, hook first (`contact_sheet`, `preview_sections`); the server snaps
                        them to the nearest whole words, checks length/order/overlaps/excluded ranges, and draws a

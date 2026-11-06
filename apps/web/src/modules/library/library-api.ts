@@ -1,9 +1,15 @@
+import type { ExploreVoicesQuery } from "@viral/contracts"
+import { Atom } from "effect/reactivity"
 import { ViralClient } from "../../api/client.ts"
 
 // Reads, each tagged so a save on the same topic refreshes it (Settings › Voice shares "presets" and "voices").
 export const presetsAtom = ViralClient.query("ListPresets", undefined, { reactivityKeys: ["presets"] })
 export const tracksAtom = ViralClient.query("ListMusicTracks", undefined, { reactivityKeys: ["music"] })
 export const voicesAtom = ViralClient.query("ListVoices", undefined, { reactivityKeys: ["voices"] })
+// One page of ElevenLabs' shared library per query; keyed by the query's JSON so each page is fetched once.
+export const exploreVoicesAtom = Atom.family((key: string) =>
+  ViralClient.query("ExploreVoices", JSON.parse(key) as ExploreVoicesQuery, { reactivityKeys: ["voices"] })
+)
 
 // Writes.
 export const createPreset = ViralClient.mutation("CreatePreset")
@@ -19,3 +25,5 @@ export const addMusicFolder = ViralClient.mutation("AddMusicFolder")
 export const setMusicTrackKind = ViralClient.mutation("SetMusicTrackKind")
 export const removeMusicTrack = ViralClient.mutation("RemoveMusicTrack")
 export const previewVoice = ViralClient.mutation("PreviewVoice")
+export const addLibraryVoice = ViralClient.mutation("AddLibraryVoice")
+export const removeVoice = ViralClient.mutation("RemoveVoice")
