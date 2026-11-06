@@ -22,6 +22,8 @@ export const ProjectArtifactKind = Schema.Literals([
   // a cut-down short's assembled plan, the renderer's input (render-short.py)
   "cut-render-plan",
   "music-config",
+  // a short's own music, fitted from a library song (fit-music.py)
+  "music-bed",
   "render",
   "captions",
   "metadata",

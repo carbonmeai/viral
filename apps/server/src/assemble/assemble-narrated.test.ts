@@ -43,6 +43,7 @@ const input = (preset: typeof recap): NarratedInput => ({
       bpm: 117.5,
       dropS: 16.588,
       beatSource: "manual",
+      kind: "song",
       loudnessLufs: null,
       analyzedAt: null,
       createdAt: undefined as never

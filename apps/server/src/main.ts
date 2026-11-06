@@ -8,6 +8,8 @@ import { createServer } from "node:http"
 import { AgentSession } from "./agent-session/agent-session.ts"
 import { Artifacts } from "./artifacts/artifacts.ts"
 import { ArtifactsRpcLive } from "./artifacts/artifacts-rpc.ts"
+import { MusicBeds } from "./music-bed/music-beds.ts"
+import { MusicBedsRpcLive } from "./music-bed/music-beds-rpc.ts"
 import { MusicLibrary } from "./music-library/music-library.ts"
 import { MusicLibraryRpcLive } from "./music-library/music-library-rpc.ts"
 import { Presets } from "./presets/presets.ts"
@@ -90,7 +92,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     ToolsRpcLive,
     SettingsRpcLive,
     SourceOverviewRpcLive,
-    ShortWorkspaceRpcLive
+    ShortWorkspaceRpcLive,
+    MusicBedsRpcLive.pipe(Layer.provide(MusicBeds.layer))
   ]),
   Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)

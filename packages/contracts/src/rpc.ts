@@ -9,8 +9,9 @@ import { SettingsRpcs } from "./settings.ts"
 import { ShortWorkspaceRpcs } from "./short-workspace.ts"
 import { SourceOverviewRpcs } from "./source-overview.ts"
 import { SourcesRpcs } from "./sources.ts"
+import { MusicBedsRpcs } from "./music-bed.ts"
 import { ToolsRpcs } from "./tools.ts"
 import { VoicesRpcs } from "./voices.ts"
 
 // Everything the server exposes over its WebSocket; each domain owns its own group.
-export const ViralRpcs = SourcesRpcs.merge(ProjectsRpcs, PresetsRpcs, MusicLibraryRpcs, ArtifactsRpcs, SoundLibraryRpcs, ReferencesRpcs, RunsRpcs, VoicesRpcs, ToolsRpcs, SettingsRpcs, SourceOverviewRpcs, ShortWorkspaceRpcs)
+export const ViralRpcs = SourcesRpcs.merge(ProjectsRpcs, PresetsRpcs, MusicLibraryRpcs, ArtifactsRpcs, SoundLibraryRpcs, ReferencesRpcs, RunsRpcs, VoicesRpcs, ToolsRpcs, SettingsRpcs, SourceOverviewRpcs, ShortWorkspaceRpcs, MusicBedsRpcs)

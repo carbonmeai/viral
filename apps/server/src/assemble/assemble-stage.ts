@@ -3,10 +3,13 @@ import { AdRanges, type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
+import { MusicBedFitter } from "../music-bed/music-bed-fitter.ts"
+import { dropWordKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { Presets } from "../presets/presets.ts"
 import { Projects } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
+import { Settings } from "../settings/settings.ts"
 import { narrationEnds } from "../shots/shot-rules.ts"
 import { Sources } from "../sources/sources.ts"
 import { assembleCut } from "./assemble-cut.ts"
@@ -39,6 +42,8 @@ export class AssembleStage extends Context.Service<AssembleStage, {
       const music = yield* MusicLibrary
       const artifacts = yield* Artifacts
       const home = yield* ViralHome
+      const fitter = yield* MusicBedFitter
+      const settings = yield* Settings
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
 
@@ -80,11 +85,12 @@ export class AssembleStage extends Context.Service<AssembleStage, {
         const track = project.musicTrackId === null
           ? null
           : yield* music.get(project.musicTrackId).pipe(Effect.option, Effect.map(Option.getOrNull))
-        // the drop lands on the first word of the last narrated line
+        // the drop lands on the word you picked for this short, or else on the first word of the last narrated line
         const ends = narrationEnds(script, words)
-        const dropWord = ends.length === 0 ? null : ends.length === 1 ? 0 : ends.at(-2)! + 1
+        const picked = Option.filter(yield* settings.get(dropWordKey(project.id), Schema.Int), (w) => w >= 0 && w < words.length)
+        const dropWord = Option.isSome(picked) ? picked.value : ends.length === 0 ? null : ends.length === 1 ? 0 : ends.at(-2)! + 1
 
-        const plan = assembleNarrated({
+        const assembled = assembleNarrated({
           slug: project.slug,
           title: project.title,
           source: yield* fileOf(sourceOwner, "source-video"),
@@ -100,9 +106,24 @@ export class AssembleStage extends Context.Service<AssembleStage, {
           music: track === null ? null : { track, file: path.join(home.music, track.path) },
           dropWord
         })
-        if (track !== null && plan.music === undefined) {
+        if (track !== null && assembled.music === undefined) {
           yield* ctx.progress(null, `"${track.title}" has no BPM or drop yet, so this short goes without music`)
         }
+        // the short gets its own fitted bed, saved with it; the library song is never changed
+        // only a song with a known drop is fitted; a plain looped track (a file name) plays as it is
+        const plan = track === null || typeof assembled.music !== "object"
+          ? assembled
+          : (yield* fitter.fit({
+            owner: ctx.owner,
+            stageRunId: ctx.stageRunId,
+            plan: assembled,
+            track,
+            dropWord,
+            dropWordText: dropWord === null ? null : words[dropWord]?.w ?? null
+          }).pipe(
+            Effect.tap(({ bed }) => ctx.progress(null, `music: "${bed.trackTitle}" fitted, the drop lands at ${bed.dropAtS.toFixed(1)}s`)),
+            Effect.mapError((e) => fail(`music-${e.code}`, e.message))
+          )).plan
 
         const slot = yield* artifacts.allocate(ctx.owner, "narrated-plan")
         yield* Schema.encodeEffect(PlanJson)(plan).pipe(
@@ -153,6 +174,8 @@ export class AssembleStage extends Context.Service<AssembleStage, {
     Sources.layer,
     Presets.layer,
     MusicLibrary.layer,
+    MusicBedFitter.layer,
+    Settings.layer,
     Artifacts.layer,
     ViralHome.layer,
     NodeServices.layer

@@ -33,6 +33,13 @@ apps/server/src/
   assemble/            the assemble stage: shot plan + preset (+ music with a known drop) → the renderer's
                        narrated plan, or a cut-down short's sections + preset → the cut-down renderer's plan;
                        deterministic, so a short re-renders in another style without agent work
+  music-bed/           a short's own music bed: the library holds raw songs only, never changed. Assemble fits the
+                       short's song to it (render/fit-music.py: the groove looped in whole bars so the song's drop
+                       lands on the drop word) and records a `music-bed` artifact (the wav + which parts of the song
+                       play where); the narrated plan's `music_bed` points the renderer at it, so it doesn't fit again.
+                       GetMusicBed reads it; RefitMusic changes the song (or removes it) and/or the drop word
+                       (setting project.<id>.music.dropWord) and re-runs the short from assemble. Cut-down shorts
+                       have no bed
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
                        srt and <slug>.md into ~/.viral/renders/
   thumbnail/           the thumbnail stage, last in both pipelines (gated): a vision agent (thumbnails skill) picks
@@ -117,7 +124,8 @@ apps/server/src/
   render/              the render stage (gated; a rejection goes back to the shots, or the sections for a
                        cut-down short, with your note, via the stage's `rejectTo`) + render engine + its Python
                        scripts (render-short.py is the skill's cut-down renderer: word-snapped sections, crop or
-                       blurred fill, 3-word captions, hook title card, credit; render-narrated.py is the viral-shorts renderer,
+                       blurred fill, 3-word captions, hook title card, credit; render-narrated.py is the viral-shorts renderer;
+                       music_bed.py is its music-bed math, shared with fit-music.py,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
                        headline, chunk/quote captions, labels, credit). Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
