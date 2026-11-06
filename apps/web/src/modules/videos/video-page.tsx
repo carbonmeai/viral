@@ -27,6 +27,7 @@ import { StoryBeats } from "./story-beats.tsx"
 import { StoryStrip } from "./story-strip.tsx"
 import { TranscriptList } from "./transcript-list.tsx"
 import { VideoDetails } from "./video-details.tsx"
+import { VideoSkeleton } from "./video-skeleton.tsx"
 import { createProjectFromProposal, runProgressAtom, sourceOverviewAtom, startProjectRun } from "./videos-api.ts"
 import { firstSentence, type FrameView, framesOf, nearestStill, proposalStillTime, runSpend, shortForProposal } from "./video-values.ts"
 
@@ -40,7 +41,7 @@ export function VideoPage({ sourceId, tab, onTab }: { readonly sourceId: SourceI
   const data = AsyncResult.value(overview)
   // until the first answer: the same page frame, with loading or "can't reach the server"
   if (Option.isNone(data)) {
-    return <Page title="Video"><ServerState result={overview} onRetry={refresh}>{() => null}</ServerState></Page>
+    return <Page title="Video"><ServerState result={overview} onRetry={refresh} skeleton={<VideoSkeleton />}>{() => null}</ServerState></Page>
   }
   return data.value.run === null
     ? <VideoContent data={data.value} progress={emptyProgress} tab={tab} onTab={onTab} refresh={refresh} />

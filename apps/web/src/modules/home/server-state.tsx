@@ -1,15 +1,20 @@
 import { Button } from "@viral/ui/primitives/button"
+import { SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
 import { serverUrl } from "../../config/server-url.ts"
+import { SkeletonPanel } from "./home-skeleton.tsx"
 
-// Renders the data once it's there; while loading, a quiet line; if the server can't be reached, says so
-// with where it looked and a way to try again.
-export function ServerState<A, E>({ result, children, onRetry }: {
+// Renders the data once it's there; while loading, a skeleton of the page's real layout; if the server can't
+// be reached, says so with where it looked and a way to try again.
+export function ServerState<A, E>({ result, children, onRetry, skeleton }: {
   readonly result: AsyncResult.AsyncResult<A, E>
   readonly children: (data: A) => ReactNode
   readonly onRetry?: () => void
+  // the page's layout as grey shapes, shown until the data arrives; every page should pass its own (the generic
+  // panel is only a stopgap)
+  readonly skeleton?: ReactNode
 }) {
   // the latest data, even when the most recent refresh failed: a blip shouldn't blank the page
   const data = AsyncResult.value(result)
@@ -25,5 +30,5 @@ export function ServerState<A, E>({ result, children, onRetry }: {
       </div>
     )
   }
-  return <div className="px-1 py-4 text-fg-2">Loading…</div>
+  return <SkeletonRegion label="Loading">{skeleton ?? <SkeletonPanel rows={3} />}</SkeletonRegion>
 }

@@ -13,6 +13,7 @@ import { useDetailed } from "../system/detail.tsx"
 import { WaitingRows } from "../waiting/waiting-rows.tsx"
 import { homeStats } from "./home-values.ts"
 import { type Overview, overviewAtom } from "./overview.ts"
+import { HomeSkeleton } from "./home-skeleton.tsx"
 import { ServerState } from "./server-state.tsx"
 
 const WAITING_ON_HOME = 3
@@ -27,7 +28,7 @@ export function HomePage() {
       description="Your videos, the shorts made from them, and what’s waiting for you."
       actions={<Link to="/videos/new" className={buttonVariants({ variant: "primary", size: "md" })}><Plus />New source</Link>}
     >
-      <ServerState result={overview} onRetry={retry}>{(data) => <HomeContent data={data} />}</ServerState>
+      <ServerState result={overview} onRetry={retry} skeleton={<HomeSkeleton />}>{(data) => <HomeContent data={data} />}</ServerState>
     </Page>
   )
 }
