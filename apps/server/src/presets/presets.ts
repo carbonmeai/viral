@@ -39,6 +39,8 @@ export class Presets extends Context.Service<Presets, {
   readonly getDefault: Effect.Effect<Preset>
   create(name: string, config: PresetConfig): Effect.Effect<Preset, PresetNameTaken>
   setDefault(id: PresetId): Effect.Effect<Preset, PresetNotFound>
+  // replaces a preset's settings, e.g. the default style's voice from Settings › Voice
+  updateConfig(id: PresetId, config: PresetConfig): Effect.Effect<Preset, PresetNotFound>
   remove(id: PresetId): Effect.Effect<boolean, PresetIsDefault>
 }>()("@viral/server/presets/presets") {
   static readonly layer = Layer.effect(
@@ -110,6 +112,14 @@ export class Presets extends Context.Service<Presets, {
         return yield* get(id)
       })
 
+      const updateConfig = Effect.fn("Presets.updateConfig")(function*(id: PresetId, config: PresetConfig) {
+        yield* get(id)
+        const now = DateTime.formatIso(yield* DateTime.now)
+        const encoded = yield* Schema.encodeEffect(ConfigJson)(config).pipe(Effect.orDie)
+        yield* sql`UPDATE presets SET config = ${encoded}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const remove = Effect.fn("Presets.remove")(function*(id: PresetId) {
         const row = yield* findById(id).pipe(Effect.orDie)
         if (row._tag === "None") return false
@@ -118,7 +128,7 @@ export class Presets extends Context.Service<Presets, {
         return true
       })
 
-      return Presets.of({ list, get, getDefault, create, setDefault, remove })
+      return Presets.of({ list, get, getDefault, create, setDefault, updateConfig, remove })
     })
   ).pipe(Layer.provide([DatabaseLive, SecureRandom.layerWebCrypto]))
 }
