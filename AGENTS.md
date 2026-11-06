@@ -86,12 +86,16 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        like CarbonMe's dashboard:
   routes/              thin file routes; each renders one module's page
   modules/<feature>/   a feature's page, parts, data atoms, pure values and tests (layout, system, home, waiting,
-                       settings, …). layout/ is the fixed frame: sidebar, title bar, page column
+                       videos, shorts, settings, …). layout/ is the fixed frame: sidebar, title bar, page column.
+                       videos/: New source and a video's page (GetSourceOverview; the source run followed live
+                       by folding SubscribeRun in run-progress.ts); frames come from contact-sheet stills, or from
+                       sheet tiles on older sheets
   api/                 the RPC client (AtomRpc over one WebSocket) and the atom registry
   lib/  config/        small shared helpers (media URLs, formatting); where the server is
 apps/desktop/          the Electron shell: starts the server (node in dev; Electron's own Node packaged), opens the
                        UI (the dev server, or viral://app/ from Resources/web with a strict CSP), window buttons
-                       over the sidebar, preload bridge (server URL, user name, inset), electron-updater.
+                       over the sidebar, preload bridge (server URL, user name, inset, Show in Finder, the open
+                       panel for a video file), electron-updater.
                        vp pack bundles main/preload and the server (dist-server); electron-builder makes Viral.app
 packages/contracts/    wire schemas + RpcGroups, one file per domain
 packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,
