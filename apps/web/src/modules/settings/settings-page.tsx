@@ -3,9 +3,10 @@ import { Panel } from "@viral/ui/primitives/panel"
 import { Row } from "@viral/ui/primitives/row"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Page } from "../layout/page.tsx"
+import { ToolsPanel } from "../tools/tools-panel.tsx"
 import { type Theme, themeAtom } from "../system/preferences.ts"
 
-// Settings. M1 has the appearance; accounts, agents and usage arrive in M6.
+// Settings. M1 has the appearance and the tools; accounts, agents and usage arrive in M6.
 export function SettingsPage() {
   const [theme, setTheme] = useAtom(themeAtom)
   return (
@@ -25,6 +26,7 @@ export function SettingsPage() {
             />
           </Row>
         </Panel>
+        <ToolsPanel />
         <div className="rounded-panel bg-panel px-4 py-4 text-fg-2">Accounts, agents and usage arrive in M6 of the desktop plan.</div>
       </div>
     </Page>
