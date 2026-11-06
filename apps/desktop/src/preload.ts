@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("viralDesktop", {
   // calls back with true/false whenever the window enters or leaves full screen; returns an unsubscribe
   // reveals a file or folder of the Viral library in Finder; resolves false when it isn't one
   showInFinder: (path: string): Promise<boolean> => ipcRenderer.invoke("viral:show-in-finder", path),
+  // the macOS open panel for a video file: its path, or null when cancelled
+  openFile: (): Promise<string | null> => ipcRenderer.invoke("viral:open-file"),
   onFullScreenChange: (listener: (fullScreen: boolean) => void) => {
     const handler = (_event: unknown, fullScreen: unknown) => listener(fullScreen === true)
     ipcRenderer.on("viral:full-screen", handler)

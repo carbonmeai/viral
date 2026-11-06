@@ -9,6 +9,8 @@ export interface DesktopBridge {
   onFullScreenChange(listener: (fullScreen: boolean) => void): () => void
   // reveals a file or folder of the Viral library in Finder; resolves false when it isn't one
   showInFinder(path: string): Promise<boolean>
+  // the macOS open panel for a video file: its path, or null when cancelled
+  openFile(): Promise<string | null>
   // the signed-in Mac user's name, shown at the bottom of the sidebar
   readonly userName: string
 }
