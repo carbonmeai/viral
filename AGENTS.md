@@ -103,7 +103,10 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        inspector, timeline), from GetShortWorkspace and the run followed live. Script and Voice
                        answer their gates (approve, ask with a note, edit; a script edit is checked first with
                        CheckScriptEdit so a bad one never fails the run); editor-values.ts lays the short out on
-                       its timeline the way the renderer plays it
+                       its timeline the way the renderer plays it. shots/: the Shots step (preview in the style's
+                       framing, storyboard, a frame picker over ListFramesAround stills, framing/crop/speed); its
+                       changes collect into one edit, checked with CheckShotsEdit before it answers the gate.
+                       Edits to an approved short's shots aren't supported yet (only at the gate)
   api/                 the RPC client (AtomRpc over one WebSocket) and the atom registry
   lib/  config/        small shared helpers (media URLs, formatting); where the server is
 apps/desktop/          the Electron shell: starts the server (node in dev; Electron's own Node packaged), opens the
