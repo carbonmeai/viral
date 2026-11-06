@@ -25,7 +25,7 @@ export const Project = Schema.Struct({
   format: ProjectFormat,
   // null = use the default preset
   presetId: Schema.NullOr(PresetId),
-  // null = the music stage asks for a track, or the short goes without music
+  // null = no music: a voice-only short is a normal choice
   musicTrackId: Schema.NullOr(MusicTrackId),
   // the ElevenLabs voice for the voiceover; null = the preset's voice
   voiceId: Schema.NullOr(Schema.String),
