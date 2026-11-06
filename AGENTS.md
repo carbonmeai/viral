@@ -93,15 +93,24 @@ apps/server/src/
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
                        A task can offer helper tools (`agentTool`) besides its propose_* tool.
                        Providers: claude-cli-provider.ts (the Claude CLI, always the default) and
-                       ai-gateway-provider.ts (AI SDK + Vercel AI Gateway, ai/@ai-sdk/gateway pinned; Experimental,
-                       for evals and developers: same JSON Schema tool, stops on its call, history stored in
-                       ~/.viral/agent-sessions/ for resume, gateway cost incl. BYOK market cost, Anthropic cache
-                       markers). The route is task.route (evals), else settings stage.<name>.provider/.model
+                       ai-gateway-provider.ts (AI SDK + Vercel AI Gateway, ai/@ai-sdk/gateway pinned: same JSON
+                       Schema tool, whose output is decoded in the tool so a mismatch goes back to the model to fix
+                       in the same run; history stored in ~/.viral/agent-sessions/ for resume, gateway cost incl.
+                       BYOK market cost, Anthropic cache markers). The route is task.route (evals), else
+                       resolveAgentRoute (contracts/settings.ts, shared with the web): the step's own choice, then
+                       the default (agents.default); shots, sections and thumbnail stay on the Claude CLI (images).
+                       Every cost is stamped with its provider and billing (billed | subscription: the CLI is a
+                       plan's value unless ANTHROPIC_API_KEY is set) on stage_runs
   eval/                the eval harness (`bun run cli eval`): runs ads, story, script and metadata on a fixed fixture
                        (~/.viral/fixtures/candy/eval, made by `eval export`) with no gates, through the production
                        tasks and checks, on any models, in a scratch library; records cost, time, first-try pass and
                        fix rounds, stops at the budget, and writes report.json/report.md + a side-by-side eval.html
-  settings/            app preferences as JSON under keys (e.g. stage.story.model)
+                       (--include puts earlier evals' runs on the same page). Each run's result and spend is also
+                       recorded in your library's eval_runs (eval-records.ts; `eval record <dir>` for an old one),
+                       for Settings › Usage (Evals) and Settings › Agents (how each model did)
+  settings/            app preferences as JSON under keys; app-settings.ts is the typed view: agents.default and
+                       stage.<name>.provider/.model (Settings › Agents), transcription.provider
+  usage/               Settings › Usage: spend by day, provider (billed vs plan), model, short, step, and evals
   render/              the render stage (gated; a rejection goes back to the shots, or the sections for a
                        cut-down short, with your note, via the stage's `rejectTo`) + render engine + its Python
                        scripts (render-short.py is the skill's cut-down renderer: word-snapped sections, crop or
@@ -198,6 +207,7 @@ bun run cli           # dev client; prints every command
 bun run test          # node --test over apps and packages
 bun run cli eval all --models claude-cli,openai/gpt-6-luna --runs 2 --budget 5
                       # agent-stage eval vs the CLI baseline → ~/.viral/evals/<date>-<stages>/eval.html
+                      # (spend recorded in your library; --include <earlier eval dirs> combines the pages)
 bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
 bun run fixtures:sync # copy the candy project (plans, media, golden outputs) into ~/.viral/fixtures (not in git)
 ```
