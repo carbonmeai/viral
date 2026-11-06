@@ -42,7 +42,14 @@ const transcriptText = (transcript: Transcript) =>
 // xAI key is available, otherwise local mlx-whisper on Apple Silicon. VIRAL_TRANSCRIBER=grok|whisper-local
 // forces one.
 export class Transcriber extends Context.Service<Transcriber, {
-  transcribe(video: string, outDir: string, progress: Progress): Effect.Effect<TranscribeResult, TranscribeError>
+  // `prefer`: the provider to use when it's available (voiceovers keep to the one the approved takes used);
+  // VIRAL_TRANSCRIBER still wins.
+  transcribe(
+    video: string,
+    outDir: string,
+    progress: Progress,
+    options?: { readonly prefer?: TranscriptProvider }
+  ): Effect.Effect<TranscribeResult, TranscribeError>
 }>()("@viral/server/transcribe/transcriber") {
   static readonly layer = Layer.effect(
     Transcriber,
@@ -145,8 +152,15 @@ export class Transcriber extends Context.Service<Transcriber, {
         } satisfies TranscribeResult
       })
 
-      const transcribe = Effect.fn("Transcriber.transcribe")(function*(video: string, outDir: string, progress: Progress) {
-        const provider = yield* pickProvider
+      const transcribe = Effect.fn("Transcriber.transcribe")(function*(
+        video: string,
+        outDir: string,
+        progress: Progress,
+        options?: { readonly prefer?: TranscriptProvider }
+      ) {
+        const prefer = options?.prefer
+        const available = prefer === "whisper-local" ? isAppleSilicon : prefer === "grok" && Option.isSome(yield* secrets.get("xai"))
+        const provider = Option.isNone(forced) && prefer !== undefined && available ? prefer : yield* pickProvider
         yield* progress(0, `transcribing with ${provider}`)
         return yield* provider === "grok" ? withGrok(video, outDir, progress) : withWhisper(video, outDir, progress)
       })
@@ -154,4 +168,27 @@ export class Transcriber extends Context.Service<Transcriber, {
       return Transcriber.of({ transcribe })
     })
   ).pipe(Layer.provide([ScriptRunner.layer, Secrets.layer, NodeServices.layer, FetchHttpClient.layer]))
+
+  // For tests: writes `answer(media)` as the transcript instead of transcribing.
+  static readonly replay = (answer: (media: string) => Transcript) =>
+    Layer.effect(
+      Transcriber,
+      Effect.gen(function*() {
+        const fs = yield* FileSystem.FileSystem
+        const path = yield* Path.Path
+        return Transcriber.of({
+          transcribe: Effect.fn("Transcriber.replay")(function*(media: string, outDir: string) {
+            const transcript = answer(media)
+            const json = yield* Schema.encodeEffect(TranscriptJson)(transcript)
+            yield* fs.writeFileString(path.join(outDir, "transcript.json"), json)
+            return {
+              provider: "whisper-local",
+              language: transcript.language,
+              segments: transcript.segments.length,
+              durationS: transcript.segments.at(-1)?.end ?? 0
+            } satisfies TranscribeResult
+          }, Effect.orDie)
+        })
+      })
+    ).pipe(Layer.provide(NodeServices.layer))
 }

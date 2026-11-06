@@ -44,6 +44,7 @@ const ProjectRow = Schema.Struct({
   format: ProjectFormat,
   preset_id: Schema.NullOr(PresetId),
   music_track_id: Schema.NullOr(MusicTrackId),
+  voice_id: Schema.NullOr(Schema.String),
   created_at: Schema.DateTimeUtcFromString,
   updated_at: Schema.DateTimeUtcFromString
 })
@@ -57,6 +58,7 @@ const toProject = (row: typeof ProjectRow.Type): Project => ({
   format: row.format,
   presetId: row.preset_id,
   musicTrackId: row.music_track_id,
+  voiceId: row.voice_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 })
@@ -67,6 +69,7 @@ export class Projects extends Context.Service<Projects, {
   create(input: CreateProjectInput): Effect.Effect<Project, SourceNotFound | PresetNotFound | MusicTrackNotFound>
   // A short from the source story's proposal number `proposal` (0-based): its approach and title.
   fromProposal(sourceId: SourceId, proposal: number): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
+  setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
   list(sourceId: SourceId | null): Effect.Effect<ReadonlyArray<Project>>
   get(id: ProjectId): Effect.Effect<Project, ProjectNotFound>
   remove(id: ProjectId): Effect.Effect<boolean>
@@ -157,6 +160,12 @@ export class Projects extends Context.Service<Projects, {
         return rows.map(toProject)
       })
 
+      const setVoice = Effect.fn("Projects.setVoice")(function*(id: ProjectId, voiceId: string | null) {
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql`UPDATE projects SET voice_id = ${voiceId}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const remove = Effect.fn("Projects.remove")(function*(id: ProjectId) {
         const deleted = yield* sql`DELETE FROM projects WHERE id = ${id} RETURNING id`
         if (deleted.length === 0) return false
@@ -164,7 +173,7 @@ export class Projects extends Context.Service<Projects, {
         return true
       }, Effect.orDie)
 
-      return Projects.of({ create, fromProposal, list, get, remove })
+      return Projects.of({ create, fromProposal, setVoice, list, get, remove })
     })
   ).pipe(
     Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer]),

@@ -7,13 +7,18 @@ import { printUpdate } from "./print-event.ts"
 export const RUN_USAGE = `  follow <run-id> | cancel <run-id> | resume <run-id>
   requests | approve <request-id> | reject <request-id> "<note>"`
 
-// Prints a run's updates until it finishes or stops at a gate you need to answer.
+// Prints a run's updates until it finishes or stops at a gate you still need to answer (the history
+// replays gates you already answered).
 export const follow = Effect.fn("follow")(function*(runId: RunId) {
   const client = yield* Client
   const print = printUpdate()
   yield* client.SubscribeRun({ runId, afterSeq: 0 }).pipe(
     Stream.tap(print),
-    Stream.takeUntil((u) => u._tag === "Event" && u.event._tag === "RequestRaised"),
+    Stream.takeUntilEffect((u) => {
+      if (u._tag !== "Event" || u.event._tag !== "RequestRaised") return Effect.succeed(false)
+      const raised = u.event.request.id
+      return Effect.map(client.ListPendingRequests(), (pending) => pending.some((r) => r.id === raised))
+    }),
     Stream.runDrain
   )
 })

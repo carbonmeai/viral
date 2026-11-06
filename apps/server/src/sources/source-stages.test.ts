@@ -12,6 +12,8 @@ import { RunManager } from "../runs/run-manager.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { makeTestVideo } from "../testing/test-video.ts"
 import { Sources } from "./sources.ts"
+import { ElevenLabs } from "../voice/eleven-labs.ts"
+import { Transcriber } from "../transcribe/transcriber.ts"
 
 let work: string
 let video: string
@@ -24,11 +26,14 @@ before(() => {
 })
 after(() => rmSync(work, { recursive: true, force: true }))
 
+// Runs that don't reach the voice stage never speak.
+const NoVoice = Layer.mergeAll(ElevenLabs.replay(() => new Uint8Array()), Transcriber.layer)
+
 const runtime = () =>
   ManagedRuntime.make(
     RunManager.layer.pipe(
       Layer.provideMerge(PipelineStagesLive),
-      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, AgentSession.replay(() => null)))
+      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, AgentSession.replay(() => null), NoVoice))
     )
   )
 

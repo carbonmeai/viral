@@ -37,6 +37,9 @@ apps/server/src/
                        reject with a note, edit), cancel, resume after restart, events + live progress
   script/              the script stage: prompt (built on the chosen proposal's angle), per-approach rules, and
                        the script gate
+  voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
+                       silence trimmed, atempo to the preset's words/sec, local-Whisper word timings, voice gate.
+                       The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   agent-session/       runs every agent stage on the Claude CLI: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,

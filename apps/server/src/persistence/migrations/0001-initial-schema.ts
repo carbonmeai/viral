@@ -84,6 +84,7 @@ const SCHEMA = `
     format          TEXT NOT NULL CHECK (format IN ('narrated', 'cut-down')),  -- derived from the approach
     preset_id       TEXT REFERENCES presets (id) ON DELETE SET NULL,     -- null = use the default preset
     music_track_id  TEXT REFERENCES music_tracks (id) ON DELETE SET NULL, -- optional; the music stage asks if missing
+    voice_id        TEXT,                         -- ElevenLabs voice id; null = the preset's voice
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,                -- for "last touched" sorting
     UNIQUE (source_id, number)

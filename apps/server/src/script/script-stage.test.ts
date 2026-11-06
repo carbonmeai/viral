@@ -12,6 +12,8 @@ import { PipelineStagesLive } from "../runs/pipeline-stages.ts"
 import { RunManager } from "../runs/run-manager.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { Sources } from "../sources/sources.ts"
+import { ElevenLabs } from "../voice/eleven-labs.ts"
+import { Transcriber } from "../transcribe/transcriber.ts"
 
 let home: string
 before(() => {
@@ -47,11 +49,14 @@ const replay = AgentSession.replay((task: AgentTask<Schema.Top>) => {
     }
 })
 
+// Runs that don't reach the voice stage never speak.
+const NoVoice = Layer.mergeAll(ElevenLabs.replay(() => new Uint8Array()), Transcriber.layer)
+
 const runtime = () =>
   ManagedRuntime.make(
     RunManager.layer.pipe(
       Layer.provideMerge(PipelineStagesLive),
-      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, Projects.layer, replay))
+      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, Projects.layer, replay, NoVoice))
     )
   )
 
@@ -84,17 +89,20 @@ test("the script stage fixes rejected scripts, snaps real lines, and waits for a
     assert.ok(raised?._tag === "Event" && raised.event._tag === "RequestRaised")
     yield* runs.respond(raised.event.request.id, { _tag: "Approve" })
 
-    return [...seen, ...yield* runs.subscribe(run.id, 0).pipe(
-      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RunFinished"),
+    // the voice stage comes next; this test stops there
+    const rest = [...yield* runs.subscribe(run.id, 0).pipe(
+      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "StageStarted" && u.event.stageRun.stage === "voice"),
       Stream.runCollect
     )]
+    yield* runs.cancel(run.id)
+    return [...seen, ...rest]
   }))
 
   assert.equal(asked.length, 2, "the agent was asked once and then to fix")
   assert.match(asked[1]!, /isn't in the transcript near 150\.0s/)
   assert.match(asked[1]!, /there are 1 real lines; this approach needs 4–9/)
-  const finished = updates.findLast((u) => u._tag === "Event" && u.event._tag === "RunFinished")
-  assert.ok(finished?._tag === "Event" && finished.event._tag === "RunFinished" && finished.event.run.status === "completed")
+  const scriptDone = updates.findLast((u) => u._tag === "Event" && u.event._tag === "StageFinished" && u.event.stageRun.stage === "script")
+  assert.ok(scriptDone?._tag === "Event" && scriptDone.event._tag === "StageFinished" && scriptDone.event.stageRun.status === "succeeded")
 
   const script = await rt.runPromise(Effect.gen(function*() {
     const artifact = Option.getOrThrow(yield* (yield* Artifacts).latest({ _tag: "Project", id: project.id }, "script"))

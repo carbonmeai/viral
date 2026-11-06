@@ -27,6 +27,8 @@ export const Project = Schema.Struct({
   presetId: Schema.NullOr(PresetId),
   // null = the music stage asks for a track, or the short goes without music
   musicTrackId: Schema.NullOr(MusicTrackId),
+  // the ElevenLabs voice for the voiceover; null = the preset's voice
+  voiceId: Schema.NullOr(Schema.String),
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString
 })
@@ -58,6 +60,12 @@ export class ProjectsRpcs extends RpcGroup.make(
     payload: { sourceId: SourceId, proposal: Schema.Int },
     success: Project,
     error: Schema.Union([SourceNotFound, ProposalNotFound])
+  }),
+  // Picks the voiceover's voice for this short (null = back to the preset's voice).
+  Rpc.make("SetProjectVoice", {
+    payload: { id: ProjectId, voiceId: Schema.NullOr(Schema.String) },
+    success: Project,
+    error: ProjectNotFound
   }),
   Rpc.make("ListProjects", { payload: { sourceId: Schema.NullOr(SourceId) }, success: Schema.Array(Project) }),
   Rpc.make("GetProject", { payload: { id: ProjectId }, success: Project, error: ProjectNotFound }),

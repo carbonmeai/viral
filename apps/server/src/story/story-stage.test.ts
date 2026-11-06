@@ -12,6 +12,8 @@ import { PipelineStagesLive } from "../runs/pipeline-stages.ts"
 import { RunManager } from "../runs/run-manager.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { Sources } from "../sources/sources.ts"
+import { ElevenLabs } from "../voice/eleven-labs.ts"
+import { Transcriber } from "../transcribe/transcriber.ts"
 
 let home: string
 before(() => {
@@ -47,11 +49,14 @@ const replay = AgentSession.replay((task) => {
   }
 })
 
+// Runs that don't reach the voice stage never speak.
+const NoVoice = Layer.mergeAll(ElevenLabs.replay(() => new Uint8Array()), Transcriber.layer)
+
 const runtime = () =>
   ManagedRuntime.make(
     RunManager.layer.pipe(
       Layer.provideMerge(PipelineStagesLive),
-      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, Projects.layer, replay))
+      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, Projects.layer, replay, NoVoice))
     )
   )
 

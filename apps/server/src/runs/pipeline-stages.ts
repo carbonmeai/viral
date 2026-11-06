@@ -5,15 +5,17 @@ import { Projects } from "../projects/projects.ts"
 import { ScriptStage } from "../script/script-stage.ts"
 import { SourceStages } from "../sources/source-stages.ts"
 import { StoryStage } from "../story/story-stage.ts"
+import { VoiceStage } from "../voice/voice-stage.ts"
 import { StageFailure, StageRegistry } from "./stages.ts"
 
 // The real stage lists. A source run is source → transcribe → contact-sheet → ads → story;
-// a narrated short's run is script → (voice → shots → assemble → render → metadata, as they are built).
+// a narrated short's run is script → voice (→ shots → assemble → render → metadata, as they are built).
 export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(function*() {
   const source = yield* SourceStages
   const ads = yield* AdsStage
   const story = yield* StoryStage
   const script = yield* ScriptStage
+  const voice = yield* VoiceStage
   const projects = yield* Projects
   const stagesFor = Effect.fn("StageRegistry.stagesFor")(function*(owner: RunOwner) {
     if (owner._tag === "Source") return [...source.stages, ads.stage, story.stage]
@@ -23,8 +25,8 @@ export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(functio
     if (project.format === "cut-down") {
       return yield* new StageFailure({ stage: "sections", code: "not-built", message: "cut-down shorts aren't built yet" })
     }
-    // narrated: the stages after the script join as they are built
-    return [script.stage]
+    // narrated: the stages after the voice join as they are built
+    return [script.stage, voice.stage]
   })
   return StageRegistry.of({ stagesFor })
-})).pipe(Layer.provide([SourceStages.layer, AdsStage.layer, StoryStage.layer, ScriptStage.layer, Projects.layer]))
+})).pipe(Layer.provide([SourceStages.layer, AdsStage.layer, StoryStage.layer, ScriptStage.layer, VoiceStage.layer, Projects.layer]))

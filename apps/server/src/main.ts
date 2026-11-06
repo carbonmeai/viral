@@ -24,6 +24,10 @@ import { SoundLibrary } from "./sound-library/sound-library.ts"
 import { SoundLibraryRpcLive } from "./sound-library/sound-library-rpc.ts"
 import { Sources } from "./sources/sources.ts"
 import { SourcesRpcLive } from "./sources/sources-rpc.ts"
+import { Transcriber } from "./transcribe/transcriber.ts"
+import { ElevenLabs } from "./voice/eleven-labs.ts"
+import { VoicesRpcLive } from "./voice/voices-rpc.ts"
+import { ViralHome } from "./home/viral-home.ts"
 
 const PORT = 3410
 
@@ -35,7 +39,10 @@ const DomainsLive = Layer.mergeAll(
   MusicLibrary.layer,
   SoundLibrary.layer,
   References.layer,
-  RunStore.layer
+  RunStore.layer,
+  ElevenLabs.layer,
+  Transcriber.layer,
+  ViralHome.layer
 )
 
 const RunsLive = RunManager.layer.pipe(
@@ -52,7 +59,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     ArtifactsRpcLive,
     SoundLibraryRpcLive,
     ReferencesRpcLive,
-    RunsRpcLive
+    RunsRpcLive,
+    VoicesRpcLive
   ]),
   Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)

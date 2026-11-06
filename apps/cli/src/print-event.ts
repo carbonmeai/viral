@@ -1,12 +1,22 @@
-import { type RunUpdate, Script } from "@viral/contracts"
+import { type RunUpdate, Script, Voiceover } from "@viral/contracts"
 import { Console, Effect, Option, Schema } from "effect"
 
 const ScriptPayload = Schema.Struct({ script: Script, narrationWords: Schema.NullOr(Schema.Int) })
 
+const VoicePayload = Schema.Struct({ voiceover: Voiceover, file: Schema.NullOr(Schema.String) })
+
+const describeVoice = (payload: unknown): string =>
+  Option.match(Schema.decodeUnknownOption(VoicePayload)(payload), {
+    onNone: () => "",
+    onSome: ({ voiceover: v, file }) =>
+      `  ${file ?? "(no file)"}\n  ${v.durationS.toFixed(1)}s · ${v.pace.toFixed(2)} words/s (raw ${v.rawPace.toFixed(2)}, atempo ${v.atempo})` +
+      ` · voice ${v.voiceId} · ${v.characters} characters\n`
+  })
+
 // What a gate is asking you to approve, in readable form; empty when there's nothing to show.
 const describePayload = (payload: unknown): string =>
   Option.match(Schema.decodeUnknownOption(ScriptPayload)(payload), {
-    onNone: () => "",
+    onNone: () => describeVoice(payload),
     onSome: ({ script, narrationWords }) => {
       const headline = script.headline === null ? "" : `  HEADLINE  ${script.headline.join(" / ")}\n`
       const beats = script.beats.map((beat) =>

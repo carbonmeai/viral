@@ -8,6 +8,7 @@ import { show } from "./show.ts"
 export const PROJECT_USAGE = `  project create <source-id> <title> [--approach question-recap|claim-interleaved|cut-down]
                  [--preset <id>] [--music <track-id>]
   project from-proposal <source-id> <n>   (proposal n from \`source story\`)
+  project voice <id> <voice-id|preset>   (the voiceover's voice; "preset" goes back to the preset's)
   project run <id> [--from <stage>]
   project list [--source <id>] | show <id> | delete <id>`
 
@@ -39,6 +40,11 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
       if (first === undefined || !Number.isInteger(n) || n < 1) return yield* Console.error(PROJECT_USAGE)
       const project = yield* client.CreateProjectFromProposal({ sourceId: SourceId.make(first), proposal: n - 1 })
       return yield* Console.log(describe(project))
+    }
+    case "voice": {
+      if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)
+      const project = yield* client.SetProjectVoice({ id: ProjectId.make(first), voiceId: title === "preset" ? null : title })
+      return yield* Console.log(`${describe(project)}  voice ${project.voiceId ?? "(preset)"}`)
     }
     case "run": {
       const from = option("--from")
