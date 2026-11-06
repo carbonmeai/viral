@@ -56,3 +56,14 @@ test("reports bad anchors, long shots, excluded footage and a missing resume sho
   assert.match(text, /x and y are fractions/)
   assert.match(text, /too long/)
 })
+
+test("highlights keep their colour and must be words of the voiceover", () => {
+  const proposal: ShotProposal = {
+    shots: [0, 2, 4, 7, 9, 11].map((word, i) => ({ word, src: 100 + i * 10, note: "n" })),
+    markers: [],
+    highlights: ["Spicy,", { word: "Cold", color: "cyan" }, { word: "glue", color: "green" }]
+  }
+  const { value, problems } = checkShots(proposal, ctx)
+  assert.deepEqual(value.highlights, ["spicy", { word: "cold", color: "cyan" }, { word: "glue", color: "green" }])
+  assert.deepEqual(problems, ['highlight "glue" isn\'t a word of the voiceover'])
+})

@@ -13,7 +13,7 @@ const shots: ShotPlan = {
     { word: 4, src: 2012, fit: true, cropX: 0.3, note: "friend", wordText: "Then", frame: null }
   ],
   markers: [{ _tag: "Label", word: 2, x: 0.5, y: 0.3, text: "STICKY" }, { _tag: "Circle", word: 3, x: 0.4, y: 0.5 }],
-  highlights: ["spicy"],
+  highlights: ["spicy", { word: "cold", color: "cyan" }, { word: "candy", color: "accent" }],
   inserts: [{ start: 1144, end: 1146, quote: "pain", afterWord: 3, afterWordText: "it.", frame: null }],
   outro: [{ start: 2036, end: 2040, quote: "So nasty.", frame: null }],
   storyboard: null
@@ -60,7 +60,7 @@ test("the full-bleed style: headline, chunk captions, quote boxes, labels, credi
   assert.equal(plan.caption_mode, "chunk")
   assert.equal(plan.quote_box, true)
   assert.equal(plan.credit, "Video: NileBlue")
-  assert.deepEqual(plan.highlights, { spicy: "#FFD400" })
+  assert.deepEqual(plan.highlights, { spicy: "#FFD400", cold: "#5CE1FF", candy: "#FFD400" }, "a colour by meaning, or the style's accent")
   assert.deepEqual(plan.shots[1], { src: 2012, word: 4, word_text: "Then", fit: true, crop_x: 0.3, note: "friend" })
   assert.deepEqual(plan.inserts, [{ start: 1144, end: 1146, after_word: 3, after_word_text: "it.", note: "pain" }])
   assert.equal(plan.annotations?.length, 2)

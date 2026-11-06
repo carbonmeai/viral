@@ -1,4 +1,17 @@
-import type { MusicTrack, NarratedAnnotation, NarratedPlan, PresetConfig, Script, ShotPlan, TranscriptWord } from "@viral/contracts"
+import type { HighlightColor, MusicTrack, NarratedAnnotation, NarratedPlan, PresetConfig, Script, ShotPlan, TranscriptWord } from "@viral/contracts"
+
+// Caption colours by name: the ones the hand-made candy short used, readable on any footage.
+const HIGHLIGHT_COLORS: Record<Exclude<HighlightColor, "accent">, string> = {
+  red: "#FF3B30",
+  orange: "#FF9A2E",
+  yellow: "#FFD400",
+  green: "#5BE35B",
+  cyan: "#5CE1FF",
+  blue: "#4C8DFF",
+  pink: "#FF7AD9",
+  purple: "#B57BFF",
+  white: "#FFFFFF"
+}
 
 // How long a marker stays on screen.
 const MARKER_SECONDS = 1.4
@@ -93,7 +106,9 @@ export const assembleNarrated = (input: NarratedInput): NarratedPlan => {
     quote_box: captions.quoteBox,
     ...headline,
     ...(preset.credit && input.credit !== null ? { credit: input.credit } : {}),
-    highlights: Object.fromEntries(shots.highlights.map((word) => [word, captions.highlight])),
+    highlights: Object.fromEntries(shots.highlights.map((h) =>
+      typeof h === "string" ? [h, captions.highlight] : [h.word, h.color === "accent" ? captions.highlight : HIGHLIGHT_COLORS[h.color]]
+    )),
     exclude: input.excluded.map((r) => [r.start, r.end] as const),
     exclude_note: "sponsor reads, ads and end screens",
     shots: shots.shots.map((shot) => ({

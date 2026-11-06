@@ -132,7 +132,8 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
   const highlights = proposal.highlights ?? []
   if (highlights.length > HIGHLIGHTS) problems.push(`highlight at most ${HIGHLIGHTS} words; ${highlights.length} dilutes them`)
   const spoken = new Set(words.map((w) => normalize(w.w)))
-  for (const word of highlights) {
+  for (const highlight of highlights) {
+    const word = typeof highlight === "string" ? highlight : highlight.word
     if (!spoken.has(normalize(word))) problems.push(`highlight "${word}" isn't a word of the voiceover`)
   }
 
@@ -140,7 +141,7 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
     value: {
       shots: proposal.shots.map((s) => ({ ...s, wordText: wordAt(s.word) })),
       markers: proposal.markers,
-      highlights: highlights.map(normalize)
+      highlights: highlights.map((h) => typeof h === "string" ? normalize(h) : { word: normalize(h.word), color: h.color })
     },
     problems
   }

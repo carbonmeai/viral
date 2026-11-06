@@ -12,7 +12,9 @@ of the voiceover, following the narrated-shots skill below.
 3. Anchor every shot to the voiceover word it starts on. The real lines are already placed: the narration pauses
    after the word shown, plays the clip, and resumes on the next word, where a new shot must start.
 4. Add one or two markers (a circle or arrow on the hero object, or a short label) when they help.
-5. Pick 5–10 key words of the narration for the captions to colour: the tastes, the hero object, the twist.
+5. Pick 5–10 key words of the narration for the captions to colour (the tastes, the hero object, the twist), each
+   with a colour that fits its meaning: spicy red, cold cyan, sour green, sweet pink, savory orange. Use "accent"
+   when no colour fits.
 6. Before submitting, call \`preview_shots\` with the whole plan. It lists problems to fix, or draws every shot's
    first frame: Read the storyboard and fix any shot whose frame doesn't show its words (a wide shot where a
    close-up was meant, the wrong person, a frame before the action starts). Preview again after big changes.

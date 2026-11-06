@@ -28,11 +28,20 @@ export const Marker = Schema.Union([
 ])
 export type Marker = typeof Marker.Type
 
+// A caption colour picked for a word's meaning ("spicy" red, "cold" cyan); "accent" is the style's own highlight.
+export const HighlightColor = Schema.Literals(["accent", "red", "orange", "yellow", "green", "cyan", "blue", "pink", "purple", "white"])
+export type HighlightColor = typeof HighlightColor.Type
+
+// A word to colour in the captions: just the word (the style's accent), or the word with a colour.
+export const Highlight = Schema.Union([Schema.String, Schema.Struct({ word: Schema.String, color: HighlightColor })])
+export type Highlight = typeof Highlight.Type
+
 export const ShotProposal = Schema.Struct({
   shots: Schema.Array(PlannedShot),
   markers: Schema.Array(Marker),
-  // 5–10 key words of the narration to colour in the captions ("sour", "spicy")
-  highlights: Schema.optionalKey(Schema.Array(Schema.String))
+  // 5–10 key words of the narration to colour in the captions ("sour", "spicy"), each with a colour that
+  // fits its meaning
+  highlights: Schema.optionalKey(Schema.Array(Highlight))
 })
 export type ShotProposal = typeof ShotProposal.Type
 
@@ -55,7 +64,7 @@ const Frame = { frame: Schema.NullOr(Schema.String) }
 export const ShotPlan = Schema.Struct({
   shots: Schema.Array(Schema.Struct({ ...PlannedShot.fields, wordText: Schema.String, ...Frame })),
   markers: Schema.Array(Marker),
-  highlights: Schema.Array(Schema.String),
+  highlights: Schema.Array(Highlight),
   inserts: Schema.Array(Schema.Struct({ ...ShotInsert.fields, ...Frame })),
   outro: Schema.Array(Schema.Struct({ ...RealClip.fields, ...Frame })),
   // the storyboard: the frames above stitched into one image in playing order
