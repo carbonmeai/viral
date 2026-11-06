@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": { "nodeBuiltinImport": "off", "globalConsole": "off", "globalDate": "off", "processEnvInEffect": "off" }
+      }
+    ]
+  },
+  "include": ["src", "scripts", "vite.config.ts"]
+}
