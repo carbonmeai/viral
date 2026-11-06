@@ -2,13 +2,34 @@ import type { Preset, Script } from "@viral/contracts"
 import { Button, IconButton } from "@viral/ui/primitives/button"
 import { cn } from "@viral/ui/cn"
 import { Pause, Pencil, Play } from "lucide-react"
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { Detail } from "../../system/detail.tsx"
 import { clockOf } from "../editor-values.ts"
 import type { GateControls } from "../gate.ts"
 import { useClipPlayer } from "../use-clip-player.ts"
 
 const words = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length
+
+// A text box as tall as its text, so a long line is never partly hidden while you edit it.
+function GrowingTextarea({ value, onChange, label }: { readonly value: string; readonly onChange: (value: string) => void; readonly label: string }) {
+  const ref = useRef<HTMLTextAreaElement | null>(null)
+  useLayoutEffect(() => {
+    const box = ref.current
+    if (box === null) return
+    box.style.height = "auto"
+    box.style.height = `${box.scrollHeight + 2}px`
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      aria-label={label}
+      rows={2}
+      className="min-h-[64px] w-full resize-none overflow-hidden rounded-ctl bg-ctl px-2.5 py-2 text-[15px] leading-[1.5] text-fg outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--lemon)]"
+      value={value}
+      onChange={(e) => onChange(e.currentTarget.value)}
+    />
+  )
+}
 
 // The script as a document: the headline as it will look, then each line in playing order. Narration is what
 // the narrator says; real lines play in the creator's own voice (click ▶ to hear them from the video).
@@ -82,12 +103,7 @@ export function ScriptStage({ script, preset, sourceVideoUrl, gate, selected, on
               <div className="min-w-0">
                 {editing === i ? (
                   <div className="grid gap-2" onClick={(e) => e.stopPropagation()}>
-                    <textarea
-                      aria-label="Narration line"
-                      className="min-h-[64px] w-full resize-y rounded-ctl bg-ctl px-2.5 py-2 text-[15px] leading-[1.5] text-fg outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--lemon)]"
-                      value={draft}
-                      onChange={(e) => setDraft(e.currentTarget.value)}
-                    />
+                    <GrowingTextarea label="Narration line" value={draft} onChange={setDraft} />
                     {problems.length === 0 ? null : (
                       <ul className="m-0 grid gap-1 pl-4 text-xs text-danger">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
                     )}
