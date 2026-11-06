@@ -125,7 +125,7 @@ test("the shots stage places the real lines, fixes a rejected plan, and draws a 
   assert.equal(asked.length, 2)
   assert.match(asked[0]!.message, /REAL after word 3 "it\.": "Ow, that hurts\."/)
   assert.match(asked[1]!.message, /start a new shot on word 4 "It", where the narration resumes/)
-  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet"])
+  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_shots"])
 
   const { plan, storyboard } = await rt.runPromise(Effect.gen(function*() {
     const artifacts = yield* Artifacts
@@ -150,4 +150,21 @@ test("the detail sheet tool refuses ranges that are too long", async () => {
   const answer = await Effect.runPromise(tool.run({ start: 0, end: 500 }))
   assert.match(answer, /ask for a range of 1–60s/)
   assert.match(await Effect.runPromise(tool.run({ start: "x" })), /invalid input/)
+})
+
+test("the preview tool returns a plan's problems, or draws its frames for the agent to check", async () => {
+  const preview = asked[0]!.tools!.find((t) => t.name === "preview_shots")!
+  const problems = await Effect.runPromise(preview.run({ shots: [{ word: 1, src: 10, note: "x" }], markers: [] }))
+  assert.match(problems, /Fix these first:\n- the first shot must start on word 0/)
+
+  const drawn = await Effect.runPromise(preview.run({
+    shots: [{ word: 0, src: 10, note: "him" }, { word: 2, src: 20, note: "tasting" }, { word: 4, src: 30, note: "pain" }],
+    markers: []
+  }))
+  assert.match(drawn, /passes the checks/)
+  const storyboard = /Storyboard \(.*\): (\S+storyboard\.png)/.exec(drawn)?.[1]
+  assert.ok(storyboard !== undefined && existsSync(storyboard), "the preview storyboard was drawn")
+  const frame = /shot 3 \(word 4 "It", 30\.0s, pain\): (\S+\.jpg)/.exec(drawn)?.[1]
+  assert.ok(frame !== undefined && existsSync(frame), "each shot's frame is its own file")
+  assert.match(storyboard, /shots-preview\/attempt-\d+-\d+\//)
 })

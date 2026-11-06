@@ -22,6 +22,9 @@ description: How to plan the shots of a narrated short (any narrated approach). 
   (`speed`) suits slow processes and graphics that build up.
 - **Pick frames from the contact sheets**, then refine with finer sheets around the moment. A shot's source
   time is where the action starts.
+- **Look at what you picked before you submit.** A tile in a 5-second sheet can hide a cut: the second you
+  chose may be a wide shot, a different person, or the moment before the action. Check each shot's actual first
+  frame against its words and move the ones that don't match.
 - **Never use sponsor, ad, QR or end-screen footage.** Those ranges are excluded and the renderer refuses
   any shot that touches them.
 

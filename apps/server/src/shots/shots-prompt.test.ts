@@ -2,8 +2,9 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
 
-test("the stage prompt names both tools", () => {
+test("the stage prompt names its tools", () => {
   assert.match(SHOTS_PROMPT, /`contact_sheet`/)
+  assert.match(SHOTS_PROMPT, /`preview_shots`/)
   assert.match(SHOTS_PROMPT, /`propose_shots`/)
 })
 

@@ -131,22 +131,56 @@ export class ShotsStage extends Context.Service<ShotsStage, {
       })
 
       // Draws the plan's frames and storyboard, and records it.
-      const record = Effect.fn("ShotsStage.record")(function*(ctx: StageContext, video: string, plan: ShotDraft) {
-        const slot = yield* artifacts.allocate(ctx.owner, "shot-plan")
-        const spec = path.join(slot.dir, "storyboard.json")
+      // Draws a plan's frames (frames/shot-NN.jpg…) and their storyboard into `dir`. Returns the storyboard's
+      // file name, or null when it couldn't be drawn.
+      const draw = Effect.fn("ShotsStage.draw")(function*(video: string, plan: ShotDraft, dir: string) {
+        const spec = path.join(dir, "storyboard.json")
         yield* Schema.encodeEffect(StoryboardSpec)({ cols: 6, tiles: storyboardTiles(plan) }).pipe(
           Effect.flatMap((json) => fs.writeFileString(spec, json)),
           Effect.mapError(failWith("write"))
         )
-        // the storyboard is for your eyes; a plan without one is still a plan
-        const storyboard = yield* scripts.run(
-          [path.join(import.meta.dirname, "storyboard.py"), video, spec, path.join(slot.dir, "storyboard.png")],
+        return yield* scripts.run(
+          [path.join(import.meta.dirname, "storyboard.py"), video, spec, path.join(dir, "storyboard.png")],
           Schema.decodeEffect(StoryboardLine),
           (line) => Effect.succeed(line.type === "done" ? "storyboard.png" : undefined)
         ).pipe(
           Effect.tapError((error) => Effect.logWarning("no storyboard", { error: error.message })),
           Effect.orElseSucceed(() => null)
         )
+      })
+
+      // The agent's self-check: the plan's problems, or its frames drawn so it can see each shot before
+      // submitting. Every preview gets its own folder so earlier ones stay readable.
+      const previewTool = (video: string, shotContext: ShotContext, reals: Pick<ShotDraft, "inserts" | "outro">, root: string, attempt: number) => {
+        let drawn = 0
+        return agentTool({
+          name: "preview_shots",
+          description: "Check a shot plan and draw each shot's first frame. Returns the problems to fix, or the storyboard and frame files to Read.",
+          schema: ShotProposal,
+          run: Effect.fn("ShotsStage.preview")(function*(proposal: ShotProposal) {
+              const checked = checkShots(proposal, shotContext)
+              if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
+              const dir = path.join(root, `attempt-${attempt}-${++drawn}`)
+              yield* fs.makeDirectory(dir, { recursive: true })
+              const plan: ShotDraft = { ...checked.value, ...reals }
+              const storyboard = yield* draw(video, plan, dir)
+              if (storyboard === null) return "The plan passes the checks, but its frames couldn't be drawn; submit it."
+              const frames = plan.shots.map((shot, k) =>
+                `- shot ${k + 1} (word ${shot.word} "${shot.wordText}", ${shot.src.toFixed(1)}s, ${shot.note}): ${path.join(dir, frameFile("shot", k))}`
+              )
+              return [
+                `The plan passes the checks. Storyboard (every shot in playing order, real clips framed red): ${path.join(dir, storyboard)}`,
+                `Each shot's first frame:\n${frames.join("\n")}`,
+                "Read the storyboard (and any frame you're unsure of). Fix every shot whose frame doesn't show its words, then call propose_shots."
+              ].join("\n\n")
+            }, Effect.catch((error) => Effect.succeed(`couldn't draw the preview: ${error.message}`)))
+        })
+      }
+
+      const record = Effect.fn("ShotsStage.record")(function*(ctx: StageContext, video: string, plan: ShotDraft) {
+        const slot = yield* artifacts.allocate(ctx.owner, "shot-plan")
+        // the storyboard is for your eyes; a plan without one is still a plan
+        const storyboard = yield* draw(video, plan, slot.dir)
         // the storyboard and the frames are drawn together
         const drawn = storyboard !== null
         const shotPlan: ShotPlan = {
@@ -199,6 +233,9 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           }
         })
         yield* fs.makeDirectory(detailRoot, { recursive: true }).pipe(Effect.mapError(failWith("write")))
+        const previewRoot = path.join(home.projectDir(c.project.id), "shots-preview")
+        yield* fs.makeDirectory(previewRoot, { recursive: true }).pipe(Effect.mapError(failWith("write")))
+        const preview = previewTool(c.video, c.shotContext, c.reals, previewRoot, ctx.attempt)
 
         const brief = buildShotsBrief({
           title: c.source.title,
@@ -221,9 +258,9 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           skills: ["narrated-shots"],
           brief,
           output: { tool: "propose_shots", description: "Submit the whole shot plan.", schema: ShotProposal },
-          tools: [detail],
+          tools: [detail, preview],
           defaultModel: null,
-          readDirs: [...Option.toArray(sheetsDir), detailRoot],
+          readDirs: [...Option.toArray(sheetsDir), detailRoot, previewRoot],
           maxTurns: 60
         }, (proposed) => Effect.succeed(checkShots(proposed, c.shotContext))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
         yield* record(ctx, c.video, { ...plan, ...c.reals })
