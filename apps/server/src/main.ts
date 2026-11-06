@@ -29,6 +29,8 @@ import { ElevenLabs } from "./voice/eleven-labs.ts"
 import { VoicesRpcLive } from "./voice/voices-rpc.ts"
 import { ViralHome } from "./home/viral-home.ts"
 import { HealthRouteLive, MediaRouteLive } from "./media/media-route.ts"
+import { prependToolsPath, Tools } from "./tools/tools.ts"
+import { ToolsRpcLive } from "./tools/tools-rpc.ts"
 
 // The port clients connect to; VIRAL_PORT moves it (the desktop app passes its own).
 const PORT = 3410
@@ -44,7 +46,8 @@ const DomainsLive = Layer.mergeAll(
   RunStore.layer,
   ElevenLabs.layer,
   Transcriber.layer,
-  ViralHome.layer
+  ViralHome.layer,
+  Tools.layer
 )
 
 const RunsLive = RunManager.layer.pipe(
@@ -62,7 +65,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     SoundLibraryRpcLive,
     ReferencesRpcLive,
     RunsRpcLive,
-    VoicesRpcLive
+    VoicesRpcLive,
+    ToolsRpcLive
   ]),
   Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)
@@ -100,4 +104,15 @@ const ParentWatchLive = Layer.effectDiscard(Effect.gen(function*() {
   )
 }))
 
-Layer.launch(Layer.mergeAll(ServerLive, ParentWatchLive)).pipe(NodeRuntime.runMain)
+// Viral's own yt-dlp keeps up with YouTube: a background check at start, at most every few days.
+const ToolUpdatesLive = Layer.effectDiscard(Effect.gen(function*() {
+  const tools = yield* Tools
+  yield* tools.updateYtDlp.pipe(Effect.forkDetach)
+})).pipe(Layer.provide(Tools.layer))
+
+// Viral's tools folder goes first on the PATH before anything starts a tool.
+prependToolsPath.pipe(
+  Effect.provide(NodeServices.layer),
+  Effect.andThen(Layer.launch(Layer.mergeAll(ServerLive, ParentWatchLive, ToolUpdatesLive))),
+  NodeRuntime.runMain
+)
