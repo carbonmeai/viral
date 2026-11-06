@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Exit, Layer, Schema } from "effect"
+import { Effect, Exit, Layer, Option, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import assert from "node:assert/strict"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
@@ -9,6 +9,7 @@ import { after, before, test } from "node:test"
 import { type AgentCost, type AgentError, type AgentHooks, type AgentTask, agentTool } from "@viral/provider-core"
 import { makeOpencodeProvider, modelRef, runConfig } from "./opencode-provider.ts"
 import { atLeast } from "./opencode-server.ts"
+import { credentialCount, opencodeStatus } from "./opencode-status.ts"
 
 let home: string
 before(() => {
@@ -116,4 +117,15 @@ test("versions, model ids and the read permission", () => {
   const endpoint = { url: "http://127.0.0.1:1/mcp", token: "t", name: "viral" }
   assert.equal(runConfig({ system: "", endpoint, readDirs: [] }).permission.read, "deny")
   assert.deepEqual(runConfig({ system: "", endpoint, readDirs: ["/sheets"] }).permission.read, { "*": "deny", "/sheets/**": "allow" })
+})
+
+test("status: version, sign-in and models", async () => {
+  const status = await Effect.runPromise(opencodeStatus(["node", fake]).pipe(Effect.provide(NodeServices.layer)))
+  assert.deepEqual(status, { version: Option.some("1.14.19"), outdated: false, signedIn: true, models: ["opencode/big-pickle", "anthropic/claude-haiku-5.5"] })
+  process.env["FAKE_OPENCODE_VERSION"] = "1.1.12"
+  const old = await Effect.runPromise(opencodeStatus(["node", fake]).pipe(Effect.provide(NodeServices.layer)))
+  delete process.env["FAKE_OPENCODE_VERSION"]
+  assert.equal(old.outdated, true)
+  assert.equal(credentialCount("\u001b[0m└  0 credentials"), 0)
+  assert.equal(credentialCount("└  2 credentials"), 2)
 })

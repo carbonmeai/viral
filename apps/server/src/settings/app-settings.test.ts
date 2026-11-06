@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
-import { AppSettingsStore } from "./app-settings.ts"
+import { AppSettingsStore, checkChoice } from "./app-settings.ts"
 
 let home: string
 before(() => {
@@ -42,7 +42,7 @@ test("every step starts on the Claude CLI; a gateway default moves the text step
   assert.equal(backToDefault.routes.story.provider, "ai-gateway")
 
   assert.match(noModel.message, /choose a model for the AI Gateway/)
-  assert.match(visionOnGateway.message, /only the Claude CLI/)
+  assert.match(visionOnGateway.message, /looks at images/)
   await rt.dispose()
 })
 
@@ -56,4 +56,15 @@ test("the route rule: own choice, then the default, with vision steps kept on th
     inherited: false,
     forcedCli: false
   })
+  // Codex and OpenCode run the text steps; a vision step chosen for them falls back to the Claude CLI
+  const codex = { provider: "codex" as const, model: null }
+  assert.deepEqual(resolveAgentRoute("story", codex, null), { provider: "codex", model: null, inherited: true, forcedCli: false })
+  assert.deepEqual(resolveAgentRoute("shots", codex, codex), { provider: "claude-cli", model: null, inherited: false, forcedCli: true })
+})
+
+test("an OpenCode choice needs a provider/model id", async () => {
+  const bad = await Effect.runPromise(Effect.flip(checkChoice("story", { provider: "opencode", model: "haiku" })))
+  assert.match(bad.message, /provider\/model/)
+  const ok = await Effect.runPromise(checkChoice("story", { provider: "opencode", model: " anthropic/claude-haiku-5.5 " }))
+  assert.deepEqual(ok, { provider: "opencode", model: "anthropic/claude-haiku-5.5" })
 })

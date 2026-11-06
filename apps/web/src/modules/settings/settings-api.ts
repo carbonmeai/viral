@@ -3,6 +3,7 @@ import { ViralClient } from "../../api/client.ts"
 
 // Reads, each tagged so a save on the same topic refreshes it.
 export const accountsAtom = ViralClient.query("GetAccounts", undefined, { reactivityKeys: ["accounts"] })
+export const cliModelsAtom = ViralClient.query("GetCliModels", undefined, { reactivityKeys: ["accounts"] })
 export const appSettingsAtom = ViralClient.query("GetSettings", undefined, { reactivityKeys: ["settings"] })
 export const storageAtom = ViralClient.query("GetStorage", undefined, { reactivityKeys: ["storage"] })
 export const voicesAtom = ViralClient.query("ListVoices", undefined, { reactivityKeys: ["voices"] })

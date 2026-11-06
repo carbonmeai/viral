@@ -10,6 +10,10 @@ import { createInterface } from "node:readline"
 const args = process.argv.slice(2)
 const log = (entry) => process.env.FAKE_CODEX_LOG && appendFileSync(process.env.FAKE_CODEX_LOG, `${JSON.stringify(entry)}\n`)
 
+if (args[0] === "--version") {
+  process.stdout.write("codex-cli 0.154.0\n")
+  process.exit(0)
+}
 if (args[0] === "mcp") {
   process.stdout.write(JSON.stringify([{ name: "mine", enabled: true }, { name: "plugin-one", enabled: true }]))
   process.exit(0)
@@ -49,6 +53,11 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   switch (message.method) {
     case "initialize":
       return reply({ userAgent: "fake", codexHome: "/tmp", platformFamily: "unix", platformOs: "macos" })
+    case "account/read":
+      return reply({
+        account: process.env.FAKE_CODEX_SIGNED_OUT ? null : { type: "chatgpt", email: "me@example.com", planType: "plus" },
+        requiresOpenaiAuth: true
+      })
     case "model/list":
       return reply({
         data: [

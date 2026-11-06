@@ -31,3 +31,17 @@ test("a choice finds its eval record", () => {
   assert.equal(evalLine([cli, luna], { provider: "claude-cli", model: null }), "Evals: 8/8 passed · 7/8 first try · $0.126 a run")
   assert.equal(evalLine([cli], { provider: "ai-gateway", model: "anthropic/claude-haiku-5.5" }), null)
 })
+
+test("Codex and OpenCode names, eval keys and lines", () => {
+  const catalog = [{ provider: "codex" as const, models: [{ id: "gpt-6-astra", label: "GPT-6-Astra" }] }]
+  assert.equal(modelLabel("codex", null), "Codex default")
+  assert.equal(modelLabel("codex", "gpt-6-astra", catalog), "GPT-6-Astra")
+  assert.equal(modelLabel("opencode", "anthropic/claude-haiku-5.5"), "anthropic/claude-haiku-5.5")
+  assert.equal(evalKey({ provider: "codex", model: null }), "codex")
+  assert.equal(evalKey({ provider: "codex", model: "gpt-6-astra" }), "codex:gpt-6-astra")
+  assert.equal(evalKey({ provider: "opencode", model: "zen/big" }), "opencode:zen/big")
+  const codex: ModelEval = { ...luna, model: "codex", provider: "codex", avgCostUsd: 0 }
+  assert.equal(evalLabel(codex), "Codex (its default model)")
+  assert.equal(evalLabel({ ...codex, model: "codex:gpt-6-astra" }), "Codex · gpt-6-astra")
+  assert.equal(evalLine([codex], { provider: "codex", model: null }), "Evals: 8/8 passed · 7/8 first try · on your plan")
+})

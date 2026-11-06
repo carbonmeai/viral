@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Exit, Layer, Schema } from "effect"
+import { Effect, Exit, Layer, Option, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import assert from "node:assert/strict"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -8,6 +8,7 @@ import { join } from "node:path"
 import { after, before, test } from "node:test"
 import { AgentError, type AgentCost, type AgentHooks, type AgentTask, agentTool } from "@viral/provider-core"
 import { configuredMcpServers, launchArgs, makeCodexProvider } from "./codex-provider.ts"
+import { codexStatus } from "./codex-status.ts"
 
 let home: string
 before(() => {
@@ -141,4 +142,20 @@ test("launch arguments and the user's configured MCP servers", () => {
   const args = launchArgs(["a"], true)
   assert.ok(!args.includes("view_image"))
   assert.ok(args.includes(`web_search="disabled"`))
+})
+
+test("status: the version, the account and its models", async () => {
+  const status = await Effect.runPromise(codexStatus(["node", fake]).pipe(Effect.provide(NodeServices.layer)))
+  assert.deepEqual(status.version, Option.some("codex-cli 0.154.0"))
+  assert.deepEqual(status.account, Option.some({ type: "chatgpt", plan: "plus" }))
+  assert.deepEqual(status.models.map((m) => m.id), ["gpt-big", "gpt-small"])
+
+  process.env["FAKE_CODEX_SIGNED_OUT"] = "1"
+  const out = await Effect.runPromise(codexStatus(["node", fake]).pipe(Effect.provide(NodeServices.layer)))
+  delete process.env["FAKE_CODEX_SIGNED_OUT"]
+  assert.ok(Option.isNone(out.account))
+  assert.deepEqual(out.models, [])
+
+  const missing = await Effect.runPromise(codexStatus(["codex-not-installed-here"]).pipe(Effect.provide(NodeServices.layer)))
+  assert.ok(Option.isNone(missing.version))
 })

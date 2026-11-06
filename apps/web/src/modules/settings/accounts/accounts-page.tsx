@@ -10,6 +10,8 @@ import { Loaded, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 
 const ABOUT: Record<Account["name"], { readonly label: string; readonly sub: string }> = {
   claude: { label: "Claude", sub: "Every agent runs on your Claude CLI, signed in as you." },
+  codex: { label: "Codex", sub: "Runs agent steps on your ChatGPT plan through the Codex CLI." },
+  opencode: { label: "OpenCode", sub: "Runs agent steps on the providers you’ve signed in to in OpenCode." },
   elevenlabs: { label: "ElevenLabs", sub: "Voiceovers and voice samples." },
   xai: { label: "xAI", sub: "Grok transcription. Without it, Viral transcribes on this Mac with Whisper." },
   gateway: {
@@ -27,20 +29,38 @@ export function AccountsPage() {
   const accounts = useAtomValue(accountsAtom)
   return (
     <SettingsPage section="accounts" description="The services Viral works with. Keys are kept in your Mac’s Keychain and never shown again.">
-      <Loaded result={accounts} what="your accounts" skeleton={<SettingsSkeleton groups={[4]} />}>
+      <Loaded result={accounts} what="your accounts" skeleton={<SettingsSkeleton groups={[6]} />}>
         {(list) => (
           <SettingsGroup>
-            {list.map((account) => account.name === "claude"
-              ? (
-                <SettingRow key={account.name} label={ABOUT.claude.label} sub={account.detail ?? ABOUT.claude.sub}>
-                  {account.status === "ready" ? <Status tone="ok">Connected</Status> : <Status tone="wait">Not found</Status>}
-                </SettingRow>
-              )
-              : <KeyRow key={account.name} account={account} name={account.name} />)}
+            {list.map((account) =>
+              account.name === "claude" || account.name === "codex" || account.name === "opencode"
+                ? <CliRow key={account.name} account={account} />
+                : <KeyRow key={account.name} account={account} name={account.name} />
+            )}
           </SettingsGroup>
         )}
       </Loaded>
     </SettingsPage>
+  )
+}
+
+// A CLI Viral runs as you: whether it's installed, signed in and new enough, and if not, what to run. Viral
+// never installs, signs in or updates a CLI for you.
+const CLI_STATUS: Record<Account["status"], { readonly tone: "ok" | "wait" | "neutral"; readonly text: string }> = {
+  ready: { tone: "ok", text: "Connected" },
+  "signed-out": { tone: "wait", text: "Signed out" },
+  outdated: { tone: "wait", text: "Update needed" },
+  missing: { tone: "neutral", text: "Not installed" }
+}
+
+function CliRow({ account }: { readonly account: Account }) {
+  const about = ABOUT[account.name]
+  const facts = [account.name === "claude" ? null : account.version, account.detail].filter((x) => x !== null).join(" · ")
+  const status = CLI_STATUS[account.status]
+  return (
+    <SettingRow label={about.label} sub={account.hint === null ? facts || about.sub : `${facts === "" ? "" : `${facts}. `}${account.hint}`}>
+      <Status tone={status.tone}>{status.text}</Status>
+    </SettingRow>
   )
 }
 

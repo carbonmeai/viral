@@ -2,22 +2,27 @@ import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { PresetNotFound } from "./presets.ts"
 
-// The services Viral talks to. Claude runs through your CLI; ElevenLabs, xAI and the AI Gateway use API keys.
-// The AI Gateway runs agent steps on other models (Haiku, GPT-6 Luna, Gemini…).
-export const AccountName = Schema.Literals(["claude", "elevenlabs", "xai", "gateway"])
+// The services Viral talks to. Claude, Codex and OpenCode run through their CLIs, signed in as you; ElevenLabs,
+// xAI and the AI Gateway use API keys. The AI Gateway runs agent steps on other models (Haiku, GPT-6 Luna, Gemini…).
+export const AccountName = Schema.Literals(["claude", "codex", "opencode", "elevenlabs", "xai", "gateway"])
 export type AccountName = typeof AccountName.Type
 export const KeyName = Schema.Literals(["elevenlabs", "xai", "gateway"])
 export type KeyName = typeof KeyName.Type
 
-// Whether an account is usable and where its key comes from. A key's value never crosses the wire.
+// Whether an account is usable and where its key comes from. A key's value never crosses the wire. A CLI can also
+// be installed but signed out, or too old for Viral (OpenCode before 1.14.19).
 export const Account = Schema.Struct({
   name: AccountName,
-  status: Schema.Literals(["ready", "missing"]),
+  status: Schema.Literals(["ready", "missing", "signed-out", "outdated"]),
   // environment: a variable set when the server started (wins over the Keychain); keychain: the macOS
-  // Keychain entry Viral manages; cli: the Claude CLI
+  // Keychain entry Viral manages; cli: an installed CLI
   source: Schema.NullOr(Schema.Literals(["environment", "keychain", "cli"])),
-  // e.g. the Claude CLI's version
-  detail: Schema.NullOr(Schema.String)
+  // e.g. the Claude CLI's version, or how Codex is signed in
+  detail: Schema.NullOr(Schema.String),
+  // a CLI's version ("0.154.0")
+  version: Schema.NullOr(Schema.String),
+  // what to do before Viral can use it: how to install, sign in or update (Viral never does it for you)
+  hint: Schema.NullOr(Schema.String)
 })
 export type Account = typeof Account.Type
 
@@ -35,9 +40,21 @@ export type AgentProvider = typeof AgentProvider.Type
 export const CostBilling = Schema.Literals(["billed", "subscription"])
 export type CostBilling = typeof CostBilling.Type
 
-// Stages that look at images (contact sheets, previews): only the Claude CLI can run them until the gateway
-// gets vision tools.
-export const CLI_ONLY_STAGES: ReadonlyArray<AgentStage> = ["shots", "sections", "thumbnail"]
+// Stages that look at images (contact sheets, previews).
+export const VISION_STAGES: ReadonlyArray<AgentStage> = ["shots", "sections", "thumbnail"]
+
+// Providers checked to see images in a stage (the files it reads and its tools' results). Vision stages run only on
+// these; the others fall back to the Claude CLI there.
+export const VISION_PROVIDERS: ReadonlyArray<AgentProvider> = ["claude-cli"]
+
+// A model a CLI offers on your account (Codex's catalog, `opencode models`).
+export const CliModel = Schema.Struct({ id: Schema.String, label: Schema.String })
+export type CliModel = typeof CliModel.Type
+export const CliModels = Schema.Struct({
+  provider: Schema.Literals(["codex", "opencode"]),
+  models: Schema.Array(CliModel)
+})
+export type CliModels = typeof CliModels.Type
 
 // The Claude CLI's model choices; null is your CLI's own default (or the stage's, e.g. Haiku for ads).
 export const CLI_MODELS: ReadonlyArray<{ readonly id: string | null; readonly label: string }> = [
@@ -63,7 +80,7 @@ export const AgentChoice = Schema.Struct({ provider: AgentProvider, model: Schem
 export type AgentChoice = typeof AgentChoice.Type
 
 // What actually runs a stage: its own choice, or the default for all steps. `inherited` is true when the stage
-// uses the default; `forcedCli` when the default is the gateway but the stage needs the CLI (vision).
+// uses the default; `forcedCli` when the choice can't see images but the stage needs to, so the Claude CLI runs it.
 export const AgentRoute = Schema.Struct({
   provider: AgentProvider,
   model: Schema.NullOr(Schema.String),
@@ -72,20 +89,22 @@ export const AgentRoute = Schema.Struct({
 })
 export type AgentRoute = typeof AgentRoute.Type
 
-// One rule for every client and the server: a stage's own choice wins, then the default for all steps; stages
-// that need vision stay on the Claude CLI (keeping their own CLI model) whatever the default says.
+// Whether a provider can run a stage: vision stages need one of VISION_PROVIDERS.
+export const canRunStage = (provider: AgentProvider, stage: AgentStage) =>
+  !VISION_STAGES.includes(stage) || VISION_PROVIDERS.includes(provider)
+
+// One rule for every client and the server: a stage's own choice wins, then the default for all steps; a stage
+// that needs vision runs on the Claude CLI (on its own default model) when the choice can't see images.
 export const resolveAgentRoute = (
   stage: AgentStage,
   defaultAgent: AgentChoice,
   own: AgentChoice | null
 ): AgentRoute => {
-  const cliOnly = CLI_ONLY_STAGES.includes(stage)
-  if (own !== null) {
-    const forced = cliOnly && own.provider !== "claude-cli"
-    return { provider: forced ? "claude-cli" : own.provider, model: forced ? null : own.model, inherited: false, forcedCli: forced }
-  }
-  if (cliOnly && defaultAgent.provider !== "claude-cli") return { provider: "claude-cli", model: null, inherited: true, forcedCli: true }
-  return { provider: defaultAgent.provider, model: defaultAgent.model, inherited: true, forcedCli: false }
+  const choice = own ?? defaultAgent
+  const forced = !canRunStage(choice.provider, stage)
+  return forced
+    ? { provider: "claude-cli", model: null, inherited: own === null, forcedCli: true }
+    : { provider: choice.provider, model: choice.model, inherited: own === null, forcedCli: false }
 }
 
 const perStage = <S extends Schema.Top>(value: S) =>
@@ -204,6 +223,8 @@ export class SettingsError extends Schema.TaggedError<SettingsError>()("Settings
 
 export class SettingsRpcs extends RpcGroup.make(
   Rpc.make("GetAccounts", { success: Schema.Array(Account) }),
+  // the models Codex and OpenCode offer on your account (empty for one that isn't installed or signed in)
+  Rpc.make("GetCliModels", { success: Schema.Array(CliModels) }),
   // Saves a key in the macOS Keychain. The value is only ever sent this way, never returned.
   Rpc.make("SetSecret", { payload: { name: KeyName, value: Schema.String }, success: Account, error: SettingsError }),
   Rpc.make("RemoveSecret", { payload: { name: KeyName }, success: Account, error: SettingsError }),

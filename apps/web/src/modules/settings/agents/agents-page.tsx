@@ -6,8 +6,9 @@ import {
   type AgentRoute,
   type AgentStage,
   type AppSettings,
+  canRunStage,
   CLI_MODELS,
-  CLI_ONLY_STAGES,
+  type CliModels,
   GATEWAY_MODELS,
   type ModelEval
 } from "@viral/contracts"
@@ -20,7 +21,7 @@ import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
 import { modeAtom } from "../../system/preferences.ts"
-import { accountsAtom, appSettingsAtom, modelEvalsAtom, setDefaultAgent, setStageAgent } from "../settings-api.ts"
+import { accountsAtom, appSettingsAtom, cliModelsAtom, modelEvalsAtom, setDefaultAgent, setStageAgent } from "../settings-api.ts"
 import { Loaded, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 import { evalLabel, evalLine, modelLabel, providerName } from "./agents-values.ts"
 
@@ -35,18 +36,32 @@ const STAGES: ReadonlyArray<{ readonly stage: AgentStage; readonly label: string
   { stage: "thumbnail", label: "Thumbnail", sub: "Picks the hero, the face and the words for the thumbnail." }
 ]
 
+// Which providers can be picked: the Claude CLI always; Codex and OpenCode once installed and signed in (Settings ›
+// Accounts says how); the gateway with a key.
+type Ready = Readonly<Record<AgentProvider, boolean>>
+
+// A provider's first model to pick when it's chosen: the gateway and OpenCode need one, Codex and the Claude CLI
+// start on their default.
+const firstModel = (provider: AgentProvider, catalog: ReadonlyArray<CliModels>) =>
+  provider === "ai-gateway"
+    ? GATEWAY_MODELS[0]?.id ?? null
+    : provider === "opencode"
+    ? catalog.find((c) => c.provider === "opencode")?.models[0]?.id ?? null
+    : null
+
 // Settings › Agents: who runs the agent steps and on which model. One default for every step, then any step
-// can have its own choice. The Claude CLI is the default out of the box; with an AI Gateway key, other models
-// (Haiku 5.5, GPT-6 Luna, Gemini…) can run the text steps.
+// can have its own choice. The Claude CLI is the default out of the box; Codex and OpenCode run on your own
+// accounts there, and with an AI Gateway key other models (Haiku 5.5, GPT-6 Luna, Gemini…) can run the text steps.
 export function AgentsPage() {
   const settings = useAtomValue(appSettingsAtom)
   const accounts = useAtomValue(accountsAtom)
+  const models = useAtomValue(cliModelsAtom)
   const evals = useAtomValue(modelEvalsAtom)
   const detailed = useAtomValue(modeAtom) === "detailed"
-  const gatewayReady = Option.match(AsyncResult.value(accounts), {
-    onNone: () => false,
-    onSome: (list) => list.some((a) => a.name === "gateway" && a.status === "ready")
-  })
+  const list = Option.getOrElse(AsyncResult.value(accounts), () => [])
+  const isReady = (name: string) => list.some((a) => a.name === name && a.status === "ready")
+  const ready: Ready = { "claude-cli": true, codex: isReady("codex"), opencode: isReady("opencode"), "ai-gateway": isReady("gateway") }
+  const catalog = Option.getOrElse(AsyncResult.value(models), (): ReadonlyArray<CliModels> => [])
   const evalList = Option.getOrElse(AsyncResult.value(evals), (): ReadonlyArray<ModelEval> => [])
 
   return (
@@ -54,7 +69,7 @@ export function AgentsPage() {
       <Loaded result={settings} what="your settings" skeleton={<SettingsSkeleton groups={[2, 7]} titled />}>
         {(value) => (
           <>
-            <DefaultGroup settings={value} gatewayReady={gatewayReady} evals={detailed ? evalList : []} />
+            <DefaultGroup settings={value} ready={ready} catalog={catalog} evals={detailed ? evalList : []} />
             <SettingsGroup title="Each step">
               {STAGES.map((s) => (
                 <StageRow
@@ -62,7 +77,8 @@ export function AgentsPage() {
                   {...s}
                   own={value.stageAgents[s.stage]}
                   route={value.routes[s.stage]}
-                  gatewayReady={gatewayReady}
+                  ready={ready}
+                  catalog={catalog}
                 />
               ))}
             </SettingsGroup>
@@ -74,9 +90,10 @@ export function AgentsPage() {
   )
 }
 
-function DefaultGroup({ settings, gatewayReady, evals }: {
+function DefaultGroup({ settings, ready, catalog, evals }: {
   readonly settings: AppSettings
-  readonly gatewayReady: boolean
+  readonly ready: Ready
+  readonly catalog: ReadonlyArray<CliModels>
   readonly evals: ReadonlyArray<ModelEval>
 }) {
   const save = useAtomSet(setDefaultAgent, { mode: "promise" })
@@ -91,16 +108,11 @@ function DefaultGroup({ settings, gatewayReady, evals }: {
     <SettingsGroup title="Default for all steps">
       <SettingRow
         label="Provider"
-        sub={gatewayReady
+        sub={ready.codex && ready.opencode && ready["ai-gateway"]
           ? "Who runs every step that hasn’t got its own choice."
-          : <>Who runs every step. For other models, <Link to="/settings/accounts" className="underline">add an AI Gateway key in Accounts</Link>.</>}
+          : <>Who runs every step. Codex, OpenCode and the AI Gateway appear once they’re set up in <Link to="/settings/accounts" className="underline">Accounts</Link>.</>}
       >
-        <ProviderSelect
-          label="Default provider"
-          value={current.provider}
-          gatewayReady={gatewayReady}
-          onChange={(provider) => set({ provider, model: provider === "ai-gateway" ? GATEWAY_MODELS[0]?.id ?? null : null })}
-        />
+        <ProviderSelect label="Default provider" value={current.provider} ready={ready} onChange={(provider) => set({ provider, model: firstModel(provider, catalog) })} />
       </SettingRow>
       <SettingRow
         label="Model"
@@ -108,7 +120,13 @@ function DefaultGroup({ settings, gatewayReady, evals }: {
           ? "CLI default keeps each step’s own model (Haiku for ads and metadata)."
           : "Steps that look at images (shots, sections, thumbnail) stay on the Claude CLI for now.")}
       >
-        <ModelPicker label="Default model" provider={current.provider} value={current.model} onChange={(model) => set({ provider: current.provider, model })} />
+        <ModelPicker
+          label="Default model"
+          provider={current.provider}
+          value={current.model}
+          catalog={catalog}
+          onChange={(model) => set({ provider: current.provider, model })}
+        />
       </SettingRow>
     </SettingsGroup>
   )
@@ -116,13 +134,14 @@ function DefaultGroup({ settings, gatewayReady, evals }: {
 
 type StageProvider = "default" | AgentProvider
 
-function StageRow({ stage, label, sub, own, route, gatewayReady }: {
+function StageRow({ stage, label, sub, own, route, ready, catalog }: {
   readonly stage: AgentStage
   readonly label: string
   readonly sub: string
   readonly own: AgentChoice | null
   readonly route: AgentRoute
-  readonly gatewayReady: boolean
+  readonly ready: Ready
+  readonly catalog: ReadonlyArray<CliModels>
 }) {
   const save = useAtomSet(setStageAgent, { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
@@ -130,8 +149,7 @@ function StageRow({ stage, label, sub, own, route, gatewayReady }: {
     void save({ payload: { stage, agent }, reactivityKeys: ["settings"] })
       .then(() => setError(null))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn’t save"))
-  const cliOnly = CLI_ONLY_STAGES.includes(stage)
-  const runsOn = `${providerName(route.provider)} · ${modelLabel(route.provider, route.model)}`
+  const runsOn = `${providerName(route.provider)} · ${modelLabel(route.provider, route.model, catalog)}`
   const note = route.inherited
     ? route.forcedCli ? `Claude CLI only for now (it looks at images) · ${modelLabel("claude-cli", null)}` : `Uses the default: ${runsOn}`
     : `Its own choice: ${runsOn}`
@@ -139,29 +157,37 @@ function StageRow({ stage, label, sub, own, route, gatewayReady }: {
   return (
     <SettingRow label={label} sub={error ?? `${sub} ${note}.`}>
       {own === null ? null : (
-        <ModelPicker label={`${label} model`} provider={own.provider} value={own.model} onChange={(model) => set({ provider: own.provider, model })} />
+        <ModelPicker
+          label={`${label} model`}
+          provider={own.provider}
+          value={own.model}
+          catalog={catalog}
+          onChange={(model) => set({ provider: own.provider, model })}
+        />
       )}
       <Select<StageProvider>
         label={`${label} provider`}
         value={own === null ? "default" : own.provider}
         onChange={(next) => {
           if (next === "default") return set(null)
-          set({ provider: next, model: next === "ai-gateway" ? GATEWAY_MODELS[0]?.id ?? null : null })
+          set({ provider: next, model: firstModel(next, catalog) })
         }}
         options={[
           { value: "default", label: "Use default" },
-          { value: "claude-cli", label: "Claude CLI" },
-          ...(gatewayReady && !cliOnly ? [{ value: "ai-gateway" as const, label: "AI Gateway" }] : [])
+          ...PROVIDERS.filter((p) => (ready[p] && canRunStage(p, stage)) || own?.provider === p)
+            .map((p) => ({ value: p, label: providerName(p) }))
         ]}
       />
     </SettingRow>
   )
 }
 
-function ProviderSelect({ label, value, gatewayReady, onChange }: {
+const PROVIDERS: ReadonlyArray<AgentProvider> = ["claude-cli", "codex", "opencode", "ai-gateway"]
+
+function ProviderSelect({ label, value, ready, onChange }: {
   readonly label: string
   readonly value: AgentProvider
-  readonly gatewayReady: boolean
+  readonly ready: Ready
   readonly onChange: (provider: AgentProvider) => void
 }) {
   return (
@@ -169,26 +195,39 @@ function ProviderSelect({ label, value, gatewayReady, onChange }: {
       label={label}
       value={value}
       onChange={onChange}
-      options={[
-        { value: "claude-cli", label: "Claude CLI" },
-        // shown while chosen even without a key, so the page tells the truth
-        ...(gatewayReady || value === "ai-gateway" ? [{ value: "ai-gateway" as const, label: "AI Gateway" }] : [])
-      ]}
+      // one that isn't set up is still shown while chosen, so the page tells the truth
+      options={PROVIDERS.filter((p) => ready[p] || p === value).map((p) => ({ value: p, label: providerName(p) }))}
     />
   )
 }
 
+// The models offered for a provider: the Claude CLI's aliases, the gateway's list, or what Codex and OpenCode offer
+// on your account. "default" stands for the provider's own default.
+const knownModels = (provider: AgentProvider, catalog: ReadonlyArray<CliModels>) => {
+  const account = (name: "codex" | "opencode") => catalog.find((c) => c.provider === name)?.models.map((m) => ({ value: m.id, label: m.label })) ?? []
+  switch (provider) {
+    case "claude-cli":
+      return CLI_MODELS.map((m) => ({ value: m.id ?? "default", label: m.label }))
+    case "codex":
+      return [{ value: "default", label: "Codex default" }, ...account("codex")]
+    case "opencode":
+      return account("opencode")
+    case "ai-gateway":
+      return GATEWAY_MODELS.map((m) => ({ value: m.id, label: m.label }))
+  }
+}
+
 // A model for a provider: the known ones, or any other id typed in.
-function ModelPicker({ label, provider, value, onChange }: {
+function ModelPicker({ label, provider, value, catalog, onChange }: {
   readonly label: string
   readonly provider: AgentProvider
   readonly value: string | null
+  readonly catalog: ReadonlyArray<CliModels>
   readonly onChange: (model: string | null) => void
 }) {
-  const known = provider === "claude-cli"
-    ? CLI_MODELS.map((m) => ({ value: m.id ?? "default", label: m.label }))
-    : GATEWAY_MODELS.map((m) => ({ value: m.id, label: m.label }))
-  const selected = provider === "claude-cli" ? value ?? "default" : value ?? ""
+  const known = knownModels(provider, catalog)
+  const hasDefault = provider === "claude-cli" || provider === "codex"
+  const selected = hasDefault ? value ?? "default" : value ?? ""
   const isKnown = known.some((k) => k.value === selected)
   const [custom, setCustom] = useState<string | null>(isKnown ? null : value ?? "")
   const save = (next: string) => onChange(next.trim() === "" ? null : next.trim())
@@ -201,11 +240,11 @@ function ModelPicker({ label, provider, value, onChange }: {
             aria-label={`${label} id`}
             className="w-[220px]"
             value={custom}
-            placeholder={provider === "claude-cli" ? "e.g. claude-opus-5-5" : "e.g. openai/gpt-6-luna"}
+            placeholder={PLACEHOLDER[provider]}
             onChange={(e) => setCustom(e.currentTarget.value)}
             onKeyDown={(e) => e.key === "Enter" && save(custom)}
           />
-          <Button disabled={provider === "ai-gateway" && custom.trim() === ""} onClick={() => save(custom)}>Save</Button>
+          <Button disabled={!hasDefault && custom.trim() === ""} onClick={() => save(custom)}>Save</Button>
         </>
       )}
       <Select<string>
@@ -217,10 +256,17 @@ function ModelPicker({ label, provider, value, onChange }: {
           setCustom(null)
           onChange(next === "default" ? null : next)
         }}
-        options={[...known, { value: "custom", label: provider === "claude-cli" ? "Other model id…" : "Other gateway id…" }]}
+        options={[...known, { value: "custom", label: provider === "ai-gateway" ? "Other gateway id…" : "Other model id…" }]}
       />
     </>
   )
+}
+
+const PLACEHOLDER: Record<AgentProvider, string> = {
+  "claude-cli": "e.g. claude-opus-5-5",
+  codex: "e.g. gpt-6-astra",
+  opencode: "e.g. anthropic/claude-haiku-5.5",
+  "ai-gateway": "e.g. openai/gpt-6-luna"
 }
 
 // Detailed mode: how each model did in your evals (cli eval), for choosing one.

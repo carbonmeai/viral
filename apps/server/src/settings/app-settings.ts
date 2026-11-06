@@ -3,7 +3,7 @@ import {
   AgentProvider,
   AgentStage,
   type AppSettings,
-  CLI_ONLY_STAGES,
+  canRunStage,
   resolveAgentRoute,
   SettingsError,
   TranscriberChoice
@@ -22,14 +22,18 @@ const CLI_DEFAULT: AgentChoice = { provider: "claude-cli", model: null }
 
 const invalid = (message: string) => new SettingsError({ message })
 
-// A choice the server will accept: the gateway needs a model; the vision steps stay on the Claude CLI.
+// A choice the server will accept: the gateway and OpenCode need a model; the vision steps need a provider that
+// sees images.
 export const checkChoice = (stage: AgentStage | null, choice: AgentChoice) => {
   const model = choice.model?.trim() ?? ""
   if (choice.provider === "ai-gateway" && model === "") {
     return Effect.fail(invalid("choose a model for the AI Gateway, e.g. anthropic/claude-haiku-5.5"))
   }
-  if (stage !== null && CLI_ONLY_STAGES.includes(stage) && choice.provider !== "claude-cli") {
-    return Effect.fail(invalid(`the ${stage} step looks at images, which only the Claude CLI can do for now`))
+  if (choice.provider === "opencode" && !model.includes("/")) {
+    return Effect.fail(invalid("choose an OpenCode model (provider/model), e.g. anthropic/claude-haiku-5.5"))
+  }
+  if (stage !== null && !canRunStage(choice.provider, stage)) {
+    return Effect.fail(invalid(`the ${stage} step looks at images, which this provider can't do in Viral yet`))
   }
   return Effect.succeed({ provider: choice.provider, model: model === "" ? null : model } satisfies AgentChoice)
 }

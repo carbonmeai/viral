@@ -16,6 +16,15 @@ if (args[0] === "--version") {
   process.exit(0)
 }
 
+if (args[0] === "auth") {
+  process.stdout.write(`\u001b[0m\n┌  Credentials ~/.local/share/opencode/auth.json\n│\n└  ${process.env.FAKE_OPENCODE_CREDENTIALS ?? "1"} credentials\n`)
+  process.exit(0)
+}
+if (args[0] === "models") {
+  process.stdout.write("opencode/big-pickle\nanthropic/claude-haiku-5.5\n")
+  process.exit(0)
+}
+
 const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT ?? "{}")
 const port = Number(args.find((arg) => arg.startsWith("--port="))?.slice(7))
 const auth = `Basic ${Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString("base64")}`
