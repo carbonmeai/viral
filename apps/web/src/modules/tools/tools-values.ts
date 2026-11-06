@@ -18,11 +18,17 @@ export const TOOL_PURPOSE: Record<ToolName, string> = {
   ffmpeg: "Cuts, joins and encodes video and audio",
   ffprobe: "Reads a video's length and streams",
   uv: "Runs the transcription, contact-sheet and render scripts",
-  "yt-dlp": "Downloads videos from a link"
+  "yt-dlp": "Downloads videos from a link",
+  "background-removal": "Lifts the hero and the face out of their frames for bold thumbnails. Fetched in the background"
 }
 
-// The tools still to set up: missing, or failed last time.
-export const toolsToInstall = (tools: ReadonlyArray<Tool>): ReadonlyArray<Tool> => tools.filter((t) => t.status !== "ready")
+// The tools first run still has to set up: required ones that are missing, or failed last time. The
+// background-removal models aren't required; they download on their own.
+export const toolsToInstall = (tools: ReadonlyArray<Tool>): ReadonlyArray<Tool> => tools.filter((t) => t.required && t.status !== "ready")
+
+// How far a background download has got, 0–1, or null while its size isn't known.
+export const downloadFraction = (tool: Tool): number | null =>
+  tool.progress === null || tool.progress.total === null || tool.progress.total === 0 ? null : tool.progress.bytes / tool.progress.total
 
 // Before anything arrives, every tool to install is waiting.
 export const initialInstall = (tools: ReadonlyArray<Tool>): InstallState => {

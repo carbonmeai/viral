@@ -20,7 +20,8 @@ apps/server/src/
   home/                ~/.viral paths ($VIRAL_HOME overrides; tests use a temp dir)
   persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one)
   sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short from them;
-                       source-stages.ts defines the video-level stages (source, transcribe, contact-sheet)
+                       source-stages.ts defines the video-level stages (source, transcribe, contact-sheet).
+                       Links download at 1080p, else 720p, never higher; the size is kept in source-video
   artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/
   transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
                        (transcripts.ts reads a source's transcript for planning stages; quote-match.ts snaps
@@ -51,7 +52,11 @@ apps/server/src/
                        first download), and the folder is put first on the server's PATH. yt-dlp is installed
                        through uv (`uv tool install`, uv's tool/bin/Python folders inside Viral's) because the
                        standalone macOS build takes 25–40 s to start; it upgrades via uv every few days.
-                       ListTools / InstallTools
+                       ListTools / InstallTools. The background-removal models (rembg's isnet-general-use and
+                       u2net_human_seg, ~355 MB, pinned by SHA-256, in ~/Library/Caches/Viral/models) are not
+                       first-run tools: the server fetches them in the background once the required tools are
+                       ready (VIRAL_PREFETCH_MODELS=off skips), Settings › Tools shows the progress
+                       (PrefetchBackgroundRemoval), and a bold thumbnail waits for them with a progress message
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
   presets/             style profiles; one default, seeded on first start
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;

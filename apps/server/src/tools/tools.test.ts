@@ -11,7 +11,7 @@ import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
-import type { ToolSpec } from "./tool-specs.ts"
+import type { ModelSpec, ToolSpec } from "./tool-specs.ts"
 import { prependToolsPath, Tools, type ToolsOptions } from "./tools.ts"
 
 let root: string
@@ -51,6 +51,9 @@ before(async () => {
   writeFileSync(join(staging, "uv"), fakeUv, { mode: 0o755 })
   execFileSync("tar", ["-czf", join(root, "uv.tar.gz"), "-C", join(root, "uv-staging"), "uv-pkg/uv"])
   files.set("/uv.tar.gz", readFileSync(join(root, "uv.tar.gz")))
+  // two fake background-removal models, big enough for several progress steps
+  files.set("/isnet-general-use.onnx", Buffer.alloc(1_300_000, 7))
+  files.set("/u2net_human_seg.onnx", Buffer.alloc(900_000, 9))
 
   server = createServer((req, res) => {
     requested.push(req.url ?? "")
@@ -207,4 +210,66 @@ test("yt-dlp needs uv first, and Viral's uv-managed copy upgrades through uv", a
     "install --force yt-dlp",
     "upgrade yt-dlp"
   ])
+})
+
+const modelSpecs = (): Array<ModelSpec> => ["isnet-general-use.onnx", "u2net_human_seg.onnx"].map((file) => ({
+  file,
+  url: `${base}/${file}`,
+  sha256: sha(files.get(`/${file}`)!),
+  size: files.get(`/${file}`)!.length
+}))
+
+test("first-run install never fetches the background-removal models", async () => {
+  const dir = fresh("models-not-required")
+  requested.length = 0
+  const options = { dir, path: "", specs: specs(), updateEvery: Duration.days(3), models: modelSpecs(), modelsDir: join(dir, "models") }
+  const [events, listed] = await run(options, (tools) => Effect.all([installAll(tools), tools.list]))
+  assert.equal(requested.some((r) => r.endsWith(".onnx")), false, "no model was downloaded")
+  assert.equal(events.some((e) => e._tag !== "Failed" && "name" in e && e.name === "background-removal"), false)
+  const models = listed.find((t) => t.name === "background-removal")
+  assert.equal(models?.required, false)
+  assert.equal(models?.status, "missing")
+})
+
+test("the models download in the background, once, checked, and a thumbnail can wait for them", async () => {
+  const dir = fresh("models-fetch")
+  const modelsDir = join(dir, "models")
+  requested.length = 0
+  const options = { dir, path: "", specs: [], updateEvery: Duration.days(3), models: modelSpecs(), modelsDir }
+  const messages: Array<string> = []
+  const [started, waited, again, listed] = await run(options, (tools) =>
+    Effect.gen(function*() {
+      const started = yield* tools.prefetchBackgroundRemoval
+      // a second caller waits on the same download instead of starting another
+      const [waited, again] = yield* Effect.all([
+        tools.ensureBackgroundRemoval((_, message) => Effect.sync(() => void messages.push(message))),
+        tools.ensureBackgroundRemoval(() => Effect.void)
+      ], { concurrency: "unbounded" })
+      return [started, waited, again, yield* tools.list] as const
+    }))
+  assert.equal(started.status, "installing")
+  assert.deepEqual([waited, again], ["ready", "ready"])
+  assert.ok(messages.some((m) => /^Downloading background removal/.test(m)), "the wait says what it's waiting for")
+  assert.equal(requested.filter((r) => r === "/isnet-general-use.onnx").length, 1, "downloaded once")
+  for (const file of ["isnet-general-use.onnx", "u2net_human_seg.onnx"]) {
+    assert.deepEqual(readFileSync(join(modelsDir, file)), files.get(`/${file}`))
+  }
+  assert.deepEqual(readdirSync(modelsDir).filter((f) => f.startsWith(".")), [], "no temporary files are left")
+  const models = listed.find((t) => t.name === "background-removal")
+  assert.equal(models?.status, "ready")
+  assert.equal(models?.path, modelsDir)
+})
+
+test("a model whose checksum doesn't match is refused, and the wait gives up without failing", async () => {
+  const dir = fresh("models-mismatch")
+  const modelsDir = join(dir, "models")
+  const bad = modelSpecs().map((m) => m.file === "u2net_human_seg.onnx" ? { ...m, sha256: "0".repeat(64) } : m)
+  const options = { dir, path: "", specs: [], updateEvery: Duration.days(3), models: bad, modelsDir }
+  const [result, listed] = await run(options, (tools) => Effect.all([tools.ensureBackgroundRemoval(() => Effect.void), tools.list]))
+  assert.equal(result, "unavailable")
+  assert.equal(existsSync(join(modelsDir, "u2net_human_seg.onnx")), false)
+  assert.deepEqual(readdirSync(modelsDir).filter((f) => f.startsWith(".")), [], "no temporary files are left")
+  const models = listed.find((t) => t.name === "background-removal")
+  assert.equal(models?.status, "failed")
+  assert.match(models?.error ?? "", /doesn't match the pinned/)
 })

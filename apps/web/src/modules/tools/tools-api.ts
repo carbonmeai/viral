@@ -16,3 +16,6 @@ export const installAtom = ViralClient.runtime.atom(Stream.unwrap(Effect.gen(fun
   const tools = yield* client("ListTools", undefined)
   return client("InstallTools", undefined).pipe(Stream.scan(() => initialInstall(tools), foldInstall))
 })))
+
+// Starts fetching the background-removal models now (Settings › Tools); ListTools shows the progress.
+export const prefetchBackgroundRemoval = ViralClient.mutation("PrefetchBackgroundRemoval")
