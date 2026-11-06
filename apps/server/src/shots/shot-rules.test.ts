@@ -1,0 +1,58 @@
+import type { Script, ShotProposal } from "@viral/contracts"
+import assert from "node:assert/strict"
+import { test } from "node:test"
+import { checkShots, narrationEnds, placeReals } from "./shot-rules.ts"
+
+// "This guy tasted the spicy cold mix. It hurt. So he tried again." at one word per second
+const heard = ["This", "guy", "tasted", "the", "spicy", "cold", "mix.", "It", "hurt.", "So", "he", "tried", "again."]
+const words = heard.map((w, i) => ({ w, s: i, e: i + 0.8 }))
+const script: Script = {
+  headline: null,
+  beats: [
+    { _tag: "Narration", text: "This guy tasted the spicy-cold mix." },
+    { _tag: "Real", quote: "Right now, it's just pain.", start: 1144, end: 1146 },
+    { _tag: "Narration", text: "It hurt." },
+    { _tag: "Narration", text: "So he tried again." },
+    { _tag: "Real", quote: "This is so nasty.", start: 2036, end: 2040 }
+  ]
+}
+
+test("narration beats end on the voiceover word that matches their last word", () => {
+  assert.deepEqual(narrationEnds(script, words), [6, 8, 12])
+})
+
+test("real lines become inserts after their narration, or outro clips at the end", () => {
+  const { inserts, outro } = placeReals(script, words)
+  assert.deepEqual(inserts, [{ quote: "Right now, it's just pain.", start: 1144, end: 1146, afterWord: 6, afterWordText: "mix." }])
+  assert.deepEqual(outro, [{ quote: "This is so nasty.", start: 2036, end: 2040 }])
+})
+
+const ctx = { words, voiceoverSeconds: 13, sourceSeconds: 2300, excluded: [{ start: 0, end: 3 }], ...placeReals(script, words) }
+
+test("a good shot list passes and gets its anchors' words", () => {
+  const proposal: ShotProposal = {
+    shots: [0, 2, 4, 7, 9, 11].map((word, i) => ({ word, src: 100 + i * 10, note: "n" })),
+    markers: [{ _tag: "Label", word: 4, x: 0.5, y: 0.3, text: "spicy" }]
+  }
+  const { value, problems } = checkShots(proposal, ctx)
+  assert.deepEqual(problems, [])
+  assert.equal(value.shots[3]!.wordText, "It")
+})
+
+test("reports bad anchors, long shots, excluded footage and a missing resume shot", () => {
+  const proposal: ShotProposal = {
+    shots: [{ word: 1, src: 1, note: "ad" }, { word: 5, src: 2301, note: "end" }, { word: 3, src: 50, speed: 9, note: "x" }],
+    markers: [{ _tag: "Label", word: 40, x: 2, y: 0.5, text: "far too many words here" }]
+  }
+  const text = checkShots(proposal, ctx).problems.join("\n")
+  assert.match(text, /first shot must start on word 0/)
+  assert.match(text, /inside an excluded range \(0\.0–3\.0s\)/)
+  assert.match(text, /shot 2 \(word 5 "cold"\): the next shot must start on a later word/)
+  assert.match(text, /outside the video/)
+  assert.match(text, /speed 9 is outside/)
+  assert.match(text, /lasts 10\.0s/)
+  assert.match(text, /start a new shot on word 7 "It", where the narration resumes/)
+  assert.match(text, /word 40 isn't in the voiceover/)
+  assert.match(text, /x and y are fractions/)
+  assert.match(text, /too long/)
+})

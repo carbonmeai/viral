@@ -1,4 +1,4 @@
-import { type RunUpdate, Script, Voiceover } from "@viral/contracts"
+import { type RunUpdate, Script, ShotPlan, Voiceover } from "@viral/contracts"
 import { Console, Effect, Option, Schema } from "effect"
 
 const ScriptPayload = Schema.Struct({ script: Script, narrationWords: Schema.NullOr(Schema.Int) })
@@ -7,10 +7,28 @@ const VoicePayload = Schema.Struct({ voiceover: Voiceover, file: Schema.NullOr(S
 
 const describeVoice = (payload: unknown): string =>
   Option.match(Schema.decodeUnknownOption(VoicePayload)(payload), {
-    onNone: () => "",
+    onNone: () => describeShots(payload),
     onSome: ({ voiceover: v, file }) =>
       `  ${file ?? "(no file)"}\n  ${v.durationS.toFixed(1)}s · ${v.pace.toFixed(2)} words/s (raw ${v.rawPace.toFixed(2)}, atempo ${v.atempo})` +
       ` · voice ${v.voiceId} · ${v.characters} characters\n`
+  })
+
+const ShotsPayload = Schema.Struct({ plan: ShotPlan, storyboard: Schema.NullOr(Schema.String) })
+
+const describeShots = (payload: unknown): string =>
+  Option.match(Schema.decodeUnknownOption(ShotsPayload)(payload), {
+    onNone: () => "",
+    onSome: ({ plan, storyboard }) => {
+      const shots = plan.shots.map((shot, k) =>
+        `  ${String(k + 1).padStart(2)}  w${String(shot.word).padEnd(3)} ${shot.wordText.padEnd(12)} ${shot.src.toFixed(1).padStart(7)}s` +
+        `${shot.fit === true ? " fit" : ""}${shot.speed === undefined ? "" : ` ×${shot.speed}`}  ${shot.note}`
+      ).join("\n")
+      const reals = [
+        ...plan.inserts.map((i) => `  REAL after w${i.afterWord} "${i.afterWordText}": "${i.quote}"`),
+        ...plan.outro.map((o) => `  OUTRO "${o.quote}"`)
+      ].join("\n")
+      return `${shots}\n${reals}\n  ${plan.shots.length} shots · ${plan.markers.length} markers · storyboard ${storyboard ?? "(none)"}\n`
+    }
   })
 
 // What a gate is asking you to approve, in readable form; empty when there's nothing to show.

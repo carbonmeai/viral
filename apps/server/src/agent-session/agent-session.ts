@@ -13,6 +13,30 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   message: Schema.String
 }) {}
 
+// A helper tool a stage offers besides its output tool (e.g. a detail contact sheet). Its result is text
+// for the agent; a bad input comes back as text too, so the agent can correct it.
+export interface AgentTool {
+  readonly name: string
+  readonly description: string
+  readonly schema: Schema.Top
+  run(input: unknown): Effect.Effect<string>
+}
+
+export const agentTool = <A, I>(spec: {
+  readonly name: string
+  readonly description: string
+  readonly schema: Schema.Codec<A, I>
+  readonly run: (input: A) => Effect.Effect<string>
+}): AgentTool => ({
+  name: spec.name,
+  description: spec.description,
+  schema: spec.schema,
+  run: (input) =>
+    Schema.decodeUnknownEffect(spec.schema)(input).pipe(
+      Effect.matchEffect({ onFailure: (error) => Effect.succeed(`invalid input: ${error.message}`), onSuccess: spec.run })
+    )
+})
+
 // One agent job: a stage asks for one structured result.
 export interface AgentTask<S extends Schema.Top> {
   readonly stage: string
@@ -27,6 +51,8 @@ export interface AgentTask<S extends Schema.Top> {
   readonly defaultModel: string | null
   // folders the agent may read files from (contact sheets for the vision stages); nothing else is readable
   readonly readDirs?: ReadonlyArray<string>
+  // helper tools the agent may call before submitting
+  readonly tools?: ReadonlyArray<AgentTool>
   readonly maxTurns?: number
   // continue an earlier conversation (a rejected attempt) instead of starting fresh
   readonly resumeSession?: string | null
@@ -81,6 +107,8 @@ export class AgentSession extends Context.Service<AgentSession, {
         const model = Option.getOrElse(configured, () => task.defaultModel)
         const readDirs = task.readDirs ?? []
 
+        const helpers = task.tools ?? []
+        const services = yield* Effect.context<never>()
         let submitted: Option.Option<unknown> = Option.none()
         const server = createSdkMcpServer({
           name: "viral",
@@ -88,7 +116,12 @@ export class AgentSession extends Context.Service<AgentSession, {
             tool(task.output.tool, task.output.description, toolShape(task.output.schema), async (args) => {
               submitted = Option.some(args)
               return { content: [{ type: "text", text: "Received. Stop here." }] }
-            })
+            }),
+            ...helpers.map((helper) =>
+              tool(helper.name, helper.description, toolShape(helper.schema), async (args) => ({
+                content: [{ type: "text", text: await Effect.runPromiseWith(services)(helper.run(args)) }]
+              }))
+            )
           ]
         })
 
@@ -109,7 +142,7 @@ export class AgentSession extends Context.Service<AgentSession, {
                 mcpServers: { viral: server },
                 strictMcpConfig: true,
                 settings: { disableClaudeAiConnectors: true },
-                allowedTools: [`mcp__viral__${task.output.tool}`],
+                allowedTools: [task.output.tool, ...helpers.map((h) => h.name)].map((name) => `mcp__viral__${name}`),
                 // anything not allowed above lands here: only reads inside the stage's folders pass
                 canUseTool: async (toolName, input) => {
                   const file = typeof input.file_path === "string" ? input.file_path : ""

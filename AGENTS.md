@@ -40,11 +40,15 @@ apps/server/src/
   voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
                        silence trimmed, atempo to the preset's words/sec, local-Whisper word timings, voice gate.
                        The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice
+  shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
+                       asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
+                       script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   agent-session/       runs every agent stage on the Claude CLI: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
                        per-stage model, cost + session recording, resume; AgentSession.replay for tests.
-                       run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back)
+                       run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
+                       A task can offer helper tools (`agentTool`) besides its propose_* tool
   settings/            app preferences as JSON under keys (e.g. stage.story.model)
   render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,

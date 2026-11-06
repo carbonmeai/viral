@@ -99,14 +99,17 @@ test("the voice stage speaks the narration in one take, paces it, and waits for 
     assert.ok(raised?._tag === "Event" && raised.event._tag === "RequestRaised")
     assert.equal(raised.event.request.title, "Approve the voiceover?")
     yield* runs.respond(raised.event.request.id, { _tag: "Approve" })
-    return [...yield* runs.subscribe(run.id, 0).pipe(
-      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RunFinished"),
+    // the shots stage comes next; this test stops there
+    const rest = [...yield* runs.subscribe(run.id, 0).pipe(
+      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "StageStarted" && u.event.stageRun.stage === "shots"),
       Stream.runCollect
     )]
+    yield* runs.cancel(run.id)
+    return rest
   }))
-  const finished = updates.findLast((u) => u._tag === "Event" && u.event._tag === "RunFinished")
-  assert.ok(finished?._tag === "Event" && finished.event._tag === "RunFinished")
-  assert.equal(finished.event.run.status, "completed", finished.event.run.error ?? "")
+  const voiced = updates.findLast((u) => u._tag === "Event" && u.event._tag === "StageFinished" && u.event.stageRun.stage === "voice")
+  assert.ok(voiced?._tag === "Event" && voiced.event._tag === "StageFinished")
+  assert.equal(voiced.event.stageRun.status, "succeeded", voiced.event.stageRun.error ?? "")
 
   assert.deepEqual(spoken, [{ voiceId: "voice-123", model: "eleven_v4", text: "This guy made a candy. It hits every taste." }])
   assert.equal(transcribed.length, 2, "the trimmed take, then the paced one")

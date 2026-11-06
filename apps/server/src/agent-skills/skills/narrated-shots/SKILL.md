@@ -13,6 +13,11 @@ description: How to plan the shots of a narrated short (any narrated approach). 
   shows him tasting it. When a line is about the creator, show the creator, not someone else.
 - **Pace:** follow the style's target average shot length (about 1.3s for a fast recap, about 2.2s for an
   interleaved short). Change shots on the words that matter, not mechanically.
+- **Open on the payoff.** The first shot (word 0) shows the finished result or the most striking frame (the
+  tray of skull candies), not the start of the process. The hook earns the first second.
+- **Never repeat footage.** Each shot gets its own moment; two shots from the same few seconds read as a stall.
+- **Full framing crops the 16:9 frame to 9:16**, keeping the middle third. When the subject sits to one side,
+  set `cropX` (0 = left edge, 1 = right edge) so it stays in frame.
 - **Use the whole frame (`fit`) for on-screen graphics or text**, so nothing important is cropped. Speed
   (`speed`) suits slow processes and graphics that build up.
 - **Pick frames from the contact sheets**, then refine with finer sheets around the moment. A shot's source
