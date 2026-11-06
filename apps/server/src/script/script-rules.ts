@@ -1,5 +1,5 @@
 import type { ApproachName, Script, ScriptBeat, TranscriptWord } from "@viral/contracts"
-import { locateQuote } from "./quote-match.ts"
+import { locateQuote } from "../transcribe/quote-match.ts"
 
 export interface ScriptLimits {
   // narrated words, inclusive

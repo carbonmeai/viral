@@ -32,6 +32,11 @@ export const Project = Schema.Struct({
 })
 export type Project = typeof Project.Type
 
+export class ProposalNotFound extends Schema.TaggedError<ProposalNotFound>()("ProposalNotFound", {
+  sourceId: SourceId,
+  proposal: Schema.Int
+}) {}
+
 export class ProjectNotFound extends Schema.TaggedError<ProjectNotFound>()("ProjectNotFound", {
   id: ProjectId
 }) {}
@@ -47,6 +52,12 @@ export class ProjectsRpcs extends RpcGroup.make(
     },
     success: Project,
     error: Schema.Union([SourceNotFound, PresetNotFound, MusicTrackNotFound])
+  }),
+  // Creates a short from one of the story stage's proposals: its approach, with the proposal's title.
+  Rpc.make("CreateProjectFromProposal", {
+    payload: { sourceId: SourceId, proposal: Schema.Int },
+    success: Project,
+    error: Schema.Union([SourceNotFound, ProposalNotFound])
   }),
   Rpc.make("ListProjects", { payload: { sourceId: Schema.NullOr(SourceId) }, success: Schema.Array(Project) }),
   Rpc.make("GetProject", { payload: { id: ProjectId }, success: Project, error: ProjectNotFound }),

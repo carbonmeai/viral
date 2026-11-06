@@ -20,6 +20,8 @@ export interface ScriptBrief {
   readonly transcript: string
   // sponsor reads and ads to stay out of, when known
   readonly excluded: ReadonlyArray<{ readonly start: number; readonly end: number }>
+  // the story stage's proposal this short was made from, when it was
+  readonly angle: { readonly title: string; readonly hook: string; readonly why: string } | null
 }
 
 export const buildScriptPrompt = (brief: ScriptBrief) =>
@@ -28,10 +30,9 @@ export const buildScriptPrompt = (brief: ScriptBrief) =>
     brief.excluded.length === 0
       ? ""
       : `Never use these ranges (sponsor reads, ads, end screens): ${brief.excluded.map((r) => `${r.start.toFixed(0)}–${r.end.toFixed(0)}s`).join(", ")}`,
+    brief.angle === null
+      ? ""
+      : `The angle you picked for this short:\n- title: ${brief.angle.title}\n- hook: ${brief.angle.hook}\n- why: ${brief.angle.why}\nBuild the script on this angle; improve the hook if you can.`,
     `Transcript (source seconds):\n${brief.transcript}`,
     "Write the script for this video, following the approach skill."
   ].filter((part) => part !== "").join("\n\n")
-
-// When the server finds problems with a proposed script, the same conversation gets them to fix.
-export const fixScriptPrompt = (problems: ReadonlyArray<string>) =>
-  `That script has problems:\n${problems.map((p) => `- ${p}`).join("\n")}\n\nFix them and call propose_script again with the whole script.`

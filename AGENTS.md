@@ -20,8 +20,12 @@ apps/server/src/
                        source-stages.ts defines the video-level stages (source, transcribe, contact-sheet)
   artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/
   transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
+                       (transcripts.ts reads a source's transcript for planning stages; quote-match.ts snaps
+                       an agent's quoted line to the transcript's exact word timings)
   contact-sheet/       timestamped frame grids for picking b-roll by eye
-                       (transcribe/transcripts.ts reads a source's transcript for planning stages)
+  ads/                 the ads stage (Haiku): sponsor reads, ads, intros and end screens to keep out of shorts
+  story/               the story stage: story beats with snapped quotes + 3 proposals (one per approach), each
+                       of which `Projects.fromProposal` turns into a short
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
@@ -31,12 +35,13 @@ apps/server/src/
   references/          viral videos kept to learn from; their analyses are reference-owned artifacts
   runs/                runs a source or a short through its stages: reuse of approved work, gates (approve,
                        reject with a note, edit), cancel, resume after restart, events + live progress
-  script/              the script stage: prompt, quote matching against the transcript, per-approach rules, and
-                       a fix loop that hands rejected scripts back to the agent
+  script/              the script stage: prompt (built on the chosen proposal's angle), per-approach rules, and
+                       the script gate
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   agent-session/       runs every agent stage on the Claude CLI: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
-                       per-stage model, cost + session recording, resume; AgentSession.replay for tests
+                       per-stage model, cost + session recording, resume; AgentSession.replay for tests.
+                       run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back)
   settings/            app preferences as JSON under keys (e.g. stage.story.model)
   render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,

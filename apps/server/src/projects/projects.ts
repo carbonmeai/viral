@@ -10,12 +10,15 @@ import {
   ProjectFormat,
   ProjectId,
   ProjectNotFound,
+  ProposalNotFound,
   SourceId,
-  type SourceNotFound
+  type SourceNotFound,
+  StoryMap
 } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
+import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { DatabaseLive } from "../persistence/database.ts"
@@ -62,6 +65,8 @@ const toProject = (row: typeof ProjectRow.Type): Project => ({
 // numbered per source (01-, 02-…).
 export class Projects extends Context.Service<Projects, {
   create(input: CreateProjectInput): Effect.Effect<Project, SourceNotFound | PresetNotFound | MusicTrackNotFound>
+  // A short from the source story's proposal number `proposal` (0-based): its approach and title.
+  fromProposal(sourceId: SourceId, proposal: number): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
   list(sourceId: SourceId | null): Effect.Effect<ReadonlyArray<Project>>
   get(id: ProjectId): Effect.Effect<Project, ProjectNotFound>
   remove(id: ProjectId): Effect.Effect<boolean>
@@ -76,6 +81,7 @@ export class Projects extends Context.Service<Projects, {
       const sources = yield* Sources
       const presets = yield* Presets
       const music = yield* MusicLibrary
+      const artifacts = yield* Artifacts
 
       const findAll = SqlSchema.findAll({
         Request: Schema.Void,
@@ -127,6 +133,22 @@ export class Projects extends Context.Service<Projects, {
         return yield* get(id).pipe(Effect.orDie)
       })
 
+      const fromProposal = Effect.fn("Projects.fromProposal")(function*(sourceId: SourceId, proposal: number) {
+        yield* sources.get(sourceId)
+        const story = yield* artifacts.latest({ _tag: "Source", id: sourceId }, "story-map")
+        const chosen = Option.flatMap(story, (a) => Schema.decodeUnknownOption(StoryMap)(a.data)).pipe(
+          Option.flatMapNullishOr((map) => map.proposals[proposal])
+        )
+        if (Option.isNone(chosen)) return yield* new ProposalNotFound({ sourceId, proposal })
+        return yield* create({
+          sourceId,
+          title: chosen.value.title,
+          approach: chosen.value.approach,
+          presetId: null,
+          musicTrackId: null
+        }).pipe(Effect.catchTag(["PresetNotFound", "MusicTrackNotFound"], Effect.die))
+      })
+
       const list = Effect.fn("Projects.list")(function*(sourceId: SourceId | null) {
         const rows = yield* Option.match(Option.fromNullishOr(sourceId), {
           onNone: () => findAll(),
@@ -142,10 +164,10 @@ export class Projects extends Context.Service<Projects, {
         return true
       }, Effect.orDie)
 
-      return Projects.of({ create, list, get, remove })
+      return Projects.of({ create, fromProposal, list, get, remove })
     })
   ).pipe(
-    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer]),
+    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer]),
     Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto])
   )
 }

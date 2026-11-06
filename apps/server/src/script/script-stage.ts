@@ -1,18 +1,16 @@
 import { NodeServices } from "@effect/platform-node"
-import { type Artifact, type ProjectId, Script } from "@viral/contracts"
+import { type Artifact, type Project, type ProjectId, Script, StoryMap } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { approachSkill } from "../agent-skills/skill-pack.ts"
 import { AgentSession } from "../agent-session/agent-session.ts"
+import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { Projects } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
-import { buildScriptPrompt, fixScriptPrompt, SCRIPT_WRITER_PROMPT } from "./script-prompt.ts"
+import { buildScriptPrompt, SCRIPT_WRITER_PROMPT } from "./script-prompt.ts"
 import { type AdRange, checkScript, narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
-
-// How many times the agent may fix a script the server rejected before the stage fails.
-const FIX_ATTEMPTS = 2
 
 const AdRanges = Schema.Struct({ ranges: Schema.Array(Schema.Struct({ start: Schema.Finite, end: Schema.Finite })) })
 
@@ -57,6 +55,14 @@ export class ScriptStage extends Context.Service<ScriptStage, {
         return { project, limits, transcript, ads, words }
       })
 
+      // The source story's proposal for this short's approach, if the source has a story map.
+      const chosenAngle = Effect.fn("ScriptStage.chosenAngle")(function*(project: Project) {
+        const story = yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "story-map")
+        const map = Option.flatMap(story, (a) => Schema.decodeUnknownOption(StoryMap)(a.data))
+        const proposal = Option.flatMapNullishOr(map, (m) => m.proposals.find((p) => p.approach === project.approach))
+        return Option.match(proposal, { onNone: () => null, onSome: ({ title, hook, why }) => ({ title, hook, why }) })
+      })
+
       const record = Effect.fn("ScriptStage.record")(function*(ctx: StageContext, script: Script) {
         const slot = yield* artifacts.allocate(ctx.owner, "script")
         yield* artifacts.record(slot, { data: script, path: null, stageRunId: ctx.stageRunId })
@@ -65,40 +71,26 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       const run = Effect.fn("ScriptStage.run")(function*(ctx: StageContext) {
         const { project, limits, transcript, ads, words } = yield* context(ctx)
         const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
-        let session = ctx.resumeSession
-        let message = ctx.note !== null && session !== null
-          ? `Revise the script: ${ctx.note}\n\nCall propose_script again with the whole script.`
-          : buildScriptPrompt({
+        const angle = yield* chosenAngle(project)
+        const script = yield* runChecked(agent, ctx, {
+          stage: "script",
+          instructions: SCRIPT_WRITER_PROMPT,
+          skills: ["story-arc", approachSkill(project.approach)],
+          brief: buildScriptPrompt({
             title: source.title,
             channel: source.channel,
             transcript: transcripts.timedText(transcript),
-            excluded: ads
-          }) + (ctx.note === null ? "" : `\n\nNote from the reviewer on the last version: ${ctx.note}`)
-
-        for (let attempt = 0;; attempt++) {
-          const proposed = yield* agent.run({
-            stage: "script",
-            instructions: SCRIPT_WRITER_PROMPT,
-            skills: ["story-arc", approachSkill(project.approach)],
-            message,
-            output: { tool: "propose_script", description: "Submit the whole script for review.", schema: Script },
-            defaultModel: null,
-            resumeSession: session,
-            maxTurns: 4
-          }, {
-            progress: ctx.progress,
-            recordCost: (cost) => ctx.recordCost(cost),
-            recordSession: (id) => Effect.sync(() => void (session = id)).pipe(Effect.andThen(ctx.recordSession(id)))
-          }).pipe(Effect.mapError((error) => fail(error.code, error.message)))
-
+            excluded: ads,
+            angle
+          }),
+          output: { tool: "propose_script", description: "Submit the whole script for review.", schema: Script },
+          defaultModel: null,
+          maxTurns: 4
+        }, (proposed) => Effect.sync(() => {
           const checked = checkScript(proposed, limits, words, ads)
-          if (checked.problems.length === 0) return yield* record(ctx, checked.script)
-          if (attempt >= FIX_ATTEMPTS) {
-            return yield* fail("invalid-script", checked.problems.join("; "))
-          }
-          yield* ctx.progress(null, `fixing: ${checked.problems.join("; ")}`)
-          message = fixScriptPrompt(checked.problems)
-        }
+          return { value: checked.script, problems: checked.problems }
+        })).pipe(Effect.mapError((error) => fail(error.code, error.message)))
+        yield* record(ctx, script)
       })
 
       const applyEdit = Effect.fn("ScriptStage.applyEdit")(function*(ctx: StageContext, edited: unknown) {

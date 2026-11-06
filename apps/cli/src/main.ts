@@ -36,6 +36,7 @@ const program = Effect.gen(function*() {
   Effect.catchTags({
     SourceNotFound: (e) => Console.error(`no source ${e.id}`),
     ProjectNotFound: (e) => Console.error(`no project ${e.id}`),
+    ProposalNotFound: (e) => Console.error(`source ${e.sourceId} has no proposal ${e.proposal + 1}; see \`source story\``),
     PresetNotFound: (e) => Console.error(`no preset ${e.id}`),
     PresetIsDefault: (e) => Console.error(`preset ${e.id} is the default; make another one the default first`),
     MusicTrackNotFound: (e) => Console.error(`no music track ${e.id}`),

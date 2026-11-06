@@ -7,6 +7,7 @@ import { show } from "./show.ts"
 
 export const PROJECT_USAGE = `  project create <source-id> <title> [--approach question-recap|claim-interleaved|cut-down]
                  [--preset <id>] [--music <track-id>]
+  project from-proposal <source-id> <n>   (proposal n from \`source story\`)
   project run <id> [--from <stage>]
   project list [--source <id>] | show <id> | delete <id>`
 
@@ -31,6 +32,12 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
         presetId: orNull(option("--preset"), PresetId.make),
         musicTrackId: orNull(option("--music"), MusicTrackId.make)
       })
+      return yield* Console.log(describe(project))
+    }
+    case "from-proposal": {
+      const n = Number(title)
+      if (first === undefined || !Number.isInteger(n) || n < 1) return yield* Console.error(PROJECT_USAGE)
+      const project = yield* client.CreateProjectFromProposal({ sourceId: SourceId.make(first), proposal: n - 1 })
       return yield* Console.log(describe(project))
     }
     case "run": {
