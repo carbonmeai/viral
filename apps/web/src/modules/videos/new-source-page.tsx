@@ -70,7 +70,7 @@ export function NewSourcePage() {
               key={choice.value}
               type="button"
               onClick={() => setRights(choice.value)}
-              className={`grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-ctl bg-item px-3 py-2 text-left hover:bg-item-hover ${rights === choice.value ? "shadow-[inset_0_0_0_1.5px_var(--lemon)]" : ""}`}
+              className={`grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-ctl bg-item px-3 py-2 text-left hover:bg-item-hover ${rights === choice.value ? "shadow-[inset_0_0_0_1px_var(--lemon)]" : ""}`}
             >
               <span>
                 <span className="block font-medium">{choice.title}</span>
