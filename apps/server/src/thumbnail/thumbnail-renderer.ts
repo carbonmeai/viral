@@ -14,7 +14,7 @@ export class ThumbnailError extends Schema.TaggedError<ThumbnailError>()("Thumbn
 const ConfigJson = Schema.fromJsonString(ThumbConfig)
 const Line = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("progress"), step: Schema.Literals(["background", "hero", "inset", "text", "cutout"]) }),
-  // bold reports how each layer was drawn: "rembg", or "fallback: <why>" (a framed inset instead)
+  // bold reports how each layer was drawn: "apple", "rembg", or "fallback: <why>" (a framed inset instead)
   Schema.Struct({
     type: Schema.Literal("done"),
     output: Schema.String,
@@ -28,11 +28,18 @@ const Probe = Schema.fromJsonString(Schema.Struct({
   format: Schema.Struct({ duration: Schema.optionalKey(Schema.String) })
 }))
 
+export interface Drawn {
+  readonly image: string
+  // layer → "apple" | "rembg" | "fallback: <why>"; empty for classic
+  readonly cutouts: Readonly<Record<string, string>>
+}
+
 // Draws thumbnails with render-thumbnail.py (the viral-shorts skill's layout), and reads a video's frame size
 // (for turning fractional crops into pixels) and length.
 export class ThumbnailRenderer extends Context.Service<ThumbnailRenderer, {
-  // writes `config` next to `out` as <name>.json and renders it to `out` (a jpg); returns the jpg's path
-  render(config: ThumbConfig, out: string): Effect.Effect<string, ThumbnailError>
+  // writes `config` next to `out` as <name>.json and renders it to `out` (a jpg); returns the jpg's path and,
+  // for a bold thumbnail, how each layer was cut out
+  render(config: ThumbConfig, out: string): Effect.Effect<Drawn, ThumbnailError>
   // the video's frame size and length
   probe(video: string): Effect.Effect<{ readonly width: number; readonly height: number; readonly durationS: number }, ThumbnailError>
 }>()("@viral/server/thumbnail/thumbnail-renderer/ThumbnailRenderer") {
@@ -62,7 +69,7 @@ export class ThumbnailRenderer extends Context.Service<ThumbnailRenderer, {
                 Object.values(line.cutouts ?? {}).some((how) => how.startsWith("fallback"))
                   ? Effect.logWarning("a thumbnail cut-out fell back to a framed inset", { cutouts: line.cutouts })
                   : Effect.void,
-                line.output
+                { image: line.output, cutouts: line.cutouts ?? {} } satisfies Drawn
               )
         ).pipe(Effect.mapError((error) => new ThumbnailError({ code: error.code, message: error.message })))
       })

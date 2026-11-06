@@ -2,8 +2,9 @@
 # requires-python = ">=3.10"
 # dependencies = ["pyobjc-framework-Vision", "pyobjc-framework-Quartz", "pillow"]
 # ///
-"""Experimental: lift subjects out of images with macOS's own subject cut-out (Vision's foreground instance
-mask, the same model as "Lift subject from background" in Photos; macOS 14+). No model download.
+"""Lift subjects out of images with macOS's own subject cut-out (Vision's foreground instance mask, the same
+model as "Lift subject from background" in Photos; macOS 14+). No model download. render-thumbnail.py tries this
+first for bold thumbnails, and falls back to rembg (cutout.py) where it fails or isn't available.
 
 Usage:
   uv run cutout-apple.py <in.png> <out.png> [<in.png> <out.png> ...]

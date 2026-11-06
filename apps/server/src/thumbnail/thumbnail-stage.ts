@@ -13,7 +13,7 @@ import {
   Thumbnail,
   ThumbnailProposal
 } from "@viral/contracts"
-import { Config, Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { agentTool, AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -25,6 +25,7 @@ import { type StageContext, type StageDefinition, StageFailure } from "../runs/s
 import { Sources } from "../sources/sources.ts"
 import { buildThumbnailBrief, THUMBNAIL_PROMPT } from "./thumbnail-prompt.ts"
 import { Tools } from "../tools/tools.ts"
+import { cutoutSummary, drawThumbnail } from "./thumbnail-draw.ts"
 import { ThumbnailRenderer } from "./thumbnail-renderer.ts"
 import { checkConfig, checkThumbnail, thumbConfig, type ThumbnailContext } from "./thumbnail-rules.ts"
 
@@ -53,12 +54,10 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
       const contactSheets = yield* ContactSheets
       const renderer = yield* ThumbnailRenderer
       const tools = yield* Tools
-      // A bold thumbnail cuts its subjects out with the background-removal models; when they're still
-      // downloading, wait for them and say so (without them the cut-outs fall back to framed insets).
-      // VIRAL_CUTOUT=off (tests) draws framed insets, so nothing needs the models then.
-      const cutouts = yield* Config.String("VIRAL_CUTOUT").pipe(Config.withDefault("on"), Effect.orDie)
-      const readyToDraw = (config: ThumbConfig, progress: (pct: number | null, message: string) => Effect.Effect<void>) =>
-        config.layout === "bold" && cutouts !== "off" ? tools.ensureBackgroundRemoval(progress).pipe(Effect.asVoid) : Effect.void
+      // A bold thumbnail's cut-outs: Apple's first (nothing to download); rembg's models are fetched, with
+      // progress, only when a layer needs them, then the thumbnail is drawn again.
+      const draw = (config: ThumbConfig, out: string, progress: (pct: number | null, message: string) => Effect.Effect<void>) =>
+        drawThumbnail(renderer.render(config, out), tools.ensureBackgroundRemoval(progress))
       const agent = yield* AgentSession
       const home = yield* ViralHome
       const fs = yield* FileSystem.FileSystem
@@ -92,9 +91,10 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         proposal: ThumbnailProposal | null,
         config: ThumbConfig
       ) {
-        yield* readyToDraw(config, ctx.progress)
         const slot = yield* artifacts.allocate(ctx.owner, "thumbnail")
-        yield* renderer.render(config, path.join(slot.dir, IMAGE)).pipe(Effect.mapError(failWith("render")))
+        const drawn = yield* draw(config, path.join(slot.dir, IMAGE), ctx.progress).pipe(Effect.mapError(failWith("render")))
+        const summary = cutoutSummary(drawn)
+        if (summary !== "") yield* ctx.progress(null, `Cut-outs: ${summary}`)
         const thumbnail: Thumbnail = { proposal, config, image: IMAGE }
         yield* artifacts.record(slot, { data: thumbnail, path: path.join(slot.relDir, IMAGE), stageRunId: ctx.stageRunId })
       })
@@ -111,8 +111,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
             if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
             const out = path.join(root, `attempt-${attempt}-${++drawn}.jpg`)
             const config = thumbConfig(checked.value, video, thumbContext)
-            yield* readyToDraw(config, () => Effect.void)
-            yield* renderer.render(config, out)
+            yield* draw(config, out, () => Effect.void)
             return [
               `It passes the checks. The draft: ${out}`,
               "Read it. At phone size, is the hero recognisable and the face's emotion clear? Fix what isn't, preview again, then call propose_thumbnail."

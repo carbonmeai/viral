@@ -15,19 +15,24 @@ background; the hero object big in the middle with a red circle; a tilted, white
 2-4 words of huge outlined text at the top) and is still the `classic` layout.
 
 `layout: "bold"` is the eye-catching one: a saturated gradient (optionally a burst of rays) instead of footage; the
-hero and the face lifted out of their frames (cutout.py, rembg) with thick outlines, a glow and a shadow, the face
-big and overlapping the hero; curiosity words; a hand-drawn arrow and/or one emoji. When a cut-out fails, times
-out or finds no subject, that layer falls back to a framed inset, and `done` says so.
+hero and the face lifted out of their frames with thick outlines, a glow and a shadow, the face big and overlapping
+the hero; curiosity words; a hand-drawn arrow and/or one emoji.
+
+Cut-outs, per layer: macOS's own subject cut-out first (cutout-apple.py, Vision, macOS 14+; no download), then
+rembg (cutout.py) when its models are already on disk. When Apple's fails and rembg's models aren't there, the
+layer reports "fallback: needs rembg models" so the caller can fetch them and draw again; any other failure, a
+timeout or no clear subject falls back to a framed inset. `done` says which method drew each layer.
 
 Reporting: stdout carries one JSON object per line:
   {"type": "progress", "step": "background" | "hero" | "inset" | "text" | "cutout"}
   {"type": "error", "code": "frame", "message": "..."}   (then exit 1)
-  {"type": "done", "output": "...jpg", "width": 1080, "height": 1920, "cutouts": {"hero": "rembg", "face": "fallback: …"}}
+  {"type": "done", "output": "...jpg", "width": 1080, "height": 1920, "cutouts": {"hero": "apple", "face": "rembg"}}
 """
 import argparse
 import json
 import math
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -120,40 +125,90 @@ def models_dir() -> str:
     return str(home / "Library" / "Caches" / "Viral" / "models" if sys.platform == "darwin" else home / ".cache" / "viral" / "models")
 
 
+# a layer the caller can still cut out, once it has fetched rembg's models
+NEEDS_REMBG = "fallback: needs rembg models"
+
+
+def apple_available() -> bool:
+    """macOS 14+ has Vision's foreground instance mask (the "Lift subject" model in Photos)."""
+    forced = os.environ.get("VIRAL_CUTOUT_APPLE")
+    if forced in ("on", "off"):
+        return forced == "on"
+    if sys.platform != "darwin":
+        return False
+    try:
+        return int(platform.mac_ver()[0].split(".")[0]) >= 14
+    except ValueError:
+        return False
+
+
+def run_cutout(script: Path, args: list[str], outs: list[str]) -> dict[str, float]:
+    """Runs a cut-out script; the coverage of each `out` it wrote (missing = that one failed)."""
+    try:
+        r = subprocess.run(["uv", "run", "--quiet", "--script", str(script), *args], capture_output=True, text=True,
+                           timeout=float(os.environ.get("VIRAL_CUTOUT_TIMEOUT", "600")))
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return {}
+    coverage: dict[str, float] = {}
+    for line in r.stdout.splitlines():
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        if msg.get("type") == "cutout" and msg.get("out") in outs:
+            coverage[msg["out"]] = float(msg.get("coverage", 0))
+    return coverage
+
+
+def usable(coverage: float | None) -> bool:
+    """A cut-out that kept almost nothing or almost everything didn't find a subject."""
+    return coverage is not None and 0.03 <= coverage <= 0.97
+
+
 def cutouts(jobs: list[tuple[Image.Image, str]]) -> list[tuple[Image.Image | None, str]]:
-    """Lifts each (image, model) out of its background with cutout.py; (None, reason) where that fails."""
+    """Lifts each (image, rembg model) out of its background: Apple's cut-out first, then rembg when its model
+    is on disk; (None, reason) where neither could. The model names only matter to rembg."""
     if os.environ.get("VIRAL_CUTOUT") == "off":
         return [(None, "fallback: cut-outs are off") for _ in jobs]
+    here = Path(__file__).parent
+    apple_script = Path(os.environ.get("VIRAL_CUTOUT_APPLE_SCRIPT") or here / "cutout-apple.py")
+    rembg_script = Path(os.environ.get("VIRAL_CUTOUT_REMBG_SCRIPT") or here / "cutout.py")
+    results: list[tuple[Image.Image | None, str] | None] = [None] * len(jobs)
     with tempfile.TemporaryDirectory() as td:
-        args: list[str] = []
-        for i, (img, model) in enumerate(jobs):
+        ins = []
+        for i, (img, _) in enumerate(jobs):
             src = Path(td) / f"in{i}.png"
             img.save(src)
-            args += [str(src), str(Path(td) / f"out{i}.png"), model]
-        script = Path(__file__).with_name("cutout.py")
-        try:
-            r = subprocess.run(["uv", "run", "--quiet", "--script", str(script), models_dir(), *args], capture_output=True,
-                               text=True, timeout=float(os.environ.get("VIRAL_CUTOUT_TIMEOUT", "600")))
-        except (subprocess.TimeoutExpired, FileNotFoundError) as error:
-            return [(None, f"fallback: {type(error).__name__}") for _ in jobs]
-        coverage: dict[str, float] = {}
-        for line in r.stdout.splitlines():
-            try:
-                msg = json.loads(line)
-            except ValueError:
-                continue
-            if msg.get("type") == "cutout":
-                coverage[msg["out"]] = msg["coverage"]
-        results: list[tuple[Image.Image | None, str]] = []
-        for i in range(len(jobs)):
-            out = str(Path(td) / f"out{i}.png")
-            if out not in coverage:
-                results.append((None, f"fallback: {(r.stdout + r.stderr).strip()[-200:] or 'cut-out failed'}"))
-            elif not 0.03 <= coverage[out] <= 0.97:
-                results.append((None, "fallback: no clear subject"))
-            else:
-                results.append((Image.open(out).convert("RGBA").copy(), "rembg"))
-        return results
+            ins.append(str(src))
+
+        why: dict[int, str] = {}
+        if apple_available():
+            outs = [str(Path(td) / f"apple{i}.png") for i in range(len(jobs))]
+            coverage = run_cutout(apple_script, [a for i in range(len(jobs)) for a in (ins[i], outs[i])], outs)
+            for i, out in enumerate(outs):
+                if usable(coverage.get(out)):
+                    results[i] = (Image.open(out).convert("RGBA").copy(), "apple")
+                else:
+                    why[i] = "no clear subject" if out in coverage else "cut-out failed"
+
+        rest = [i for i in range(len(jobs)) if results[i] is None]
+        models = Path(models_dir())
+        ready = [i for i in rest if (models / f"{jobs[i][1]}.onnx").exists()]
+        for i in rest:
+            if i not in ready:
+                results[i] = (None, NEEDS_REMBG)
+        if ready:
+            outs = {i: str(Path(td) / f"rembg{i}.png") for i in ready}
+            args = [str(models)] + [a for i in ready for a in (ins[i], outs[i], jobs[i][1])]
+            coverage = run_cutout(rembg_script, args, list(outs.values()))
+            for i in ready:
+                out = outs[i]
+                if usable(coverage.get(out)):
+                    results[i] = (Image.open(out).convert("RGBA").copy(), "rembg")
+                else:
+                    reason = "no clear subject" if out in coverage else why.get(i, "cut-out failed")
+                    results[i] = (None, f"fallback: {reason}")
+    return [r if r is not None else (None, "fallback: cut-out failed") for r in results]
 
 
 def crop_box(img: Image.Image, cfg: dict) -> Image.Image:
