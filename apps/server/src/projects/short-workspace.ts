@@ -12,11 +12,16 @@ import {
   ShotPlan,
   type ShotProposal,
   type ShortWorkspace,
+  type ThumbConfig,
+  Thumbnail,
   Transcript,
   Voiceover
 } from "@viral/contracts"
-import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
+import { ViralHome } from "../home/viral-home.ts"
+import { checkConfig } from "../thumbnail/thumbnail-rules.ts"
+import { ThumbnailRenderer } from "../thumbnail/thumbnail-renderer.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { checkScript as checkScriptRules, SCRIPT_LIMITS } from "../script/script-rules.ts"
@@ -36,6 +41,8 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
   checkScript(projectId: ProjectId, script: Script): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
   // the shots stage's own rules, for an edited shot list before it's sent
   checkShots(projectId: ProjectId, proposal: ShotProposal): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
+  // the thumbnail stage's own rules, for an edited thumbnail config before it's sent
+  checkThumbnail(projectId: ProjectId, config: ThumbConfig): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
 }>()("@viral/server/projects/short-workspace/ShortWorkspaces") {
   static readonly layer = Layer.effect(
     ShortWorkspaces,
@@ -47,6 +54,16 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const store = yield* RunStore
       const transcripts = yield* Transcripts
       const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const home = yield* ViralHome
+      const thumbnails = yield* ThumbnailRenderer
+
+      // A file as the media route serves it: its path relative to the Viral home, or null when it's elsewhere.
+      const inHome = (file: string | null) => {
+        if (file === null) return null
+        const relative = path.relative(home.root, file)
+        return relative === "" || relative.startsWith("..") || path.isAbsolute(relative) ? null : relative
+      }
 
       // the voiceover's words as spoken, or none before there's a voiceover
       const voiceoverWords = Effect.fn("ShortWorkspaces.voiceoverWords")(function*(owner: { readonly _tag: "Project"; readonly id: ProjectId }) {
@@ -93,6 +110,10 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         const cutPlan = yield* latest("cut-plan", CutPlan)
         const render = yield* latest("render", RenderedShort)
         const metadata = yield* latest("metadata", PublishedShort)
+        const thumbnail = yield* latest("thumbnail", Thumbnail)
+        // the approved thumbnail sits next to the published mp4
+        const publishedThumbnail = path.join(home.renders, `${project.slug}.jpg`)
+        const thumbnailPublished = yield* fs.exists(publishedThumbnail).pipe(Effect.orElseSucceed(() => false))
         const sourceVideo = yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "source-video")
 
         return {
@@ -110,8 +131,25 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
           voiceover: Option.getOrNull(Option.map(voiceover, (a) => ({ version: a.version, path: a.path, voiceover: a.data, words }))),
           shotPlan: Option.getOrNull(Option.map(shotPlan, (a) => ({ version: a.version, path: a.path, plan: a.data }))),
           cutPlan: Option.getOrNull(Option.map(cutPlan, (a) => ({ version: a.version, path: a.path, plan: a.data }))),
-          render: Option.getOrNull(Option.map(render, (a) => ({ version: a.version, path: a.path, render: a.data }))),
-          metadata: Option.getOrNull(Option.map(metadata, (a) => ({ version: a.version, path: a.path, metadata: a.data }))),
+          render: Option.getOrNull(Option.map(render, (a) => ({
+            version: a.version,
+            path: a.path,
+            render: a.data,
+            media: { video: inHome(a.data.video), captions: inHome(a.data.captions), checkSheet: inHome(a.data.checkSheet) }
+          }))),
+          metadata: Option.getOrNull(Option.map(metadata, (a) => ({
+            version: a.version,
+            path: a.path,
+            metadata: a.data,
+            media: {
+              video: inHome(a.data.video),
+              captions: inHome(a.data.captions),
+              notes: inHome(a.data.notes),
+              thumbnail: thumbnailPublished ? inHome(publishedThumbnail) : null
+            },
+            files: { folder: home.renders, thumbnail: thumbnailPublished ? publishedThumbnail : null }
+          }))),
+          thumbnail: Option.getOrNull(Option.map(thumbnail, (a) => ({ version: a.version, path: a.path, thumbnail: a.data }))),
           sourceVideo: Option.getOrNull(Option.flatMapNullishOr(sourceVideo, (a) => a.path))
         } satisfies ShortWorkspace
       })
@@ -151,7 +189,34 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         }).problems
       })
 
-      return ShortWorkspaces.of({ get, checkScript, checkShots })
+      // Checked against the long video's frame size and length and its ads, exactly as the thumbnail gate checks
+      // an edit.
+      const checkThumbnail = Effect.fn("ShortWorkspaces.checkThumbnail")(function*(projectId: ProjectId, config: ThumbConfig) {
+        const project = yield* projects.get(projectId)
+        const video = Option.flatMapNullishOr(yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "source-video"), artifacts.resolve)
+        if (Option.isNone(video)) return ["the video hasn't been fetched, so the thumbnail can't be checked"]
+        const probed = yield* thumbnails.probe(video.value).pipe(Effect.option)
+        if (Option.isNone(probed)) return ["the video's frames can't be read to check the thumbnail"]
+        const source = yield* sources.get(project.sourceId).pipe(Effect.orDie)
+        return checkConfig(config, {
+          width: probed.value.width,
+          height: probed.value.height,
+          sourceSeconds: source.durationS ?? probed.value.durationS,
+          excluded: yield* adRangesOf(project.sourceId)
+        })
+      })
+
+      return ShortWorkspaces.of({ get, checkScript, checkShots, checkThumbnail })
     })
-  ).pipe(Layer.provide([Projects.layer, Sources.layer, Presets.layer, Artifacts.layer, RunStore.layer, Transcripts.layer, NodeServices.layer]))
+  ).pipe(Layer.provide([
+    Projects.layer,
+    Sources.layer,
+    Presets.layer,
+    Artifacts.layer,
+    RunStore.layer,
+    Transcripts.layer,
+    ThumbnailRenderer.layer,
+    ViralHome.layer,
+    NodeServices.layer
+  ]))
 }

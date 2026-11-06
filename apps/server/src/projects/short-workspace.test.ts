@@ -1,6 +1,7 @@
 import type { Script } from "@viral/contracts"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -137,5 +138,78 @@ test("an edited shot list is checked against the voiceover, the video and its ad
   assert.match(text, /inside an excluded range/)
   assert.match(text, /word 9 isn't in the voiceover/)
   assert.deepEqual(good, [])
+  await rt.dispose()
+})
+
+test("a published short shows its render, files and thumbnail as media paths, and a thumbnail edit is checked first", async () => {
+  const rt = ManagedRuntime.make(Layer.mergeAll(ShortWorkspaces.layer, Sources.layer, Projects.layer, Artifacts.layer, RunStore.layer))
+  const { ws, bold, tooMany, inAd } = await rt.runPromise(Effect.gen(function*() {
+    const sources = yield* Sources
+    const source = yield* sources.create({ origin: { _tag: "Url", url: "https://youtu.be/y" }, rights: "unconfirmed", rightsNote: null })
+    const artifacts = yield* Artifacts
+    const sourceOwner = { _tag: "Source", id: source.id } as const
+    // a real (tiny) video, so the thumbnail check can read its frame size
+    const video = yield* artifacts.allocate(sourceOwner, "source-video")
+    execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=d=60:s=320x180:r=5", join(video.dir, "source.mp4")])
+    yield* artifacts.record(video, { data: null, path: join(video.relDir, "source.mp4") })
+    yield* artifacts.record(yield* artifacts.allocate(sourceOwner, "ad-ranges"), { data: { ranges: [{ start: 50, end: 60, kind: "sponsor", evidence: "x" }] }, path: null })
+    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Pain", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const owner = { _tag: "Project", id: project.id } as const
+
+    // the render and the published files, as the render and metadata stages record them (absolute paths)
+    const render = yield* artifacts.allocate(owner, "render")
+    const mp4 = join(render.dir, `${project.slug}.mp4`)
+    yield* artifacts.record(render, {
+      data: { video: mp4, captions: join(render.dir, `${project.slug}.srt`), durationS: 12.5, shots: 6, checkSheet: join(render.dir, "check.png") },
+      path: join(render.relDir, `${project.slug}.mp4`)
+    })
+    const renders = join(home, "renders")
+    yield* artifacts.record(yield* artifacts.allocate(owner, "metadata"), {
+      data: {
+        title: "It Broke Him",
+        alternates: ["One Bite Too Far", "The Pain Candy"],
+        description: "This guy made a candy.",
+        hashtags: ["#shorts"],
+        credit: "NileBlue",
+        video: join(renders, `${project.slug}.mp4`),
+        captions: join(renders, `${project.slug}.srt`),
+        notes: join(renders, `${project.slug}.md`)
+      },
+      path: null
+    })
+    writeFileSync(join(renders, `${project.slug}.jpg`), "jpg")
+    const config = {
+      layout: "bold" as const,
+      source: "x",
+      background: { src: 5 },
+      hero: { src: 10, box: [0, 0, 160, 90] as const, y: 0.47 },
+      inset: { src: 20, box: [100, 20, 300, 180] as const, y: 0.8 },
+      lines: [{ text: "WORST CANDY" }, { text: "EVER MADE?" }]
+    }
+    const thumb = yield* artifacts.allocate(owner, "thumbnail")
+    yield* artifacts.record(thumb, { data: { proposal: null, config, image: "thumbnail.jpg" }, path: join(thumb.relDir, "thumbnail.jpg") })
+
+    const workspaces = yield* ShortWorkspaces
+    return {
+      ws: yield* workspaces.get(project.id),
+      bold: yield* workspaces.checkThumbnail(project.id, config),
+      tooMany: yield* workspaces.checkThumbnail(project.id, { ...config, lines: [{ text: "THE WORST CANDY EVER MADE" }, { text: "TRULY" }] }),
+      inAd: yield* workspaces.checkThumbnail(project.id, { ...config, hero: { ...config.hero, src: 55 } })
+    }
+  }))
+
+  assert.equal(ws.render?.render.durationS, 12.5)
+  assert.match(ws.render?.media.video ?? "", /^projects\/[^/]+\/render\/v1\/[^/]+\.mp4$/, "relative to the Viral home, for the media route")
+  assert.match(ws.render?.media.checkSheet ?? "", /render\/v1\/check\.png$/)
+  assert.equal(ws.metadata?.metadata.title, "It Broke Him")
+  assert.match(ws.metadata?.media.video ?? "", /^renders\/.+\.mp4$/)
+  assert.match(ws.metadata?.media.thumbnail ?? "", /^renders\/.+\.jpg$/, "the approved thumbnail next to the mp4")
+  assert.equal(ws.metadata?.files.folder, join(home, "renders"))
+  assert.equal(ws.thumbnail?.thumbnail.image, "thumbnail.jpg")
+  assert.equal(ws.source.rights, "unconfirmed")
+
+  assert.deepEqual(bold, [], "a bold thumbnail may take 4–5 words")
+  assert.ok(tooMany.some((p) => /the text is 6 words; use 2–5/.test(p)))
+  assert.ok(inAd.some((p) => /the hero at 55\.0s is inside an excluded range/.test(p)))
   await rt.dispose()
 })

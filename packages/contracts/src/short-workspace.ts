@@ -10,6 +10,8 @@ import { Script } from "./script.ts"
 import { ShotPlan, ShotProposal } from "./shot-plan.ts"
 import { Source, SourceId, SourceNotFound } from "./sources.ts"
 import { TranscriptWord } from "./transcript.ts"
+import { ThumbConfig } from "./thumb-config.ts"
+import { Thumbnail } from "./thumbnail.ts"
 import { Voiceover } from "./voices.ts"
 
 // Each artifact as the editor uses it: which version, and its file relative to the owner's folder (the media
@@ -49,8 +51,27 @@ export const ShortWorkspace = Schema.Struct({
   })),
   shotPlan: Schema.NullOr(Schema.Struct({ ...at, plan: ShotPlan })),
   cutPlan: Schema.NullOr(Schema.Struct({ ...at, plan: CutPlan })),
-  render: Schema.NullOr(Schema.Struct({ ...at, render: RenderedShort })),
-  metadata: Schema.NullOr(Schema.Struct({ ...at, metadata: PublishedShort })),
+  render: Schema.NullOr(Schema.Struct({
+    ...at,
+    render: RenderedShort,
+    // the render's files as the media route serves them: relative to the Viral home (/media/<path>), or null
+    media: Schema.Struct({ video: Schema.NullOr(Schema.String), captions: Schema.NullOr(Schema.String), checkSheet: Schema.NullOr(Schema.String) })
+  })),
+  metadata: Schema.NullOr(Schema.Struct({
+    ...at,
+    metadata: PublishedShort,
+    // the published files in the renders folder, relative to the Viral home; the thumbnail once it's approved
+    media: Schema.Struct({
+      video: Schema.NullOr(Schema.String),
+      captions: Schema.NullOr(Schema.String),
+      notes: Schema.NullOr(Schema.String),
+      thumbnail: Schema.NullOr(Schema.String)
+    }),
+    // the same files as absolute paths, for Show in Finder
+    files: Schema.Struct({ folder: Schema.String, thumbnail: Schema.NullOr(Schema.String) })
+  })),
+  // `path` is the jpg, relative to the short's folder
+  thumbnail: Schema.NullOr(Schema.Struct({ ...at, thumbnail: Thumbnail })),
   // the long video's file, relative to its folder, for playing the real lines
   sourceVideo: Schema.NullOr(Schema.String)
 })
@@ -73,6 +94,12 @@ export class ShortWorkspaceRpcs extends RpcGroup.make(
   // The same for an edited shot list (frames, framing, speed) before it's sent to the shots gate.
   Rpc.make("CheckShotsEdit", {
     payload: { projectId: ProjectId, proposal: ShotProposal },
+    success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
+    error: ProjectNotFound
+  }),
+  // The same for an edited thumbnail config (its words, mostly) before it's sent to the thumbnail gate.
+  Rpc.make("CheckThumbnailEdit", {
+    payload: { projectId: ProjectId, config: ThumbConfig },
     success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
     error: ProjectNotFound
   }),

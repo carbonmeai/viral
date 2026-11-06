@@ -182,6 +182,8 @@ export const checkConfig = (config: ThumbConfig, ctx: ThumbnailContext): Readonl
     }
   }
   const words = config.lines.reduce((n, l) => n + countWords(l.text), 0)
-  if (words < WORDS[0] || words > WORDS[1]) problems.push(`the text is ${words} words; use ${WORDS[0]}–${WORDS[1]}`)
+  // a bold thumbnail's tease can take one more word, as when it's proposed
+  const [min, max] = config.layout === "bold" ? BOLD_WORDS : WORDS
+  if (words < min || words > max) problems.push(`the text is ${words} words; use ${min}–${max}`)
   return problems
 }
