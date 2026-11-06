@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { barHeights, dayLabel, formatCount, formatUsd } from "./usage-values.ts"
+import { barHeights, billingLabel, dayLabel, formatCount, formatUsd, providerLabel } from "./usage-values.ts"
 
 test("usage numbers read the way people say them", () => {
   assert.equal(formatUsd(0), "$0")
@@ -14,4 +14,11 @@ test("usage numbers read the way people say them", () => {
 test("the chart scales to the busiest day and draws nothing for an empty period", () => {
   assert.deepEqual(barHeights([0, 1, 2]), [0, 0.5, 1])
   assert.deepEqual(barHeights([0, 0]), [0, 0])
+})
+
+test("providers and billing get plain names", () => {
+  assert.equal(providerLabel("ai-gateway"), "AI Gateway")
+  assert.equal(providerLabel(null), "Before tracking")
+  assert.equal(billingLabel("subscription"), "Plan value")
+  assert.equal(billingLabel(null), "Not tracked")
 })

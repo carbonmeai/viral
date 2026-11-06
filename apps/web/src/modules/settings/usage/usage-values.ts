@@ -17,3 +17,16 @@ export const dayLabel = (day: string) => {
   const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
   return `${names[Number(month) - 1] ?? month} ${Number(date)}`
 }
+
+// Names for the providers that ran things.
+const PROVIDER_LABELS: Record<string, string> = {
+  "claude-cli": "Claude CLI",
+  "ai-gateway": "AI Gateway",
+  elevenlabs: "ElevenLabs",
+  unknown: "Before tracking"
+}
+export const providerLabel = (provider: string | null) => PROVIDER_LABELS[provider ?? "unknown"] ?? provider ?? "Before tracking"
+
+// What a cost is: real money, or what a CLI plan covered.
+export const billingLabel = (billing: "billed" | "subscription" | null) =>
+  billing === "billed" ? "Billed" : billing === "subscription" ? "Plan value" : "Not tracked"

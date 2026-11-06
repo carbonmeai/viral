@@ -3,6 +3,7 @@ import type { Preset, Voice } from "@viral/contracts"
 import { Button } from "@viral/ui/primitives/button"
 import { Input } from "@viral/ui/primitives/input"
 import { Select } from "@viral/ui/primitives/select"
+import { SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { SettingRow, SettingsGroup } from "@viral/ui/primitives/setting-row"
 import { Link } from "@tanstack/react-router"
 import { Option } from "effect"
@@ -10,7 +11,7 @@ import { AsyncResult } from "effect/reactivity"
 import { Pause, Play } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { presetsAtom, setDefaultVoice, voicesAtom } from "../settings-api.ts"
-import { Loaded, Pending, SettingsPage } from "../settings-page.tsx"
+import { Loaded, Pending, SettingRowSkeleton, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 
 const describeVoice = (voice: Voice) => {
   const labels = Object.values(voice.labels).slice(0, 3).join(", ")
@@ -22,7 +23,7 @@ export function VoicePage() {
   const presets = useAtomValue(presetsAtom)
   return (
     <SettingsPage section="voice" description="The narrator every short uses unless it picks its own voice.">
-      <Loaded result={presets} what="your styles">
+      <Loaded result={presets} what="your styles" skeleton={<SettingsSkeleton groups={[2]} titled />}>
         {(list) => {
           const preset = list.find((p) => p.isDefault)
           return preset === undefined ? <Pending>No default style yet.</Pending> : <VoiceSettings preset={preset} />
@@ -52,16 +53,17 @@ function VoiceSettings({ preset }: { readonly preset: Preset }) {
     <>
       <SettingsGroup title={`Default style · ${preset.name}`}>
         {Option.match(AsyncResult.value(voices), {
-          onNone: () => (
-            <SettingRow
-              label="Voice"
-              sub={AsyncResult.isFailure(voices)
-                ? <>Couldn’t list your ElevenLabs voices. <Link to="/settings/accounts" className="underline">Add an ElevenLabs key</Link>.</>
-                : "Loading your ElevenLabs voices…"}
-            >
-              <span className="text-fg-2">{voiceId}</span>
-            </SettingRow>
-          ),
+          onNone: () =>
+            AsyncResult.isFailure(voices)
+              ? (
+                <SettingRow
+                  label="Voice"
+                  sub={<>Couldn’t list your ElevenLabs voices. <Link to="/settings/accounts" className="underline">Add an ElevenLabs key</Link>.</>}
+                >
+                  <span className="text-fg-2">{voiceId}</span>
+                </SettingRow>
+              )
+              : <SkeletonRegion label="Loading your ElevenLabs voices"><SettingRowSkeleton control={200} /></SkeletonRegion>,
           onSome: (list) => {
             const current = list.find((v) => v.voiceId === voiceId)
             const options = (current === undefined ? [{ voiceId, name: voiceId, category: null, description: null, labels: {}, previewUrl: null }, ...list] : list)

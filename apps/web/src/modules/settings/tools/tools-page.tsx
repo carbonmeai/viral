@@ -13,7 +13,7 @@ import { downloadFraction, formatBytes, offersFallbackDownload, shortVersion, so
 
 // How often the page looks again while something downloads in the background.
 const POLL_MS = 2000
-import { Loaded, SettingsPage } from "../settings-page.tsx"
+import { Loaded, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 
 // Settings › Tools: each tool's version and where it comes from (Viral's own copy, or one on this Mac).
 export function ToolsPage() {
@@ -34,7 +34,7 @@ export function ToolsPage() {
       description="The programs Viral uses to download, cut and transcribe. Missing ones are downloaded into Viral’s own folder."
       actions={<Button onClick={refresh}>Check again</Button>}
     >
-      <Loaded result={tools} what="the tools">
+      <Loaded result={tools} what="the tools" skeleton={<SettingsSkeleton groups={[5]} />}>
         {(list) => (
           <SettingsGroup>
             {list.map((tool) => (

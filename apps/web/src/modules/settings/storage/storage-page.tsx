@@ -6,7 +6,7 @@ import { FolderOpen } from "lucide-react"
 import { desktop } from "../../../config/server-url.ts"
 import { formatBytes } from "../../tools/tools-values.ts"
 import { storageAtom } from "../settings-api.ts"
-import { Loaded, SettingsPage } from "../settings-page.tsx"
+import { Loaded, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 
 const AREAS: Record<Storage["areas"][number]["name"], { readonly label: string; readonly sub: string }> = {
   sources: { label: "Videos", sub: "Downloaded long videos, transcripts and contact sheets" },
@@ -34,7 +34,7 @@ export function StoragePage() {
   const refresh = useAtomRefresh(storageAtom)
   return (
     <SettingsPage section="storage" description="Everything Viral makes lives in one folder on this Mac." actions={<Button onClick={refresh}>Measure again</Button>}>
-      <Loaded result={storage} what="your storage">
+      <Loaded result={storage} what="your storage" skeleton={<SettingsSkeleton groups={[1, 8]} />}>
         {(value) => {
           const total = value.areas.reduce((n, a) => n + a.bytes, 0)
           return (

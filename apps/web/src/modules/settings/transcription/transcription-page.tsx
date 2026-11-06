@@ -3,7 +3,7 @@ import type { TranscriberChoice } from "@viral/contracts"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { SettingRow, SettingsGroup } from "@viral/ui/primitives/setting-row"
 import { appSettingsAtom, setTranscriber } from "../settings-api.ts"
-import { Loaded, SettingsPage } from "../settings-page.tsx"
+import { Loaded, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 
 // Settings › Transcription: who turns speech into word-timed text.
 export function TranscriptionPage() {
@@ -11,7 +11,7 @@ export function TranscriptionPage() {
   const save = useAtomSet(setTranscriber, { mode: "promise" })
   return (
     <SettingsPage section="transcription" description="Who turns the video’s speech, and the voiceover, into word-timed text.">
-      <Loaded result={settings} what="your settings">
+      <Loaded result={settings} what="your settings" skeleton={<SettingsSkeleton groups={[1]} />}>
         {(value) => (
           <SettingsGroup>
             <SettingRow
