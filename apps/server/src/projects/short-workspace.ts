@@ -3,12 +3,14 @@ import {
   AdRanges,
   type ArtifactKind,
   CutPlan,
+  type Project,
   type ProjectId,
   type ProjectNotFound,
   PublishedShort,
   RenderedShort,
   Script,
   ShotPlan,
+  type ShotProposal,
   type ShortWorkspace,
   Transcript,
   Voiceover
@@ -18,6 +20,7 @@ import { Artifacts } from "../artifacts/artifacts.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { checkScript as checkScriptRules, SCRIPT_LIMITS } from "../script/script-rules.ts"
+import { checkShots as checkShotsRules, placeReals } from "../shots/shot-rules.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
 import { Sources } from "../sources/sources.ts"
 import { Projects } from "./projects.ts"
@@ -31,6 +34,8 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
   get(projectId: ProjectId): Effect.Effect<ShortWorkspace, ProjectNotFound>
   // the script stage's own rules, for an edit before it's sent
   checkScript(projectId: ProjectId, script: Script): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
+  // the shots stage's own rules, for an edited shot list before it's sent
+  checkShots(projectId: ProjectId, proposal: ShotProposal): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
 }>()("@viral/server/projects/short-workspace/ShortWorkspaces") {
   static readonly layer = Layer.effect(
     ShortWorkspaces,
@@ -42,6 +47,24 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const store = yield* RunStore
       const transcripts = yield* Transcripts
       const fs = yield* FileSystem.FileSystem
+
+      // the voiceover's words as spoken, or none before there's a voiceover
+      const voiceoverWords = Effect.fn("ShortWorkspaces.voiceoverWords")(function*(owner: { readonly _tag: "Project"; readonly id: ProjectId }) {
+        const voTranscript = yield* artifacts.latest(owner, "voiceover-transcript")
+        return yield* Option.match(Option.flatMapNullishOr(voTranscript, artifacts.resolve), {
+          onNone: () => Effect.succeed([]),
+          onSome: (file) =>
+            fs.readFileString(file).pipe(
+              Effect.flatMap(Schema.decodeEffect(TranscriptJson)),
+              Effect.map((t) => t.segments.flatMap((s) => s.words)),
+              Effect.orElseSucceed(() => [])
+            )
+        })
+      })
+
+      const adRangesOf = (sourceId: Project["sourceId"]) =>
+        Effect.map(artifacts.latest({ _tag: "Source", id: sourceId }, "ad-ranges"), (a) =>
+          Option.match(Option.flatMap(a, (x) => Schema.decodeUnknownOption(AdRanges)(x.data)), { onNone: () => [], onSome: (r) => r.ranges }))
 
       const get = Effect.fn("ShortWorkspaces.get")(function*(projectId: ProjectId) {
         const project = yield* projects.get(projectId)
@@ -65,16 +88,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
 
         const script = yield* latest("script", Script)
         const voiceover = yield* latest("voiceover", Voiceover)
-        const voTranscript = yield* artifacts.latest(owner, "voiceover-transcript")
-        const words = yield* Option.match(Option.flatMapNullishOr(voTranscript, artifacts.resolve), {
-          onNone: () => Effect.succeed([]),
-          onSome: (file) =>
-            fs.readFileString(file).pipe(
-              Effect.flatMap(Schema.decodeEffect(TranscriptJson)),
-              Effect.map((t) => t.segments.flatMap((s) => s.words)),
-              Effect.orElseSucceed(() => [])
-            )
-        })
+        const words = yield* voiceoverWords(owner)
         const shotPlan = yield* latest("shot-plan", ShotPlan)
         const cutPlan = yield* latest("cut-plan", CutPlan)
         const render = yield* latest("render", RenderedShort)
@@ -108,14 +122,36 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         if (limits === undefined) return [`${project.approach} shorts don't have a narrated script`]
         const transcript = yield* transcripts.forSource(project.sourceId).pipe(Effect.option)
         if (Option.isNone(transcript)) return ["the video has no transcript to check the real lines against"]
-        const ads = Option.match(
-          Option.flatMap(yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "ad-ranges"), (a) => Schema.decodeUnknownOption(AdRanges)(a.data)),
-          { onNone: () => [], onSome: (a) => a.ranges }
-        )
+        const ads = yield* adRangesOf(project.sourceId)
         return checkScriptRules(script, limits, transcript.value.segments.flatMap((s) => s.words), ads).problems
       })
 
-      return ShortWorkspaces.of({ get, checkScript })
+      // Checked against the voiceover as spoken, the video's length and ads, and where the script's real lines
+      // play, exactly as the shots gate checks an edit.
+      const checkShots = Effect.fn("ShortWorkspaces.checkShots")(function*(projectId: ProjectId, proposal: ShotProposal) {
+        const project = yield* projects.get(projectId)
+        const owner = { _tag: "Project", id: projectId } as const
+        const script = Option.flatMap(yield* artifacts.latest(owner, "script"), (a) => Schema.decodeUnknownOption(Script)(a.data))
+        const voiceover = Option.flatMap(yield* artifacts.latest(owner, "voiceover"), (a) => Schema.decodeUnknownOption(Voiceover)(a.data))
+        if (Option.isNone(script) || Option.isNone(voiceover)) return ["the short needs its script and voiceover before its shots"]
+        const words = yield* voiceoverWords(owner)
+        if (words.length === 0) return ["the voiceover has no word timings yet"]
+        const source = yield* sources.get(project.sourceId).pipe(Effect.orDie)
+        const sourceSeconds = source.durationS ?? (yield* transcripts.forSource(project.sourceId).pipe(
+          Effect.map((t) => t.segments.at(-1)?.end ?? 0),
+          Effect.orElseSucceed(() => 0)
+        ))
+        const reals = placeReals(script.value, words)
+        return checkShotsRules(proposal, {
+          words,
+          voiceoverSeconds: voiceover.value.durationS,
+          sourceSeconds,
+          excluded: yield* adRangesOf(project.sourceId),
+          inserts: reals.inserts
+        }).problems
+      })
+
+      return ShortWorkspaces.of({ get, checkScript, checkShots })
     })
   ).pipe(Layer.provide([Projects.layer, Sources.layer, Presets.layer, Artifacts.layer, RunStore.layer, Transcripts.layer, NodeServices.layer]))
 }

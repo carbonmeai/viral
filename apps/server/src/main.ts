@@ -24,6 +24,7 @@ import { SoundLibrary } from "./sound-library/sound-library.ts"
 import { SoundLibraryRpcLive } from "./sound-library/sound-library-rpc.ts"
 import { Sources } from "./sources/sources.ts"
 import { SourcesRpcLive } from "./sources/sources-rpc.ts"
+import { FramesAround } from "./contact-sheet/frames-around.ts"
 import { ShortWorkspaces } from "./projects/short-workspace.ts"
 import { ShortWorkspaceRpcLive } from "./projects/short-workspace-rpc.ts"
 import { SourceOverviews } from "./sources/source-overview.ts"
@@ -63,6 +64,7 @@ const DomainsLive = Layer.mergeAll(
   UsageReport.layer,
   SourceOverviews.layer,
   ShortWorkspaces.layer,
+  FramesAround.layer,
   NodeServices.layer
 )
 

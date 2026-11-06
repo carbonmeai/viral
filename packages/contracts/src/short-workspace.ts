@@ -7,8 +7,8 @@ import { Project, ProjectId, ProjectNotFound } from "./projects.ts"
 import { RenderedShort } from "./render.ts"
 import { Run, RunRequest, StageRun } from "./runs.ts"
 import { Script } from "./script.ts"
-import { ShotPlan } from "./shot-plan.ts"
-import { Source } from "./sources.ts"
+import { ShotPlan, ShotProposal } from "./shot-plan.ts"
+import { Source, SourceId, SourceNotFound } from "./sources.ts"
 import { TranscriptWord } from "./transcript.ts"
 import { Voiceover } from "./voices.ts"
 
@@ -56,6 +56,11 @@ export const ShortWorkspace = Schema.Struct({
 })
 export type ShortWorkspace = typeof ShortWorkspace.Type
 
+// A still of the long video at a source second, for picking a shot's frame. `path` is relative to the video's
+// own folder (the media route serves it at /media/sources/<id>/<path>).
+export const FrameAt = Schema.Struct({ t: Schema.Finite, path: Schema.String })
+export type FrameAt = typeof FrameAt.Type
+
 export class ShortWorkspaceRpcs extends RpcGroup.make(
   Rpc.make("GetShortWorkspace", { payload: { projectId: ProjectId }, success: ShortWorkspace, error: ProjectNotFound }),
   // Checks an edited script against the approach and the transcript before it's sent to the script gate, so a
@@ -64,5 +69,18 @@ export class ShortWorkspaceRpcs extends RpcGroup.make(
     payload: { projectId: ProjectId, script: Script },
     success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
     error: ProjectNotFound
+  }),
+  // The same for an edited shot list (frames, framing, speed) before it's sent to the shots gate.
+  Rpc.make("CheckShotsEdit", {
+    payload: { projectId: ProjectId, proposal: ShotProposal },
+    success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
+    error: ProjectNotFound
+  }),
+  // Stills of the long video every `every` seconds within `span` seconds either side of `t`, extracted on first
+  // ask and kept; for the frame picker.
+  Rpc.make("ListFramesAround", {
+    payload: { sourceId: SourceId, t: Schema.Finite, span: Schema.Finite, every: Schema.Finite },
+    success: Schema.Struct({ frames: Schema.Array(FrameAt) }),
+    error: SourceNotFound
   })
 ) {}

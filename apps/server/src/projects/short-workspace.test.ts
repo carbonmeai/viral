@@ -97,3 +97,45 @@ test("an edited script is checked against the approach and the transcript before
   assert.equal(problems.some((p) => /isn't in the transcript/.test(p)), false, "the real line was found")
   await rt.dispose()
 })
+
+test("an edited shot list is checked against the voiceover, the video and its ads before it's sent", async () => {
+  const rt = ManagedRuntime.make(Layer.mergeAll(ShortWorkspaces.layer, Sources.layer, Projects.layer, Artifacts.layer))
+  const [before, problems, good] = await rt.runPromise(Effect.gen(function*() {
+    const sources = yield* Sources
+    const source = yield* sources.create({ origin: { _tag: "Url", url: "https://youtu.be/z" }, rights: "owned", rightsNote: null })
+    yield* sources.recordMetadata(source.id, { title: "z", channel: null, url: null, durationS: 300 })
+    const artifacts = yield* Artifacts
+    yield* artifacts.record(yield* artifacts.allocate({ _tag: "Source", id: source.id }, "ad-ranges"), {
+      data: { ranges: [{ start: 0, end: 3, kind: "sponsor", evidence: "x" }] },
+      path: null
+    })
+    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Shots", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const workspaces = yield* ShortWorkspaces
+    const owner = { _tag: "Project", id: project.id } as const
+    const before = yield* workspaces.checkShots(project.id, { shots: [{ word: 0, src: 10, note: "n" }], markers: [] })
+
+    yield* artifacts.record(yield* artifacts.allocate(owner, "script"), { data: script, path: null })
+    const vo = yield* artifacts.allocate(owner, "voiceover")
+    yield* artifacts.record(vo, {
+      data: { voiceId: "v", model: "eleven_v4", text: "x", characters: 20, rawPace: 2.7, atempo: 1.16, pace: 3.2, durationS: 2 },
+      path: join(vo.relDir, "vo.wav")
+    })
+    const tx = yield* artifacts.allocate(owner, "voiceover-transcript")
+    const words = ["This", "guy", "made", "a", "candy."].map((w, i) => ({ w, s: i * 0.4, e: i * 0.4 + 0.3 }))
+    writeFileSync(join(tx.dir, "transcript.json"), JSON.stringify({ source: "vo.wav", language: "en", segments: [{ start: 0, end: 2, text: "x", words }] }))
+    yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
+
+    const problems = yield* workspaces.checkShots(project.id, {
+      shots: [{ word: 0, src: 1, note: "in the ad" }, { word: 9, src: 400, note: "past the end" }],
+      markers: []
+    })
+    const good = yield* workspaces.checkShots(project.id, { shots: [{ word: 0, src: 100, note: "fine" }], markers: [] })
+    return [before, problems, good] as const
+  }))
+  assert.match(before.join("; "), /needs its script and voiceover/)
+  const text = problems.join("\n")
+  assert.match(text, /inside an excluded range/)
+  assert.match(text, /word 9 isn't in the voiceover/)
+  assert.deepEqual(good, [])
+  await rt.dispose()
+})
