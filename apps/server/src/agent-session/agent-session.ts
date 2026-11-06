@@ -143,6 +143,14 @@ export class AgentSession extends Context.Service<AgentSession, {
                 strictMcpConfig: true,
                 settings: { disableClaudeAiConnectors: true },
                 allowedTools: [task.output.tool, ...helpers.map((h) => h.name)].map((name) => `mcp__viral__${name}`),
+                // End the session the moment the result is submitted. Otherwise the model takes one more full
+                // turn (thinking plus a "done" message), re-reading the whole context for nothing.
+                hooks: {
+                  PostToolUse: [{
+                    matcher: `mcp__viral__${task.output.tool}`,
+                    hooks: [() => Promise.resolve({ continue: false, stopReason: "result submitted" })]
+                  }]
+                },
                 // anything not allowed above lands here: only reads inside the stage's folders pass
                 canUseTool: async (toolName, input) => {
                   const file = typeof input.file_path === "string" ? input.file_path : ""
