@@ -1,7 +1,9 @@
 import type { LucideIcon } from "lucide-react"
 import { Captions, Image, Mic, Music, Quote } from "lucide-react"
 import type { ReactNode } from "react"
+import { cn } from "@viral/ui/cn"
 import { clockOf, type TimelineLayout } from "./editor-values.ts"
+import type { ShotBlock } from "./shots/shots-values.ts"
 
 // One track's colour tile, like Cap's soft icon tiles.
 function TrackName({ icon: Icon, color, name }: { readonly icon: LucideIcon; readonly color: string; readonly name: string }) {
@@ -48,6 +50,14 @@ function Block({ start, end, total, color, label, dim }: {
   )
 }
 
+// The shots as frames on the Shots track, at the times they play; clicking one selects it.
+export interface TimelineShots {
+  readonly blocks: ReadonlyArray<ShotBlock>
+  readonly frameOf: (k: number) => string | null
+  readonly selected: number | null
+  readonly onSelect: (k: number) => void
+}
+
 export interface TimelineProps {
   // null until there's a script and a voiceover to lay out
   readonly layout: TimelineLayout | null
@@ -56,11 +66,13 @@ export interface TimelineProps {
   readonly captions: string
   readonly music: string
   readonly shots: string
+  // the shot frames, once there's a shot plan
+  readonly shotBlocks?: TimelineShots | null
 }
 
 // The short on one timeline, read-only for now: the narration, the shots, the real lines (in the creator's own
 // voice), the captions and the music, in the short's own seconds.
-export function Timeline({ layout, head, captions, music, shots }: TimelineProps) {
+export function Timeline({ layout, head, captions, music, shots, shotBlocks }: TimelineProps) {
   if (layout === null) {
     return (
       <div className="grid grid-cols-[112px_minmax(700px,1fr)] items-center gap-y-1.5">
@@ -93,7 +105,31 @@ export function Timeline({ layout, head, captions, music, shots }: TimelineProps
         </Lane>
 
         <TrackName icon={Image} color="var(--t-shot)" name="Shots" />
-        <Lane><Block start={0} end={narrationEnd} total={total} color="" dim label={shots} /></Lane>
+        <Lane>
+          {shotBlocks === null || shotBlocks === undefined ? <Block start={0} end={narrationEnd} total={total} color="" dim label={shots} /> : (
+            shotBlocks.blocks.map((b, i) => {
+              const src = shotBlocks.frameOf(b.k)
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  title={`Shot ${b.k + 1}`}
+                  aria-label={`Shot ${b.k + 1}`}
+                  onClick={() => shotBlocks.onSelect(b.k)}
+                  className={cn(
+                    "absolute inset-y-0 overflow-hidden rounded-[5px] bg-ctl-active bg-cover bg-center outline-none",
+                    b.k === shotBlocks.selected ? "z-10 shadow-[0_0_0_1px_var(--lemon)]" : "hover:brightness-110"
+                  )}
+                  style={{
+                    left: `${(b.start / total) * 100}%`,
+                    width: `max(3px, calc(${((b.end - b.start) / total) * 100}% - 1px))`,
+                    ...(src === null ? {} : { backgroundImage: `url("${src}")` })
+                  }}
+                />
+              )
+            })
+          )}
+        </Lane>
 
         <TrackName icon={Quote} color="var(--t-real)" name="Real lines" />
         <Lane>

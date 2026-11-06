@@ -1,13 +1,14 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { GateResponse, ProjectId, RunId, RunRequest, ShortWorkspace, StageRun, Voice } from "@viral/contracts"
+import type { FrameAt, GateResponse, ProjectId, RunId, RunRequest, ShortWorkspace, ShotProposal, StageRun, Voice } from "@viral/contracts"
+import { Segmented } from "@viral/ui/primitives/segmented"
 import { Button } from "@viral/ui/primitives/button"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { ArrowRight, Check, MessageSquare } from "lucide-react"
+import { ArrowRight, Check, Eye, LayoutGrid, MessageSquare } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { serverUrl } from "../../config/server-url.ts"
-import { artifactPathUrl } from "../../lib/media-url.ts"
+import { artifactFileUrl, artifactPathUrl } from "../../lib/media-url.ts"
 import { ServerState } from "../home/server-state.tsx"
 import { TitleBar } from "../layout/title-bar.tsx"
 import { voicesAtom } from "../settings/settings-api.ts"
@@ -28,7 +29,10 @@ import type { GateControls } from "./gate.ts"
 import { LaterStep } from "./later-step.tsx"
 import { ScriptInspector, type ScriptTab } from "./script/script-inspector.tsx"
 import { ScriptStage } from "./script/script-stage.tsx"
-import { checkScriptEdit, respondToRequest, setProjectVoice, workspaceAtom } from "./shorts-api.ts"
+import { checkScriptEdit, checkShotsEdit, respondToRequest, setProjectVoice, workspaceAtom } from "./shorts-api.ts"
+import { ShotsInspector, type ShotsTab } from "./shots/shots-inspector.tsx"
+import { ShotsStage, type ShotsView } from "./shots/shots-stage.tsx"
+import { proposalOf, type ShotChange, shotSpans, timelineShots } from "./shots/shots-values.ts"
 import { StepBar } from "./step-bar.tsx"
 import { Timeline } from "./timeline.tsx"
 import { VoiceInspector, type VoiceTab } from "./voice/voice-inspector.tsx"
@@ -95,6 +99,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
 
   const respond = useAtomSet(respondToRequest, { mode: "promise" })
   const check = useAtomSet(checkScriptEdit, { mode: "promise" })
+  const checkShots = useAtomSet(checkShotsEdit, { mode: "promise" })
   const setVoice = useAtomSet(setProjectVoice, { mode: "promise" })
   const voices = Option.getOrElse(AsyncResult.value(useAtomValue(voicesAtom)), (): ReadonlyArray<Voice> => [])
   const [busy, setBusy] = useState(false)
@@ -103,6 +108,14 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [voiceTab, setVoiceTab] = useState<VoiceTab>("voice")
   const [beat, setBeat] = useState<number | null>(null)
   const [voTime, setVoTime] = useState<number | null>(null)
+  // the Shots step: the selected shot, the stage's view, the frame picker, and your edit in progress
+  const [shotK, setShotK] = useState(0)
+  const [shotsView, setShotsView] = useState<ShotsView>("preview")
+  const [shotsTab, setShotsTab] = useState<ShotsTab>("shot")
+  const [picking, setPicking] = useState(false)
+  const [candidate, setCandidate] = useState<FrameAt | null>(null)
+  const [draft, setDraft] = useState<ReadonlyMap<number, ShotChange>>(new Map())
+  const [shotProblems, setShotProblems] = useState<ReadonlyArray<string>>([])
 
   const request = waitingOn === open ? pending : null
   const answer = (response: GateResponse) => {
@@ -122,9 +135,11 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     ask: (note) => void answer({ _tag: "Reject", note }),
     edit: (artifact) => {
       if (request === null) return Promise.resolve(["This step isn't waiting for you."])
-      // a script edit is checked first, so a problem is shown instead of failing the run
+      // a script or shots edit is checked first, so a problem is shown instead of failing the run
       const checked = open === "script" && ws.script !== null
         ? check({ payload: { projectId: ws.project.id, script: artifact as typeof ws.script.script } }).then((r) => r.problems)
+        : open === "shots"
+        ? checkShots({ payload: { projectId: ws.project.id, proposal: artifact as ShotProposal } }).then((r) => r.problems)
         : Promise.resolve([] as ReadonlyArray<string>)
       return checked.then((problems) => problems.length > 0 ? problems : answer({ _tag: "Edit", artifact }).then(() => []))
     }
@@ -136,6 +151,22 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const sourceVideoUrl = ws.sourceVideo === null ? null : artifactPathUrl(serverUrl, { _tag: "Source", id: ws.source.id }, ws.sourceVideo)
   const layout = ws.script !== null && ws.voiceover !== null && ws.voiceover.words.length > 0
     ? layoutTimeline(ws.script.script, ws.voiceover.words, ws.voiceover.voiceover.durationS)
+    : null
+  // a shot's image: the still you picked for it, else its planned frame next to the shot plan
+  const sourceOwner = { _tag: "Source", id: ws.source.id } as const
+  const stillUrl = (path: string) => artifactPathUrl(serverUrl, sourceOwner, path)
+  const shotFrame = (k: number) => {
+    const picked = draft.get(k)?.still
+    if (picked !== undefined) return stillUrl(picked)
+    const frame = ws.shotPlan?.plan.shots[k]?.frame ?? null
+    return frame === null || ws.shotPlan === null ? null : artifactFileUrl(serverUrl, projectOwner, "shot-plan", ws.shotPlan.version, frame)
+  }
+  const realFrame = (kind: "insert" | "outro", index: number) => {
+    const clip = kind === "insert" ? ws.shotPlan?.plan.inserts[index] : ws.shotPlan?.plan.outro[index]
+    return clip?.frame === null || clip === undefined || ws.shotPlan === null ? null : artifactFileUrl(serverUrl, projectOwner, "shot-plan", ws.shotPlan.version, clip.frame)
+  }
+  const shotBlocks = ws.shotPlan !== null && layout !== null && ws.voiceover !== null
+    ? timelineShots(shotSpans(ws.shotPlan.plan, ws.voiceover.words, ws.voiceover.voiceover.durationS), layout)
     : null
   const voiceName = voices.find((v) => v.voiceId === ws.voiceId)?.name.split(" - ")[0] ?? "Voice"
   const working = openStep.stages.map((s) => progress.live[s]).find((l) => l !== undefined) ?? null
@@ -165,7 +196,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       <Button
         size="md"
         disabled={busy}
-        onClick={() => (open === "voice" ? setVoiceTab("ask") : setScriptTab("ask"))}
+        onClick={() => (open === "voice" ? setVoiceTab("ask") : open === "shots" ? setShotsTab("ask") : setScriptTab("ask"))}
       >
         <MessageSquare />Ask for changes
       </Button>
@@ -226,8 +257,88 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     inspector = ws.voiceover === null ? null : (
       <VoiceInspector voiceover={ws.voiceover.voiceover} voiceId={ws.voiceId} stages={stages} gate={gate} onNewVoice={newVoice} tab={voiceTab} onTab={setVoiceTab} />
     )
+  } else if (open === "shots") {
+    if (ws.shotPlan === null) {
+      stage = notYet("shot plan")
+      inspector = null
+    } else {
+      const plan = ws.shotPlan.plan
+      const k = Math.min(shotK, plan.shots.length - 1)
+      const select = (next: number) => {
+        setShotK(Math.max(0, Math.min(plan.shots.length - 1, next)))
+        setPicking(false)
+        setCandidate(null)
+      }
+      stage = (
+        <>
+          <div className="flex shrink-0 items-center gap-2 px-3.5 py-2.5">
+            <Segmented<ShotsView>
+              label="Stage"
+              value={shotsView}
+              onChange={setShotsView}
+              options={[
+                { value: "preview", label: <><Eye className="size-3.5" />Preview</> },
+                { value: "storyboard", label: <><LayoutGrid className="size-3.5" />Storyboard</> }
+              ]}
+            />
+            <span className="ml-auto inline-flex h-[22px] items-center rounded-chip bg-ctl px-2 text-xs text-fg-1">{ws.preset.name}</span>
+            <Detail><span className="inline-flex h-[22px] items-center rounded-chip bg-ctl px-2 text-xs text-fg-1">{ws.project.approach}</span></Detail>
+          </div>
+          <ShotsStage
+            plan={plan}
+            draft={draft}
+            preset={ws.preset}
+            headline={ws.script?.script.headline ?? null}
+            view={shotsView}
+            selected={k}
+            onSelect={(next) => {
+              select(next)
+              setShotsView("preview")
+            }}
+            frameOf={shotFrame}
+            realFrameOf={realFrame}
+            candidate={candidate === null ? null : stillUrl(candidate.path)}
+          />
+        </>
+      )
+      inspector = (
+        <ShotsInspector
+          plan={plan}
+          draft={draft}
+          preset={ws.preset}
+          selected={k}
+          onSelect={select}
+          onChange={(shot, change) => {
+            setShotProblems([])
+            setDraft((d) => new Map(d).set(shot, { ...d.get(shot), ...change }))
+          }}
+          frameOf={shotFrame}
+          sourceId={ws.source.id}
+          stillUrl={stillUrl}
+          picking={picking}
+          onPicking={setPicking}
+          candidate={candidate}
+          onCandidate={setCandidate}
+          problems={shotProblems}
+          onRevert={() => {
+            setDraft(new Map())
+            setShotProblems([])
+          }}
+          onSend={() => {
+            void gate.edit(proposalOf(plan, draft)).then((refused) => {
+              setShotProblems(refused)
+              if (refused.length === 0) setDraft(new Map())
+            })
+          }}
+          stages={stages}
+          gate={gate}
+          tab={shotsTab}
+          onTab={setShotsTab}
+        />
+      )
+    }
   } else {
-    stage = <LaterStep step={openStep} milestone={open === "render" || open === "publish" ? "M5" : "M4"} />
+    stage = <LaterStep step={openStep} milestone="M5" />
     inspector = null
   }
 
@@ -247,10 +358,25 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         timeline={
           <Timeline
             layout={layout}
-            head={open === "voice" && voTime !== null && layout !== null ? shortTimeOf(layout, voTime) : null}
+            head={open === "voice" && voTime !== null && layout !== null
+              ? shortTimeOf(layout, voTime)
+              : open === "shots" && shotBlocks !== null
+              ? shotBlocks.find((b) => b.k === shotK)?.start ?? null
+              : null}
             captions={`${captions.enabled ? `${captions.mode === "chunk" ? `${captions.maxWords} words at a time` : "One word at a time"} · ${captions.case}` : "No captions (finish in an editor from the .srt)"}`}
             music={ws.project.musicTrackId === null ? "No music · voice only" : "Music · its drop lands on the last narrated line"}
-            shots={ws.shotPlan !== null ? `${ws.shotPlan.plan.shots.length} shots · opens in step 3` : "Shots are planned in step 3"}
+            shots={ws.shotPlan !== null ? `${ws.shotPlan.plan.shots.length} shots` : "Shots are planned in step 3"}
+            shotBlocks={shotBlocks === null ? null : {
+              blocks: shotBlocks,
+              frameOf: shotFrame,
+              selected: open === "shots" ? shotK : null,
+              onSelect: (k) => {
+                setShotK(k)
+                setPicking(false)
+                setCandidate(null)
+                if (open !== "shots") onStep("shots")
+              }
+            }}
           />
         }
       />

@@ -1,4 +1,4 @@
-import type { ProjectId } from "@viral/contracts"
+import { type ProjectId, SourceId } from "@viral/contracts"
 import { Atom } from "effect/reactivity"
 import { ViralClient } from "../../api/client.ts"
 
@@ -12,7 +12,15 @@ export const workspaceAtom = Atom.family((projectId: ProjectId) =>
   ViralClient.query("GetShortWorkspace", { projectId }, { reactivityKeys: [`short:${projectId}`] })
 )
 
+// Stills of the long video around a source second, for picking a shot's frame (key: "<source>|<second>|<span>").
+export const framesAroundAtom = Atom.family((key: string) => {
+  const [sourceId, t, span] = key.split("|")
+  return ViralClient.query("ListFramesAround", { sourceId: SourceId.make(sourceId ?? ""), t: Number(t), span: Number(span), every: 1 })
+})
+export const framesKey = (sourceId: SourceId, t: number, span: number) => `${sourceId}|${Math.round(t)}|${span}`
+
 // Writes.
 export const respondToRequest = ViralClient.mutation("RespondToRequest")
 export const checkScriptEdit = ViralClient.mutation("CheckScriptEdit")
+export const checkShotsEdit = ViralClient.mutation("CheckShotsEdit")
 export const setProjectVoice = ViralClient.mutation("SetProjectVoice")
