@@ -21,14 +21,12 @@
     "apps/desktop": {
       "name": "@viral/desktop",
       "version": "0.1.0",
-      "dependencies": {
+      "devDependencies": {
         "@effect/platform-node": "4.1.2",
         "effect": "4.1.2",
-        "electron-updater": "^6.8.9",
-      },
-      "devDependencies": {
         "electron": "44.10.1",
         "electron-builder": "26.16.1",
+        "electron-updater": "^6.8.9",
         "vite-plus": "1.4.0",
       },
     },

@@ -12,8 +12,20 @@ export default defineConfig({
       dts: false,
       sourcemap: true,
       outExtensions: () => ({ js: ".cjs" }),
-      external: ["electron"],
-      noExternal: [/.*/]
+      deps: { neverBundle: ["electron"], alwaysBundle: [/.*/] },
+    },
+    // The server, bundled into plain JavaScript for Electron's Node (Node won't strip TypeScript types inside
+    // node_modules, where a packaged app keeps workspace packages). scripts/build-server.ts copies the Python
+    // scripts and the skill pack next to it, where the server looks for them.
+    {
+      entry: { main: "../server/src/main.ts" },
+      format: "esm",
+      outDir: "dist-server",
+      platform: "node",
+      dts: false,
+      sourcemap: true,
+      outExtensions: () => ({ js: ".mjs" }),
+      deps: { alwaysBundle: [/.*/] }
     }
   ]
 })

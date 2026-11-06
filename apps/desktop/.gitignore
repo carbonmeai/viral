@@ -1,0 +1,4 @@
+resources/bin/*
+!resources/bin/.gitkeep
+release/
+dist-server/

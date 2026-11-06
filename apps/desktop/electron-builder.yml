@@ -1,0 +1,32 @@
+# Packages Viral for macOS (arm64). The main process and the server are bundled JavaScript, so no
+# node_modules ship. Resources/ holds the UI (web), the server (server) and ffmpeg, uv and yt-dlp (bin,
+# from scripts/fetch-tools.ts).
+appId: ai.carbonme.viral
+productName: Viral
+directories:
+  output: release
+electronDist: node_modules/electron/dist
+electronVersion: 44.10.1
+npmRebuild: false
+files:
+  - dist-electron/**
+  - "!dist-electron/*.map"
+  - package.json
+extraResources:
+  - from: ../web/dist
+    to: web
+  - from: dist-server
+    to: server
+    filter: ["**/*", "!*.map"]
+  - from: resources/bin
+    to: bin
+    filter: ["**/*", "!tools.lock.json"]
+mac:
+  target:
+    - target: dir
+      arch: [arm64]
+  category: public.app-category.video
+# Updates come from a generic feed; set VIRAL_UPDATE_URL at runtime. Nothing is published yet.
+publish:
+  provider: generic
+  url: https://updates.invalid/viral

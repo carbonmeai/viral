@@ -4,7 +4,7 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "diagnosticSeverity": { "nodeBuiltinImport": "off", "globalConsole": "off", "globalDate": "off", "processEnvInEffect": "off" }
+        "diagnosticSeverity": { "nodeBuiltinImport": "off", "globalConsole": "off", "globalDate": "off", "processEnvInEffect": "off", "globalFetch": "off" }
       }
     ]
   },
