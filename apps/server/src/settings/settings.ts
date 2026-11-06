@@ -9,6 +9,7 @@ const Json = Schema.fromJsonString(Schema.Unknown)
 export class Settings extends Context.Service<Settings, {
   get<S extends Schema.Top>(key: string, schema: S): Effect.Effect<Option.Option<S["Type"]>, never, S["DecodingServices"]>
   set(key: string, value: unknown): Effect.Effect<void>
+  remove(key: string): Effect.Effect<void>
 }>()("@viral/server/settings/settings") {
   static readonly layer = Layer.effect(
     Settings,
@@ -35,7 +36,11 @@ export class Settings extends Context.Service<Settings, {
         `
       }, Effect.orDie)
 
-      return Settings.of({ get, set })
+      const remove = Effect.fn("Settings.remove")(function*(key: string) {
+        yield* sql`DELETE FROM settings WHERE key = ${key}`
+      }, Effect.orDie)
+
+      return Settings.of({ get, set, remove })
     })
   ).pipe(Layer.provide(DatabaseLive))
 }

@@ -1,10 +1,12 @@
 import { NodeServices } from "@effect/platform-node"
-import { Transcript, type TranscriptProvider } from "@viral/contracts"
+import { Transcript, TranscriberChoice, type TranscriptProvider } from "@viral/contracts"
 import { Config, Context, Duration, Effect, FileSystem, Layer, Option, Path, Redacted, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
 import { Secrets } from "../secrets/secrets.ts"
+import { TRANSCRIBER_KEY } from "../settings/app-settings.ts"
+import { Settings } from "../settings/settings.ts"
 import { GrokSttResponse, grokToTranscript } from "./grok-response.ts"
 
 // `code`: "no-provider", "audio", "grok-http", "grok-response", or the Whisper script's own code.
@@ -38,6 +40,36 @@ const fmt = (t: number) => {
 const transcriptText = (transcript: Transcript) =>
   transcript.segments.map((s) => `[${fmt(s.start)} - ${fmt(s.end)}] ${s.text}`).join("\n") + "\n"
 
+export interface ProviderInputs {
+  // VIRAL_TRANSCRIBER, when set
+  readonly environment: string | null
+  // Settings › Transcription
+  readonly setting: TranscriberChoice
+  readonly hasXaiKey: boolean
+  readonly appleSilicon: boolean
+  // a stage's preference, used when it's available and nothing above forces a provider
+  readonly prefer: TranscriptProvider | undefined
+}
+
+// Which provider transcribes: the environment variable, then your setting, then the stage's preference, then
+// Grok when there's an xAI key, else local Whisper on Apple Silicon.
+export const chooseProvider = (inputs: ProviderInputs): Effect.Effect<TranscriptProvider, TranscribeError> => {
+  if (inputs.environment !== null) {
+    return inputs.environment === "grok" || inputs.environment === "whisper-local"
+      ? Effect.succeed(inputs.environment)
+      : Effect.fail(new TranscribeError({ code: "no-provider", message: `unknown VIRAL_TRANSCRIBER=${inputs.environment}` }))
+  }
+  if (inputs.setting !== "auto") return Effect.succeed(inputs.setting)
+  const available = (provider: TranscriptProvider) => provider === "grok" ? inputs.hasXaiKey : inputs.appleSilicon
+  if (inputs.prefer !== undefined && available(inputs.prefer)) return Effect.succeed(inputs.prefer)
+  if (inputs.hasXaiKey) return Effect.succeed("grok")
+  if (inputs.appleSilicon) return Effect.succeed("whisper-local")
+  return Effect.fail(new TranscribeError({
+    code: "no-provider",
+    message: "add an xAI API key (Settings › Accounts) to transcribe with Grok"
+  }))
+}
+
 // Word-timed transcription into <outDir>/transcript.json (+ transcript.txt). Providers: Grok STT when an
 // xAI key is available, otherwise local mlx-whisper on Apple Silicon. VIRAL_TRANSCRIBER=grok|whisper-local
 // forces one.
@@ -56,6 +88,7 @@ export class Transcriber extends Context.Service<Transcriber, {
     Effect.gen(function*() {
       const scripts = yield* ScriptRunner
       const secrets = yield* Secrets
+      const settings = yield* Settings
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
@@ -63,19 +96,16 @@ export class Transcriber extends Context.Service<Transcriber, {
 
       const fail = (code: string) => (error: { readonly message: string }) => new TranscribeError({ code, message: error.message })
 
-      // Read once at startup, like the rest of the server's configuration.
+      // VIRAL_TRANSCRIBER is read once at startup and wins over the setting, which is read on every call.
       const forced = yield* Config.option(Config.String("VIRAL_TRANSCRIBER")).pipe(Effect.orDie)
 
-      const pickProvider = Effect.gen(function*() {
-        if (Option.isSome(forced)) {
-          if (forced.value === "grok" || forced.value === "whisper-local") return forced.value
-          return yield* new TranscribeError({ code: "no-provider", message: `unknown VIRAL_TRANSCRIBER=${forced.value}` })
-        }
-        if (Option.isSome(yield* secrets.get("xai"))) return "grok" as const
-        if (isAppleSilicon) return "whisper-local" as const
-        return yield* new TranscribeError({
-          code: "no-provider",
-          message: "add an xAI API key (XAI_API_KEY, or the macOS Keychain entry viral/xai) to transcribe with Grok"
+      const pickProvider = Effect.fn("Transcriber.pickProvider")(function*(prefer: TranscriptProvider | undefined) {
+        return yield* chooseProvider({
+          environment: Option.getOrNull(forced),
+          setting: Option.getOrElse(yield* settings.get(TRANSCRIBER_KEY, TranscriberChoice), () => "auto" as const),
+          hasXaiKey: Option.isSome(yield* secrets.get("xai")),
+          appleSilicon: isAppleSilicon,
+          prefer
         })
       })
 
@@ -158,16 +188,14 @@ export class Transcriber extends Context.Service<Transcriber, {
         progress: Progress,
         options?: { readonly prefer?: TranscriptProvider }
       ) {
-        const prefer = options?.prefer
-        const available = prefer === "whisper-local" ? isAppleSilicon : prefer === "grok" && Option.isSome(yield* secrets.get("xai"))
-        const provider = Option.isNone(forced) && prefer !== undefined && available ? prefer : yield* pickProvider
+        const provider = yield* pickProvider(options?.prefer)
         yield* progress(0, `transcribing with ${provider}`)
         return yield* provider === "grok" ? withGrok(video, outDir, progress) : withWhisper(video, outDir, progress)
       })
 
       return Transcriber.of({ transcribe })
     })
-  ).pipe(Layer.provide([ScriptRunner.layer, Secrets.layer, NodeServices.layer, FetchHttpClient.layer]))
+  ).pipe(Layer.provide([ScriptRunner.layer, Secrets.layer, Settings.layer, NodeServices.layer, FetchHttpClient.layer]))
 
   // For tests: writes `answer(media)` as the transcript instead of transcribing.
   static readonly replay = (answer: (media: string) => Transcript) =>
