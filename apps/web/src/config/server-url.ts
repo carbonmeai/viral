@@ -1,0 +1,22 @@
+// Where the Viral server is. The desktop app passes its address through the preload; in a browser the dev
+// server's default (or VITE_VIRAL_SERVER) is used.
+export interface DesktopBridge {
+  readonly platform: string
+  readonly serverUrl: string
+  // how far the macOS window buttons reach into the sidebar, in px
+  readonly windowControlsInset: number
+  // the signed-in Mac user's name, shown at the bottom of the sidebar
+  readonly userName: string
+}
+
+declare global {
+  interface Window {
+    readonly viralDesktop?: DesktopBridge
+  }
+}
+
+export const desktop: DesktopBridge | undefined = typeof window === "undefined" ? undefined : window.viralDesktop
+
+export const serverUrl = (desktop?.serverUrl ?? import.meta.env["VITE_VIRAL_SERVER"] ?? "http://127.0.0.1:3410").replace(/\/$/, "")
+
+export const rpcUrl = `${serverUrl.replace(/^http/, "ws")}/rpc`

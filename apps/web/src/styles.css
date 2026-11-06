@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@import "@viral/ui/theme.css";
+
+/* the shared primitives use Tailwind classes too */
+@source "../../../packages/ui/src";
+
+@layer base {
+  button { font: inherit; color: inherit; }
+  /* the window can be dragged by the title bar and the sidebar's top row (desktop only) */
+  .drag { -webkit-app-region: drag; }
+  .no-drag { -webkit-app-region: no-drag; }
+}
