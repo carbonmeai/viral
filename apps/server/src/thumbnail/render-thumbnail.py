@@ -209,11 +209,25 @@ def cut_edges(cut: Image.Image) -> set[str]:
     a = cut.getchannel("A").point(lambda v: 255 if v > 128 else 0)
     w, h = a.size
     edges = set()
-    for name, box, length in (("left", (0, 0, 2, h), h), ("right", (w - 2, 0, w, h), h), ("bottom", (0, h - 2, w, h), w)):
+    for name, box, length in (("left", (0, 0, 2, h), h), ("right", (w - 2, 0, w, h), h), ("top", (0, 0, w, 2), w),
+                              ("bottom", (0, h - 2, w, h), w)):
         filled = sum(1 for v in a.crop(box).getdata() if v) / (2 * length)
         if filled > 0.12:
             edges.add(name)
     return edges
+
+
+def fade_top(cut: Image.Image, share: float = 0.14) -> Image.Image:
+    """Fades the top `share` of a cut-out to transparent, for a subject the camera cut off at the top: no flat
+    crop line, the head melts into the background instead."""
+    n = max(1, int(cut.height * share))
+    alpha = cut.getchannel("A")
+    ramp = Image.linear_gradient("L").resize((cut.width, n))
+    top = Image.composite(alpha.crop((0, 0, cut.width, n)), Image.new("L", (cut.width, n), 0), ramp)
+    alpha.paste(top, (0, 0))
+    out = cut.copy()
+    out.putalpha(alpha)
+    return out
 
 
 def glow(canvas: Image.Image, layer: Image.Image, x: int, y: int, color: str, radius: int = 46) -> None:
@@ -326,27 +340,10 @@ def bold(cfg: dict, src: str, out: Path) -> None:
     cuts = cutouts(jobs)
     report = {"hero": cuts[0][1]}
 
-    # the hero: big, outlined, glowing, slightly turned
-    emit({"type": "progress", "step": "hero"})
-    hero_w = W * hero_cfg.get("width", 0.82)
-    if cuts[0][0] is not None:
-        hero = outlined(scaled(trimmed(cuts[0][0]), width=hero_w), 16, hero_cfg.get("outline", "#FFFFFF"))
-    else:
-        hero = rounded(scaled(hero_img, width=hero_w), 30, 14, hero_cfg.get("outline", "#FFFFFF"))
-    hero = hero.rotate(hero_cfg.get("rotate", -6), expand=True, resample=Image.BICUBIC)
-    hx, hy = int(W * hero_cfg.get("x", 0.5) - hero.width / 2), int(H * hero_cfg["y"] - hero.height / 2)
-    glow(canvas, hero, hx, hy, hero_cfg.get("glow", "#FFE14D"))
-    shadow(canvas, hero, hx, hy)
-    if hero_cfg.get("circle"):
-        dd = ImageDraw.Draw(canvas)
-        cx = hx + hero.width * hero_cfg.get("circle_x", 0.5)
-        cy = hy + hero.height * hero_cfg.get("circle_y", 0.5)
-        r = hero.width * hero_cfg.get("circle_r", 0.42)
-        dd.ellipse((cx - r, cy - r, cx + r, cy + r), outline="#FFFFFF", width=26)
-        dd.ellipse((cx - r, cy - r, cx + r, cy + r), outline=RED, width=16)
-
     # the face: big, outlined, overlapping the hero's lower edge, anchored to the bottom of the frame
     face_box = None
+    face_layer = None
+    under = False
     if face_img is not None and face_cfg is not None:
         emit({"type": "progress", "step": "inset"})
         face_h = H * face_cfg.get("height", 0.48)
@@ -355,6 +352,9 @@ def bold(cfg: dict, src: str, out: Path) -> None:
             cut = trimmed(cuts[1][0])
             edges = cut_edges(cut)
             face = outlined(scaled(cut, height=face_h), 14, face_cfg.get("outline", "#FFFFFF"))
+            if "top" in edges:
+                # cut off at the top by the camera: fade the crop line away and tuck it under the hero
+                face, under = fade_top(face), True
         else:
             face = rounded(scaled(face_img, height=face_h), 28, 14, face_cfg.get("outline", "#FFFFFF"))
         report["face"] = cuts[1][1]
@@ -372,8 +372,32 @@ def bold(cfg: dict, src: str, out: Path) -> None:
             left = max(left, W - face.width + bleed)
         if side == "left" and "left" in edges:
             left = min(left, -bleed)
-        shadow(canvas, face, left, top)
+        face_layer = (face, left, top)
         face_box = (left, top, left + face.width, top + face.height)
+
+    # the hero: big, outlined, glowing, slightly turned
+    emit({"type": "progress", "step": "hero"})
+    hero_w = W * hero_cfg.get("width", 0.82)
+    if cuts[0][0] is not None:
+        hero = outlined(scaled(trimmed(cuts[0][0]), width=hero_w), 16, hero_cfg.get("outline", "#FFFFFF"))
+    else:
+        hero = rounded(scaled(hero_img, width=hero_w), 30, 14, hero_cfg.get("outline", "#FFFFFF"))
+    hero = hero.rotate(hero_cfg.get("rotate", -6), expand=True, resample=Image.BICUBIC)
+    hx, hy = int(W * hero_cfg.get("x", 0.5) - hero.width / 2), int(H * hero_cfg["y"] - hero.height / 2)
+    glow(canvas, hero, hx, hy, hero_cfg.get("glow", "#FFE14D"))
+    if face_layer is not None and under:
+        shadow(canvas, *face_layer)
+    shadow(canvas, hero, hx, hy)
+    if hero_cfg.get("circle"):
+        dd = ImageDraw.Draw(canvas)
+        cx = hx + hero.width * hero_cfg.get("circle_x", 0.5)
+        cy = hy + hero.height * hero_cfg.get("circle_y", 0.5)
+        r = hero.width * hero_cfg.get("circle_r", 0.42)
+        dd.ellipse((cx - r, cy - r, cx + r, cy + r), outline="#FFFFFF", width=26)
+        dd.ellipse((cx - r, cy - r, cx + r, cy + r), outline=RED, width=16)
+
+    if face_layer is not None and not under:
+        shadow(canvas, *face_layer)
 
     # the arrow: from the empty side (opposite the face) up to the hero's edge
     if cfg.get("arrow"):
