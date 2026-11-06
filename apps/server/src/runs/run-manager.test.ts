@@ -22,6 +22,8 @@ after(() => rmSync(home, { recursive: true, force: true }))
 const calls = { source: 0, transcribe: [] as Array<string | null> }
 // the session each transcribe attempt was asked to resume
 const sessions: Array<string | null> = []
+// the third, review stage is only in the runs of the test that needs it
+const withReview = { on: false }
 
 const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
   const artifacts = yield* Artifacts
@@ -51,7 +53,18 @@ const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
       applyEdit: (ctx, artifact) => produce(ctx, "transcript", artifact)
     }
   ]
-  return StageRegistry.of({ stagesFor: () => Effect.succeed(stages) })
+  // a gated review stage that can't act on a note itself, so it sends rejections back to transcribe
+  const review: StageDefinition = {
+    name: "ads",
+    artifact: "ad-ranges",
+    gate: "Approve the review?",
+    rejectTo: "transcribe",
+    run: (ctx) => Effect.gen(function*() {
+      const slot = yield* artifacts.allocate(ctx.owner, "ad-ranges")
+      yield* artifacts.record(slot, { data: { ranges: [] }, path: null, stageRunId: ctx.stageRunId })
+    })
+  }
+  return StageRegistry.of({ stagesFor: () => Effect.succeed(withReview.on ? [...stages, review] : stages) })
 }))
 
 const appLayer = () =>
@@ -223,5 +236,40 @@ test("an answer sent the instant a gate appears is never missed", async () => {
     return last?._tag === "Event" && last.event._tag === "RunFinished" ? last.event.run.status : "never finished"
   }))
   assert.equal(status, "completed")
+  await rt.dispose()
+})
+
+test("a rejection sent back re-runs the earlier stage with the note, in its own conversation", async () => {
+  const rt = boot()
+  withReview.on = true
+  const owner = await createSource(rt)
+  const run = await start(rt, owner)
+  const answered = new Set<string>()
+  // the next gate of `stage` this test hasn't answered yet
+  const nextGate = async (stage: string) => {
+    const updates = await until(rt, run.id, (u) =>
+      u._tag === "Event" && u.event._tag === "RequestRaised" && u.event.request.stage === stage && !answered.has(u.event.request.id))
+    const request = requestOf(updates)
+    answered.add(request.id)
+    return request
+  }
+
+  await respond(rt, (await nextGate("transcribe")).id, { _tag: "Approve" })
+  const before = calls.transcribe.length
+  // reject the review: it goes back to transcribe
+  await respond(rt, (await nextGate("ads")).id, { _tag: "Reject", note: "fix the start" })
+  await respond(rt, (await nextGate("transcribe")).id, { _tag: "Approve" })
+  assert.equal(calls.transcribe.at(-1), "fix the start", "transcribe ran again with the note")
+  assert.equal(sessions.at(-1), `session-${before}`, "and continued its earlier conversation")
+  await respond(rt, (await nextGate("ads")).id, { _tag: "Approve" })
+  await until(rt, run.id, finished)
+  assert.deepEqual(await stageStatuses(rt, run.id), [
+    "source:succeeded",
+    "transcribe:succeeded",
+    "ads:failed",
+    "transcribe:succeeded",
+    "ads:succeeded"
+  ])
+  withReview.on = false
   await rt.dispose()
 })

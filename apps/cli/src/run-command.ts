@@ -1,11 +1,14 @@
 import { RequestId, RunId } from "@viral/contracts"
-import { Console, Effect, Stream } from "effect"
+import { Console, Effect, FileSystem, Path, Schema, Stream } from "effect"
 import { positionals } from "./args.ts"
 import { Client } from "./client.ts"
 import { printUpdate } from "./print-event.ts"
 
+const Json = Schema.fromJsonString(Schema.Unknown)
+
 export const RUN_USAGE = `  follow <run-id> | cancel <run-id> | resume <run-id>
-  requests | approve <request-id> | reject <request-id> "<note>"`
+  requests | approve <request-id> | reject <request-id> "<note>"
+  edit <request-id> <file.json>   (answer a gate with your edited version, e.g. a shot list)`
 
 // Prints a run's updates until it finishes or stops at a gate you still need to answer (the history
 // replays gates you already answered).
@@ -25,6 +28,8 @@ export const follow = Effect.fn("follow")(function*(runId: RunId) {
 
 export const runCommand = Effect.fn("runCommand")(function*() {
   const client = yield* Client
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
   const [command, id = "", note = ""] = positionals
   switch (command) {
     case "follow":
@@ -47,6 +52,14 @@ export const runCommand = Effect.fn("runCommand")(function*() {
         response: command === "approve" ? { _tag: "Approve" } : { _tag: "Reject", note }
       })
       yield* Console.log(`${command}d ${request.stage}`)
+      return yield* follow(request.runId)
+    }
+    case "edit": {
+      const file = note
+      if (file === "") return yield* Console.error(RUN_USAGE)
+      const artifact = yield* fs.readFileString(path.resolve(file)).pipe(Effect.flatMap(Schema.decodeEffect(Json)))
+      const request = yield* client.RespondToRequest({ requestId: RequestId.make(id), response: { _tag: "Edit", artifact } })
+      yield* Console.log(`edited ${request.stage}`)
       return yield* follow(request.runId)
     }
     default:

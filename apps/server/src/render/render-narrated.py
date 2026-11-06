@@ -490,15 +490,19 @@ def main() -> None:
         segs, prev = [], 0.0
         for k, ins in enumerate(inserts):
             progress("outro", k, len(inserts))
-            piece = tmp / f"narr_{k:02d}.mp4"
-            run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{prev:.3f}", "-to", f"{ins['at']:.3f}",
-                 "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
+            # back-to-back inserts after the same word have no narration between them
+            if ins["at"] - prev > 0.02:
+                piece = tmp / f"narr_{k:02d}.mp4"
+                run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{prev:.3f}", "-to", f"{ins['at']:.3f}",
+                     "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
+                segs.append(piece)
             s0, e0 = float(ins["start"]), float(ins["end"])
             check(f"insert {k}", s0, e0)
             clip = tmp / f"insert_{k:02d}.mp4"
             cut(src, s0, e0 - s0, lay, clip, ins, with_audio=True)
-            segs += [piece, clip]
-            t0 = shifted(ins["at"])  # where the clip starts in the output
+            segs.append(clip)
+            # where the clip starts in the output: after every earlier insert, including one at the same word
+            t0 = ins["at"] + sum(i["dur"] for i in inserts[:k])
             said = [w for w in src_words if w["s"] >= s0 - 0.01 and w["e"] <= e0 + 0.01]
             if ins.get("captions", True):
                 caption_words += [{"w": w["w"], "s": t0 + w["s"] - s0, "e": t0 + w["e"] - s0, "real": True} for w in said]

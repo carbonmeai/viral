@@ -36,6 +36,9 @@ export interface StageDefinition {
   applyEdit?(ctx: StageContext, artifact: unknown): Effect.Effect<void, StageFailure>
   // What the gate shows you: usually the artifact itself.
   gatePayload?(artifact: Artifact): unknown
+  // Where a rejection goes when this stage can't act on a note itself (the render follows its plan): that
+  // earlier stage runs again with your note, and every stage after it follows.
+  readonly rejectTo?: StageName
 }
 
 // The stages of a run, in order: the source run's for a source, and the project's approach decides a short's.

@@ -1,4 +1,4 @@
-import { type RunUpdate, Script, ShotPlan, Voiceover } from "@viral/contracts"
+import { RenderedShort, type RunUpdate, Script, ShotPlan, Voiceover } from "@viral/contracts"
 import { Console, Effect, Option, Schema } from "effect"
 
 const ScriptPayload = Schema.Struct({ script: Script, narrationWords: Schema.NullOr(Schema.Int) })
@@ -13,11 +13,19 @@ const describeVoice = (payload: unknown): string =>
       ` · voice ${v.voiceId} · ${v.characters} characters\n`
   })
 
+const describeRender = (payload: unknown): string =>
+  Option.match(Schema.decodeUnknownOption(RenderedShort)(payload), {
+    onNone: () => "",
+    onSome: (r) =>
+      `  ${r.video}\n  ${r.durationS.toFixed(1)}s · ${r.shots} shots · captions ${r.captions}\n` +
+      `  check sheet ${r.checkSheet ?? "(none)"}\n  rejecting goes back to the shots with your note\n`
+  })
+
 const ShotsPayload = Schema.Struct({ plan: ShotPlan, storyboard: Schema.NullOr(Schema.String) })
 
 const describeShots = (payload: unknown): string =>
   Option.match(Schema.decodeUnknownOption(ShotsPayload)(payload), {
-    onNone: () => "",
+    onNone: () => describeRender(payload),
     onSome: ({ plan, storyboard }) => {
       const shots = plan.shots.map((shot, k) =>
         `  ${String(k + 1).padStart(2)}  w${String(shot.word).padEnd(3)} ${shot.wordText.padEnd(12)} ${shot.src.toFixed(1).padStart(7)}s` +

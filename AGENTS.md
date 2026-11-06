@@ -26,6 +26,10 @@ apps/server/src/
   ads/                 the ads stage (Haiku): sponsor reads, ads, intros and end screens to keep out of shorts
   story/               the story stage: story beats with snapped quotes + 3 proposals (one per approach), each
                        of which `Projects.fromProposal` turns into a short
+  assemble/            the assemble stage: shot plan + preset (+ music with a known drop) → the renderer's
+                       narrated plan, deterministic, so a short re-renders in another style without agent work
+  metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
+                       srt and <slug>.md into ~/.viral/renders/
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
@@ -52,7 +56,8 @@ apps/server/src/
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
                        A task can offer helper tools (`agentTool`) besides its propose_* tool
   settings/            app preferences as JSON under keys (e.g. stage.story.model)
-  render/              render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
+  render/              the render stage (gated; a rejection goes back to the shots with your note, via the
+                       stage's `rejectTo`) + render engine + its Python scripts (render-narrated.py is the viral-shorts renderer,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
                        headline, chunk/quote captions, labels, credit). Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)

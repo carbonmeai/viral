@@ -109,14 +109,17 @@ test("the shots stage places the real lines, fixes a rejected plan, and draws a 
     assert.ok(raised?._tag === "Event" && raised.event._tag === "RequestRaised")
     assert.equal(raised.event.request.title, "Approve the shots?")
     yield* runs.respond(raised.event.request.id, { _tag: "Approve" })
-    return [...yield* runs.subscribe(run.id, 0).pipe(
-      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RunFinished"),
+    // assemble comes next; this test stops there
+    const rest = [...yield* runs.subscribe(run.id, 0).pipe(
+      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "StageStarted" && u.event.stageRun.stage === "assemble"),
       Stream.runCollect
     )]
+    yield* runs.cancel(run.id)
+    return rest
   }))
-  const finished = updates.findLast((u) => u._tag === "Event" && u.event._tag === "RunFinished")
-  assert.ok(finished?._tag === "Event" && finished.event._tag === "RunFinished")
-  assert.equal(finished.event.run.status, "completed", finished.event.run.error ?? "")
+  const shotsDone = updates.findLast((u) => u._tag === "Event" && u.event._tag === "StageFinished" && u.event.stageRun.stage === "shots")
+  assert.ok(shotsDone?._tag === "Event" && shotsDone.event._tag === "StageFinished")
+  assert.equal(shotsDone.event.stageRun.status, "succeeded", shotsDone.event.stageRun.error ?? "")
 
   assert.equal(asked.length, 2)
   assert.match(asked[0]!.message, /REAL after word 3 "it\.": "Ow, that hurts\."/)

@@ -6,12 +6,13 @@ export type Range = { readonly start: number; readonly end: number }
 // A shot plan before its frames are drawn.
 export type ShotDraft = {
   readonly [K in "shots" | "inserts" | "outro"]: ReadonlyArray<Omit<ShotPlan[K][number], "frame">>
-} & Pick<ShotPlan, "markers">
+} & Pick<ShotPlan, "markers" | "highlights">
 
 // A shot longer than this drags; the styles cut every 1–2s.
 export const MAX_SHOT_SECONDS = 3
 const SPEED: readonly [number, number] = [0.5, 4]
 const LABEL_WORDS = 3
+const HIGHLIGHTS = 12
 
 const normalize = (word: string) => word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "")
 // how a script line splits into the words a transcriber hears ("spicy-cold" is two)
@@ -78,7 +79,7 @@ export interface ShotContext {
 const fmt = (t: number) => t.toFixed(1)
 
 // Checks a proposed shot list against the voiceover and the source, and fills in each anchor's word text.
-export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pick<ShotDraft, "shots" | "markers">> => {
+export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pick<ShotDraft, "shots" | "markers" | "highlights">> => {
   const problems: Array<string> = []
   const { words } = ctx
   const wordAt = (i: number) => words[i]?.w ?? ""
@@ -128,8 +129,19 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
     }
   })
 
+  const highlights = proposal.highlights ?? []
+  if (highlights.length > HIGHLIGHTS) problems.push(`highlight at most ${HIGHLIGHTS} words; ${highlights.length} dilutes them`)
+  const spoken = new Set(words.map((w) => normalize(w.w)))
+  for (const word of highlights) {
+    if (!spoken.has(normalize(word))) problems.push(`highlight "${word}" isn't a word of the voiceover`)
+  }
+
   return {
-    value: { shots: proposal.shots.map((s) => ({ ...s, wordText: wordAt(s.word) })), markers: proposal.markers },
+    value: {
+      shots: proposal.shots.map((s) => ({ ...s, wordText: wordAt(s.word) })),
+      markers: proposal.markers,
+      highlights: highlights.map(normalize)
+    },
     problems
   }
 }

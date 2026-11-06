@@ -13,6 +13,7 @@ test("the brief numbers the voiceover words and shows where the real lines play"
     title: "Candy",
     approach: "claim-interleaved",
     framing: "full",
+    shotSeconds: 2.2,
     words,
     narrationEnds: [1, 3],
     inserts: [{ start: 10, end: 12, quote: "Ow.", afterWord: 1, afterWordText: "guy." }],

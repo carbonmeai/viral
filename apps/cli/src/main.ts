@@ -30,6 +30,7 @@ const program = Effect.gen(function*() {
     case "requests":
     case "approve":
     case "reject":
+    case "edit":
       return yield* runCommand()
     default:
       return yield* Console.log(USAGE)

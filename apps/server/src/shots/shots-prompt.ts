@@ -12,19 +12,16 @@ of the voiceover, following the narrated-shots skill below.
 3. Anchor every shot to the voiceover word it starts on. The real lines are already placed: the narration pauses
    after the word shown, plays the clip, and resumes on the next word, where a new shot must start.
 4. Add one or two markers (a circle or arrow on the hero object, or a short label) when they help.
+5. Pick 5–10 key words of the narration for the captions to colour: the tastes, the hero object, the twist.
 
 Never use footage inside the excluded ranges. Call \`propose_shots\` once with the whole plan.`
-
-// Average shot length the approach skills ask for.
-export const SHOT_SECONDS: Partial<Record<ApproachName, number>> = {
-  "question-recap": 1.3,
-  "claim-interleaved": 2.2
-}
 
 export interface ShotsBrief {
   readonly title: string | null
   readonly approach: ApproachName
   readonly framing: "band" | "full"
+  // the style's average shot length
+  readonly shotSeconds: number
   readonly words: ReadonlyArray<TranscriptWord>
   // the last voiceover word of each narration beat
   readonly narrationEnds: ReadonlyArray<number>
@@ -60,11 +57,10 @@ export const buildShotsBrief = (brief: ShotsBrief) => {
   const story = brief.story === null
     ? ""
     : `Story beats (source seconds):\n${brief.story.beats.map((b) => `- ${b.beat} ${fmt(b.start)}–${fmt(b.end)}s: ${b.summary}`).join("\n")}`
-  const target = SHOT_SECONDS[brief.approach]
   return [
     `Video: ${brief.title ?? "untitled"} (${fmt(brief.sourceSeconds)}s long). Approach: ${brief.approach}. Framing: ${brief.framing}` +
     (brief.framing === "full" ? " (the 16:9 footage is cropped to fill 9:16; set cropX when the subject is off-centre, fit for graphics)." : "."),
-    target === undefined ? "" : `Aim for shots of about ${target}s on average; none longer than 3s.`,
+    `Aim for shots of about ${brief.shotSeconds}s on average; none longer than 3s.`,
     `Voiceover words (index:word@seconds):\n${lines.join("\n")}`,
     story,
     brief.excluded.length === 0 ? "" : `Excluded ranges (never show): ${brief.excluded.map((r) => `${fmt(r.start)}–${fmt(r.end)}s`).join(", ")}`,

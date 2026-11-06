@@ -24,6 +24,9 @@ interface Published {
 
 const APPROVED = new Set(["succeeded", "reused"])
 
+// A rejection a stage sends back to an earlier one.
+type SentBack = { readonly stage: StageName; readonly note: string }
+
 // Runs stages in order for a source or a short. Each stage's approved artifact is reused; a gated stage
 // waits for your answer (approve, reject with a note to re-run, or edit). Every run is a fiber, so
 // cancelling it stops the running stage's agent session or child processes. Stage-level events are stored
@@ -63,21 +66,40 @@ export class RunManager extends Context.Service<RunManager, {
       const awaitAnswer = (deferred: Deferred.Deferred<GateResponse>, requestId: RequestId) =>
         Deferred.await(deferred).pipe(Effect.ensuring(Effect.sync(() => void answers.delete(requestId))))
 
-      const runStage = Effect.fn("RunManager.runStage")(
-        function*(run: Run, stage: StageDefinition, forced: boolean, current: Ref.Ref<StageRun | null>) {
+      // Runs one stage to approval. Returns the stage to go back to when a rejection is sent elsewhere.
+      const runStage: (
+        run: Run,
+        stage: StageDefinition,
+        forced: boolean,
+        current: Ref.Ref<StageRun | null>,
+        sessions: Map<StageName, string>,
+        sentBack: { readonly note: string } | null
+      ) => Effect.Effect<Option.Option<SentBack>, StageFailure> = Effect.fn("RunManager.runStage")(function*(
+        run: Run,
+        stage: StageDefinition,
+        forced: boolean,
+        current: Ref.Ref<StageRun | null>,
+        // agent sessions of this run's stages, so a stage sent back continues its conversation
+        sessions: Map<StageName, string>,
+        // set when a later stage sent its rejection back here
+        sentBack: { readonly note: string } | null
+      ) {
+          // a stage can run more than once in a run (sent back), so attempts keep counting
+          const earlier = (yield* store.listStageRuns(run.id)).filter((s) => s.stage === stage.name).length
           const latest = yield* store.latestArtifact(run.owner, stage.artifact)
           const approved = Option.isSome(latest) &&
             (latest.value.stageRunStatus === null || APPROVED.has(latest.value.stageRunStatus))
           if (approved && !forced) {
-            const reused = yield* store.createStageRun(run.id, stage.name, 1, "reused")
-            return yield* publish(run.id, { _tag: "StageFinished", stageRun: reused })
+            const reused = yield* store.createStageRun(run.id, stage.name, earlier + 1, "reused")
+            yield* publish(run.id, { _tag: "StageFinished", stageRun: reused })
+            return Option.none<SentBack>()
           }
           // An artifact made but never approved (its run was interrupted at the gate): ask again, don't redo it.
           let produce = forced || stage.gate === null || Option.isNone(latest)
-          let note: string | null = null
-          let session: string | null = null
+          let note: string | null = sentBack?.note ?? null
+          let session: string | null = sentBack === null ? null : sessions.get(stage.name) ?? null
 
-          for (let attempt = 1;; attempt++) {
+          for (let attempt = earlier + 1;; attempt++) {
             const stageRun = yield* store.createStageRun(run.id, stage.name, attempt, "running")
             yield* Ref.set(current, stageRun)
             yield* publish(run.id, { _tag: "StageStarted", stageRun })
@@ -89,7 +111,10 @@ export class RunManager extends Context.Service<RunManager, {
               note,
               resumeSession: session,
               recordSession: (id) =>
-                Effect.sync(() => void (session = id)).pipe(Effect.andThen(store.recordSession(stageRun.id, id))),
+                Effect.sync(() => {
+                  session = id
+                  sessions.set(stage.name, id)
+                }).pipe(Effect.andThen(store.recordSession(stageRun.id, id))),
               progress: (pct, message) =>
                 PubSub.publish(updates, {
                   runId: run.id,
@@ -103,7 +128,8 @@ export class RunManager extends Context.Service<RunManager, {
 
             if (stage.gate === null) {
               const done = yield* store.updateStageRun(stageRun.id, "succeeded", null)
-              return yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
+              yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
+              return Option.none()
             }
 
             const artifact = yield* artifacts.latest(run.owner, stage.artifact)
@@ -123,7 +149,8 @@ export class RunManager extends Context.Service<RunManager, {
             switch (response._tag) {
               case "Approve": {
                 const done = yield* store.updateStageRun(stageRun.id, "succeeded", null)
-                return yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
+                yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
+                return Option.none()
               }
               case "Edit": {
                 if (stage.applyEdit === undefined) {
@@ -131,18 +158,20 @@ export class RunManager extends Context.Service<RunManager, {
                 }
                 yield* stage.applyEdit(ctx, response.artifact)
                 const done = yield* store.updateStageRun(stageRun.id, "succeeded", null)
-                return yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
+                yield* publish(run.id, { _tag: "StageFinished", stageRun: done })
+                return Option.none()
               }
               case "Reject": {
-                const rejected = yield* store.updateStageRun(stageRun.id, "failed", `rejected: ${response.note}`)
+                const target = stage.rejectTo === undefined ? "" : ` (back to ${stage.rejectTo})`
+                const rejected = yield* store.updateStageRun(stageRun.id, "failed", `rejected${target}: ${response.note}`)
                 yield* publish(run.id, { _tag: "StageFinished", stageRun: rejected })
+                if (stage.rejectTo !== undefined) return Option.some({ stage: stage.rejectTo, note: response.note })
                 note = response.note
                 produce = true
               }
             }
           }
-        }
-      )
+      })
 
       const execute = Effect.fn("RunManager.execute")(function*(run: Run) {
         const current = yield* Ref.make<StageRun | null>(null)
@@ -162,9 +191,24 @@ export class RunManager extends Context.Service<RunManager, {
 
         yield* Effect.gen(function*() {
           const stages = yield* registry.stagesFor(run.owner)
-          const fromIndex = run.fromStage === null ? stages.length : Option.getOrElse(findStage(stages, run.fromStage), () => 0)
-          for (const [i, stage] of stages.entries()) {
-            yield* runStage(run, stage, i >= fromIndex, current)
+          let forcedFrom = run.fromStage === null ? stages.length : Option.getOrElse(findStage(stages, run.fromStage), () => 0)
+          const sessions = new Map<StageName, string>()
+          const sentBack: { current: { readonly index: number; readonly note: string } | null } = { current: null }
+          for (let i = 0; i < stages.length;) {
+            const stage = stages[i]!
+            const back: Option.Option<SentBack> = yield* runStage(run, stage, i >= forcedFrom, current, sessions, sentBack.current?.index === i ? sentBack.current : null)
+            if (Option.isNone(back)) {
+              i++
+              continue
+            }
+            // a rejection sent back: that stage runs again with the note, and everything after it follows
+            const target = findStage(stages, back.value.stage)
+            if (Option.isNone(target) || target.value >= i) {
+              return yield* new StageFailure({ stage: stage.name, code: "bad-reject-target", message: `can't go back to ${back.value.stage}` })
+            }
+            i = target.value
+            forcedFrom = i
+            sentBack.current = { index: i, note: back.value.note }
           }
           yield* finish("completed", null)
         }).pipe(

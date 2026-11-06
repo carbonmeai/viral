@@ -151,6 +151,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         const shotPlan: ShotPlan = {
           shots: plan.shots.map((shot, k) => ({ ...shot, frame: drawn ? frameFile("shot", k) : null })),
           markers: plan.markers,
+          highlights: plan.highlights,
           inserts: plan.inserts.map((clip, k) => ({ ...clip, frame: drawn ? frameFile("insert", k) : null })),
           outro: plan.outro.map((clip, k) => ({ ...clip, frame: drawn ? frameFile("outro", k) : null })),
           storyboard
@@ -202,6 +203,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           title: c.source.title,
           approach: c.project.approach,
           framing: preset.config.framing,
+          shotSeconds: preset.config.pace.shotSeconds,
           words: c.words,
           narrationEnds: narrationEnds(c.script, c.words),
           inserts: c.reals.inserts,

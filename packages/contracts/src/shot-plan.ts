@@ -30,7 +30,9 @@ export type Marker = typeof Marker.Type
 
 export const ShotProposal = Schema.Struct({
   shots: Schema.Array(PlannedShot),
-  markers: Schema.Array(Marker)
+  markers: Schema.Array(Marker),
+  // 5–10 key words of the narration to colour in the captions ("sour", "spicy")
+  highlights: Schema.optionalKey(Schema.Array(Schema.String))
 })
 export type ShotProposal = typeof ShotProposal.Type
 
@@ -53,6 +55,7 @@ const Frame = { frame: Schema.NullOr(Schema.String) }
 export const ShotPlan = Schema.Struct({
   shots: Schema.Array(Schema.Struct({ ...PlannedShot.fields, wordText: Schema.String, ...Frame })),
   markers: Schema.Array(Marker),
+  highlights: Schema.Array(Schema.String),
   inserts: Schema.Array(Schema.Struct({ ...ShotInsert.fields, ...Frame })),
   outro: Schema.Array(Schema.Struct({ ...RealClip.fields, ...Frame })),
   // the storyboard: the frames above stitched into one image in playing order

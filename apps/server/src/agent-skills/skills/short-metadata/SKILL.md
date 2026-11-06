@@ -1,0 +1,25 @@
+---
+name: short-metadata
+description: How to title and describe a short for posting. A curiosity title under 40 characters with alternates, a two-sentence third-person description that doesn't spoil the ending, and hashtags. Use when writing a short's title, description and hashtags.
+---
+
+# Titles and descriptions for shorts
+
+## Title
+
+- **Under 40 characters**, so it's never cut off on a phone.
+- **A concrete, extreme claim** with a number when the video has one: "He Put 7 Tastes Into 1 Candy",
+  "He Compressed 100 RedBulls into 1 Drink". The pattern `He <verb> <number> <things> Into 1 <thing>` is proven.
+- **Title Case**, no clickbait the short doesn't deliver, no emojis.
+- **Two or three alternates** that try a different angle (the result, the setback, the reaction), for A/B tests.
+
+## Description
+
+- **Two sentences, third person** ("This guy…", "This scientist…"). Restate the goal and the most extreme real
+  numbers from the video. Every fact comes from the script or the video.
+- **Don't spoil the ending.** End on the open question ("so how does the final one taste?").
+
+## Hashtags
+
+- **3 to 6**, starting with `#shorts`, then the field (`#science`), the topic (`#candy`), the format
+  (`#experiment`), and `#viral`. Lowercase, no spaces.
