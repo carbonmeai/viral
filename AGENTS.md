@@ -34,6 +34,11 @@ apps/server/src/
                        deterministic, so a short re-renders in another style without agent work
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
                        srt and <slug>.md into ~/.viral/renders/
+  thumbnail/           the thumbnail stage, last in both pipelines (gated): a vision agent (thumbnails skill) picks
+                       the hero moment and crop, a reaction face and 2–4 words, with `contact_sheet` and
+                       `preview_thumbnail`; crops are frame fractions turned into pixels in the skill's fixed layout;
+                       render-thumbnail.py (the skill's thumbnail.py, JSON-line); once approved (the stage's
+                       `approved` hook) the jpg is published as ~/.viral/renders/<slug>.jpg
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/
