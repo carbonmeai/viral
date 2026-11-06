@@ -38,8 +38,10 @@ apps/server/src/
   tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/
                        Viral/tools; VIRAL_TOOLS_DIR overrides), then the PATH. Not bundled in the app: missing ones
                        are downloaded on first run from pinned URLs, checksum-verified (ffmpeg: hash recorded on the
-                       first download), and the folder is put first on the server's PATH. Viral's yt-dlp updates
-                       itself every few days. ListTools / InstallTools
+                       first download), and the folder is put first on the server's PATH. yt-dlp is installed
+                       through uv (`uv tool install`, uv's tool/bin/Python folders inside Viral's) because the
+                       standalone macOS build takes 25–40 s to start; it upgrades via uv every few days.
+                       ListTools / InstallTools
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
   presets/             style profiles; one default, seeded on first start
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/

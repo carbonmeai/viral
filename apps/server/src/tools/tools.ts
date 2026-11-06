@@ -3,7 +3,7 @@ import type { Tool, ToolName, ToolProgress, ToolSource } from "@viral/contracts"
 import { Cause, Clock, Config, Context, Duration, Effect, FileSystem, Layer, Option, Path, Ref, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { TOOL_NAMES, TOOL_SPECS, type ToolSpec, VERSION_ARGS } from "./tool-specs.ts"
+import { type DownloadSpec, TOOL_NAMES, TOOL_SPECS, type ToolSpec, type UvToolSpec, VERSION_ARGS } from "./tool-specs.ts"
 
 export interface ToolsOptions {
   // Viral's own tools folder, searched first and where downloads go
@@ -41,8 +41,9 @@ export const prependToolsPath = Effect.gen(function*() {
 })
 
 const UPDATE_EVERY = Duration.days(3)
-// yt-dlp's standalone macOS build unpacks itself on every start and can take half a minute
+// a version check that hangs is reported as unknown rather than holding up the list
 const VERSION_TIMEOUT = Duration.seconds(60)
+const UV_TIMEOUT = Duration.minutes(10)
 // report download progress at most every this many bytes
 const PROGRESS_STEP = 512 * 1024
 
@@ -61,7 +62,8 @@ const hex = (digest: ArrayBuffer) => Array.from(new Uint8Array(digest), (b) => b
 export class Tools extends Context.Service<Tools, {
   readonly list: Effect.Effect<ReadonlyArray<Tool>>
   readonly install: Stream.Stream<ToolProgress>
-  // updates Viral's own yt-dlp (`yt-dlp -U`) when the last check is older than `updateEvery`; never a PATH copy
+  // updates Viral's own yt-dlp (`uv tool upgrade`) when the last check is older than `updateEvery`; never a PATH
+  // copy. An older standalone download in Viral's folder is replaced by uv's install.
   readonly updateYtDlp: Effect.Effect<"updated" | "skipped">
 }>()("@viral/server/tools/tools") {
   static readonly make = Effect.fn("Tools.make")(function*(options: ToolsOptions) {
@@ -131,7 +133,7 @@ export class Tools extends Context.Service<Tools, {
 
     // Checks the bytes against the pin (or the hash recorded on the first download), then writes the binary
     // through a temporary file and renames it into place, so the folder never holds a half-written tool.
-    const place = Effect.fn("Tools.place")(function*(spec: ToolSpec, bytes: Uint8Array<ArrayBuffer>) {
+    const place = Effect.fn("Tools.place")(function*(spec: DownloadSpec, bytes: Uint8Array<ArrayBuffer>) {
       const fail = (message: string) => new ToolInstallError({ message })
       const sha256 = hex(yield* Effect.promise(() => crypto.subtle.digest("SHA-256", bytes)))
       const lock = yield* readLock
@@ -173,28 +175,33 @@ export class Tools extends Context.Service<Tools, {
       }
     })
 
-    const installOne = (name: ToolName): Stream.Stream<ToolProgress> => {
-      const spec = options.specs.find((s) => s.name === name)
-      if (spec === undefined) {
-        const message = `Viral has no download of ${name} for this computer; install it yourself (e.g. with Homebrew)`
-        return Stream.fromEffect(Ref.update(failures, (m) => new Map(m).set(name, message)).pipe(
-          Effect.as<ToolProgress>({ _tag: "Failed", name, message })
-        ))
+    // uv's tool, bin and Python folders all live in Viral's tools folder, so a uv tool never touches the system
+    const uvEnv = {
+      UV_TOOL_DIR: path.join(options.dir, "uv-tools"),
+      UV_TOOL_BIN_DIR: options.dir,
+      UV_PYTHON_INSTALL_DIR: path.join(options.dir, "python")
+    }
+    const uv = Effect.fn("Tools.uv")(function*(args: ReadonlyArray<string>) {
+      const found = yield* locate("uv")
+      if (Option.isNone(found)) return yield* new ToolInstallError({ message: "uv isn't installed yet, and it installs this tool" })
+      const exit = yield* spawner.exitCode(ChildProcess.make(found.value.file, [...args], { env: uvEnv, extendEnv: true })).pipe(
+        Effect.timeout(UV_TIMEOUT),
+        Effect.mapError((e) => new ToolInstallError({ message: e.message }))
+      )
+      if (exit !== ChildProcessSpawner.ExitCode(0)) {
+        return yield* new ToolInstallError({ message: `uv ${args.join(" ")} exited with code ${exit}` })
       }
-      return Stream.unwrap(Effect.gen(function*() {
-        yield* Ref.update(installing, (s) => new Set(s).add(name))
-        yield* Ref.update(failures, (m) => {
-          const next = new Map(m)
-          next.delete(name)
-          return next
-        })
+    })
+
+    const download = (spec: DownloadSpec): Stream.Stream<ToolProgress, ToolInstallError> =>
+      Stream.unwrap(Effect.gen(function*() {
         const response = yield* http.get(spec.url).pipe(Effect.mapError((e) => new ToolInstallError({ message: e.message })))
         const length = Number(response.headers["content-length"])
         const total = Number.isFinite(length) && length > 0 ? length : null
         const chunks: Array<Uint8Array> = []
         let bytes = 0
         let reported = 0
-        const download = response.stream.pipe(
+        const progress = response.stream.pipe(
           Stream.mapError((e) => new ToolInstallError({ message: e.message })),
           Stream.map((chunk) => {
             chunks.push(chunk)
@@ -204,7 +211,7 @@ export class Tools extends Context.Service<Tools, {
           Stream.filter((n) => n - reported >= PROGRESS_STEP || n === total),
           Stream.map((n): ToolProgress => {
             reported = n
-            return { _tag: "Downloading", name, bytes: n, total }
+            return { _tag: "Downloading", name: spec.name, bytes: n, total }
           })
         )
         const finish = Effect.gen(function*() {
@@ -215,24 +222,53 @@ export class Tools extends Context.Service<Tools, {
             offset += chunk.length
           }
           yield* place(spec, all)
-          yield* Ref.update(installing, (s) => {
-            const next = new Set(s)
-            next.delete(name)
-            return next
-          })
-          return { _tag: "Installed", tool: yield* describe(name) } satisfies ToolProgress
         })
-        return Stream.concat(download, Stream.fromEffect(finish))
-      })).pipe(
+        return Stream.concat(progress, Stream.fromEffect(finish).pipe(Stream.drain))
+      }))
+
+    // uv fetches the package and a Python for it; there's no byte count to report, only that it started
+    const uvTool = (spec: UvToolSpec): Stream.Stream<ToolProgress, ToolInstallError> =>
+      Stream.concat(
+        Stream.succeed<ToolProgress>({ _tag: "Downloading", name: spec.name, bytes: 0, total: null }),
+        Stream.fromEffect(uv(["tool", "install", "--force", spec.package])).pipe(Stream.drain)
+      )
+
+    const clear = <A>(ref: Ref.Ref<A>, update: (a: A) => A) => Ref.update(ref, update)
+    const notInstalling = (name: ToolName) => clear(installing, (s) => {
+      const next = new Set(s)
+      next.delete(name)
+      return next
+    })
+
+    // One tool's install, with the bookkeeping every kind shares: marked as installing, its last failure
+    // cleared, and a failure recorded and reported instead of ending the stream.
+    const installOne = (name: ToolName): Stream.Stream<ToolProgress> => {
+      const spec = options.specs.find((s) => s.name === name)
+      if (spec === undefined) {
+        const message = `Viral has no download of ${name} for this computer; install it yourself (e.g. with Homebrew)`
+        return Stream.fromEffect(Ref.update(failures, (m) => new Map(m).set(name, message)).pipe(
+          Effect.as<ToolProgress>({ _tag: "Failed", name, message })
+        ))
+      }
+      const start = Effect.gen(function*() {
+        yield* Ref.update(installing, (s) => new Set(s).add(name))
+        yield* clear(failures, (m) => {
+          const next = new Map(m)
+          next.delete(name)
+          return next
+        })
+      })
+      const done = Effect.gen(function*() {
+        yield* notInstalling(name)
+        return { _tag: "Installed", tool: yield* describe(name) } satisfies ToolProgress
+      })
+      const work = spec.via === "download" ? download(spec) : uvTool(spec)
+      return Stream.unwrap(start.pipe(Effect.as(Stream.concat(work, Stream.fromEffect(done))))).pipe(
         Stream.catchCause((cause) => {
           const error = Cause.squash(cause)
           const message = isInstallError(error) ? error.message : String(error)
           return Stream.fromEffect(Effect.gen(function*() {
-            yield* Ref.update(installing, (s) => {
-              const next = new Set(s)
-              next.delete(name)
-              return next
-            })
+            yield* notInstalling(name)
             yield* Ref.update(failures, (m) => new Map(m).set(name, message))
             yield* Effect.logWarning("couldn't install a tool", { tool: name, message })
             return { _tag: "Failed", name, message } satisfies ToolProgress
@@ -259,13 +295,21 @@ export class Tools extends Context.Service<Tools, {
         Effect.flatMap((json) => fs.writeFileString(stateFile, json)),
         Effect.ignore
       )
-      const exit = yield* spawner.exitCode(ChildProcess.make(own, ["-U"])).pipe(
-        Effect.timeout(Duration.minutes(2)),
-        Effect.option
+      // uv's install upgrades in place; an older standalone download is replaced by uv's install; with no uv,
+      // the standalone build updates itself
+      const managed = yield* fs.exists(path.join(uvEnv.UV_TOOL_DIR, "yt-dlp")).pipe(Effect.orElseSucceed(() => false))
+      const hasUv = Option.isSome(yield* locate("uv"))
+      const updated = managed
+        ? uv(["tool", "upgrade", "yt-dlp"])
+        : hasUv
+        ? uv(["tool", "install", "--force", "yt-dlp"])
+        : spawner.exitCode(ChildProcess.make(own, ["-U"])).pipe(
+          Effect.timeout(Duration.minutes(2)),
+          Effect.flatMap((exit) => exit === ChildProcessSpawner.ExitCode(0) ? Effect.void : Effect.fail(new ToolInstallError({ message: `exit ${exit}` })))
+        )
+      yield* updated.pipe(
+        Effect.catch((error) => Effect.logWarning("yt-dlp couldn't update; keeping the current version", { error: String(error) }))
       )
-      if (Option.isNone(exit) || exit.value !== ChildProcessSpawner.ExitCode(0)) {
-        yield* Effect.logWarning("yt-dlp couldn't update itself; keeping the current version")
-      }
       return "updated" as const
     }).pipe(Effect.withSpan("Tools.updateYtDlp"))
 

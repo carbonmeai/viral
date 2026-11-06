@@ -26,15 +26,29 @@ const script = (name: string, version: string) =>
   Buffer.from(`#!/bin/sh\nif [ "$1" = "-U" ]; then echo updated >> "$(dirname "$0")/${name}.updated"; exit 0; fi\necho "${name} version ${version}"\n`)
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
 
+// A fake uv: `uv tool install|upgrade` records its arguments and uv's folders in uv.log next to it; an install
+// puts a runnable yt-dlp into UV_TOOL_BIN_DIR and marks it as uv-managed under UV_TOOL_DIR.
+const fakeUv = Buffer.from(`#!/bin/sh
+if [ "$1" = "tool" ]; then
+  echo "$2 $3 $4 tools=$UV_TOOL_DIR bin=$UV_TOOL_BIN_DIR python=$UV_PYTHON_INSTALL_DIR" >> "$(dirname "$0")/uv.log"
+  if [ "$2" = "install" ]; then
+    mkdir -p "$UV_TOOL_DIR/yt-dlp"
+    printf '#!/bin/sh\necho "yt-dlp version 2026.11.01"\n' > "$UV_TOOL_BIN_DIR/yt-dlp"
+    chmod +x "$UV_TOOL_BIN_DIR/yt-dlp"
+  fi
+  exit 0
+fi
+echo "uv version 0.13.7"
+`)
+
 before(async () => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "viral-tools-")))
   files.set("/ffmpeg", script("ffmpeg", "6.1.1"))
   files.set("/ffprobe", script("ffprobe", "6.1.1"))
-  files.set("/yt-dlp", script("yt-dlp", "2026.10.26"))
   // uv ships as a .tar.gz with the binary inside a folder
   const staging = join(root, "uv-staging", "uv-pkg")
   mkdirSync(staging, { recursive: true })
-  writeFileSync(join(staging, "uv"), script("uv", "0.13.7"), { mode: 0o755 })
+  writeFileSync(join(staging, "uv"), fakeUv, { mode: 0o755 })
   execFileSync("tar", ["-czf", join(root, "uv.tar.gz"), "-C", join(root, "uv-staging"), "uv-pkg/uv"])
   files.set("/uv.tar.gz", readFileSync(join(root, "uv.tar.gz")))
 
@@ -57,10 +71,11 @@ after(() => {
 
 const specs = (): Array<ToolSpec> => [
   // no published checksum: trusted on first download and recorded
-  { name: "ffmpeg", url: `${base}/ffmpeg`, sha256: null },
-  { name: "ffprobe", url: `${base}/ffprobe`, sha256: sha(files.get("/ffprobe")!) },
-  { name: "uv", url: `${base}/uv.tar.gz`, sha256: sha(files.get("/uv.tar.gz")!), archive: { member: "uv-pkg/uv" } },
-  { name: "yt-dlp", url: `${base}/yt-dlp`, sha256: sha(files.get("/yt-dlp")!) }
+  { name: "ffmpeg", via: "download", url: `${base}/ffmpeg`, sha256: null },
+  { name: "ffprobe", via: "download", url: `${base}/ffprobe`, sha256: sha(files.get("/ffprobe")!) },
+  { name: "uv", via: "download", url: `${base}/uv.tar.gz`, sha256: sha(files.get("/uv.tar.gz")!), archive: { member: "uv-pkg/uv" } },
+  // installed by the uv downloaded just before it
+  { name: "yt-dlp", via: "uv-tool", package: "yt-dlp" }
 ]
 
 const fresh = (name: string) => {
@@ -92,6 +107,11 @@ test("a fresh install downloads every missing tool, verifies it and makes it run
   const lock = JSON.parse(readFileSync(join(dir, "tools.lock.json"), "utf8"))
   assert.equal(lock.ffmpeg.sha256, sha(files.get("/ffmpeg")!))
   assert.deepEqual(readdirSync(dir).filter((f) => f.startsWith(".")), [], "no temporary files are left")
+  // yt-dlp came from uv, with uv's folders inside Viral's
+  assert.equal(
+    readFileSync(join(dir, "uv.log"), "utf8").trim(),
+    `install --force yt-dlp tools=${join(dir, "uv-tools")} bin=${dir} python=${join(dir, "python")}`
+  )
 
   // a second install has nothing to do
   assert.deepEqual(await run(options, installAll), [])
@@ -99,15 +119,15 @@ test("a fresh install downloads every missing tool, verifies it and makes it run
 
 test("a download whose checksum doesn't match is refused and leaves the folder clean", async () => {
   const dir = fresh("mismatch")
-  const bad = specs().map((s) => s.name === "yt-dlp" ? { ...s, sha256: "0".repeat(64) } : s).filter((s) => s.name === "yt-dlp")
+  const bad = specs().flatMap((s) => s.name === "ffprobe" && s.via === "download" ? [{ ...s, sha256: "0".repeat(64) }] : [])
   const options = { dir, path: fresh("mismatch-path"), specs: bad, updateEvery: Duration.days(3) }
   const [events, listed] = await run(options, (tools) => Effect.all([installAll(tools), tools.list]))
 
-  const failed = events.find((e) => e._tag === "Failed" && e.name === "yt-dlp")
+  const failed = events.find((e) => e._tag === "Failed" && e.name === "ffprobe")
   assert.ok(failed?._tag === "Failed" && /doesn't match the pinned/.test(failed.message))
-  assert.equal(existsSync(join(dir, "yt-dlp")), false)
+  assert.equal(existsSync(join(dir, "ffprobe")), false)
   assert.deepEqual(readdirSync(dir).filter((f) => f.startsWith(".")), [], "no temporary files are left")
-  assert.equal(listed.find((t) => t.name === "yt-dlp")?.status, "failed")
+  assert.equal(listed.find((t) => t.name === "ffprobe")?.status, "failed")
 })
 
 test("tools already on the PATH are used as they are and never downloaded", async () => {
@@ -167,4 +187,24 @@ test("Viral's yt-dlp updates itself at most once per interval; a PATH copy never
   const skipped = await run({ dir: fresh("update-empty"), path: systemOnly, specs: [], updateEvery: Duration.zero }, (tools) => tools.updateYtDlp)
   assert.equal(skipped, "skipped")
   assert.equal(existsSync(join(systemOnly, "yt-dlp.updated")), false)
+})
+
+test("yt-dlp needs uv first, and Viral's uv-managed copy upgrades through uv", async () => {
+  const noUv = fresh("uvtool-none")
+  const [events] = await run({ dir: noUv, path: "", specs: specs().filter((s) => s.name === "yt-dlp"), updateEvery: Duration.days(3) }, (tools) =>
+    Effect.all([installAll(tools)]))
+  const failed = events.find((e) => e._tag === "Failed" && e.name === "yt-dlp")
+  assert.ok(failed?._tag === "Failed" && /uv isn't installed yet/.test(failed.message))
+
+  const dir = fresh("uvtool")
+  writeFileSync(join(dir, "uv"), fakeUv, { mode: 0o755 })
+  const options = { dir, path: "", specs: specs().filter((s) => s.name === "yt-dlp"), updateEvery: Duration.zero }
+  const [installed, upgraded] = await run(options, (tools) => Effect.all([installAll(tools), tools.updateYtDlp]))
+  const tool = installed.find((e) => e._tag === "Installed")
+  assert.ok(tool?._tag === "Installed" && tool.tool.source === "viral" && tool.tool.version === "yt-dlp version 2026.11.01")
+  assert.equal(upgraded, "updated")
+  assert.deepEqual(readFileSync(join(dir, "uv.log"), "utf8").trim().split("\n").map((l) => l.split(" tools=")[0]?.trim()), [
+    "install --force yt-dlp",
+    "upgrade yt-dlp"
+  ])
 })
