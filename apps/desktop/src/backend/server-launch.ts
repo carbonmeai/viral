@@ -23,7 +23,8 @@ export interface Launch {
 
 // Packaged: Electron-as-Node runs the bundled server. Tools (ffmpeg, uv, yt-dlp) aren't bundled: the server
 // puts its own tools folder first on the PATH and downloads what's missing.
-// Development: node runs the server's TypeScript straight from the repo, with the repo's .env.
+// Development: node runs the server's TypeScript straight from the repo, with the repo's .env, and restarts it
+// when its code changes, so the web app (which reloads itself) never talks to an out-of-date server.
 export const serverLaunch = (input: LaunchInput): Launch =>
   input.packaged
     ? {
@@ -38,7 +39,7 @@ export const serverLaunch = (input: LaunchInput): Launch =>
     }
     : {
       command: "node",
-      args: ["--env-file-if-exists=.env", "apps/server/src/main.ts"],
+      args: ["--env-file-if-exists=.env", "--watch", "apps/server/src/main.ts"],
       env: { VIRAL_PORT: String(input.port), VIRAL_PARENT_PID: String(input.parentPid), PATH: input.path }
     }
 

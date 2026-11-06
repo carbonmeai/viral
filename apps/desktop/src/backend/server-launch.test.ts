@@ -18,7 +18,7 @@ test("packaged builds run the bundled server on Electron's Node with the app's P
 test("development runs the server's TypeScript from the repo", () => {
   const launch = serverLaunch({ ...base, packaged: false })
   assert.equal(launch.command, "node")
-  assert.deepEqual(launch.args, ["--env-file-if-exists=.env", "apps/server/src/main.ts"])
+  assert.deepEqual(launch.args, ["--env-file-if-exists=.env", "--watch", "apps/server/src/main.ts"])
   assert.equal(launch.env["ELECTRON_RUN_AS_NODE"], undefined)
 })
 
