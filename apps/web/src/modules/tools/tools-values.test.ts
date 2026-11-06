@@ -1,7 +1,7 @@
 import type { Tool } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { downloadFraction, foldInstall, formatBytes, initialInstall, installFinished, shortVersion, toolsToInstall } from "./tools-values.ts"
+import { downloadFraction, foldInstall, formatBytes, initialInstall, installFinished, offersFallbackDownload, shortVersion, toolsToInstall } from "./tools-values.ts"
 
 const tool = (name: Tool["name"], status: Tool["status"]): Tool => ({
   name,
@@ -57,4 +57,12 @@ test("a background download's progress is a fraction once its size is known", ()
   assert.equal(downloadFraction({ ...models, progress: { bytes: 50, total: 200 } }), 0.25)
   assert.equal(downloadFraction({ ...models, progress: { bytes: 50, total: null } }), null)
   assert.equal(downloadFraction(models), null)
+})
+
+test("with Apple's cut-out, the fallback models are offered until they're downloaded", () => {
+  const apple = (version: string) => ({ ...tool("background-removal", "ready"), version })
+  assert.equal(offersFallbackDownload(apple("Apple's built-in cut-out · rembg fallback downloads if needed")), true)
+  assert.equal(offersFallbackDownload(apple("Apple's built-in cut-out · rembg fallback downloaded")), false)
+  assert.equal(offersFallbackDownload(apple("2 models · 355 MB")), false, "rembg itself, not a fallback")
+  assert.equal(offersFallbackDownload({ ...tool("ffmpeg", "ready"), version: "Apple's built-in cut-out" }), false)
 })

@@ -273,3 +273,25 @@ test("a model whose checksum doesn't match is refused, and the wait gives up wit
   assert.equal(models?.status, "failed")
   assert.match(models?.error ?? "", /doesn't match the pinned/)
 })
+
+test("with Apple's cut-out the entry is ready without the models, and the fallback still downloads on request", async () => {
+  const dir = fresh("models-apple")
+  const modelsDir = join(dir, "models")
+  requested.length = 0
+  const options = { dir, path: "", specs: [], updateEvery: Duration.days(3), models: modelSpecs(), modelsDir, appleCutout: true }
+  const [before, flag, fetched, after] = await run(options, (tools) =>
+    Effect.gen(function*() {
+      const before = (yield* tools.list).find((t) => t.name === "background-removal")
+      // the manual "Download fallback models" in Settings › Tools, or a thumbnail whose Apple cut-out failed
+      const fetched = yield* tools.ensureBackgroundRemoval(() => Effect.void)
+      const after = (yield* tools.list).find((t) => t.name === "background-removal")
+      return [before, tools.appleCutout, fetched, after] as const
+    }))
+  assert.equal(flag, true, "the server skips the background prefetch on this Mac")
+  assert.equal(before?.status, "ready")
+  assert.equal(before?.source, "system")
+  assert.equal(before?.version, "Apple's built-in cut-out · rembg fallback downloads if needed")
+  assert.equal(requested.length, 2, "nothing was fetched until it was asked for, then both models")
+  assert.equal(fetched, "ready")
+  assert.equal(after?.version, "Apple's built-in cut-out · rembg fallback downloaded")
+})

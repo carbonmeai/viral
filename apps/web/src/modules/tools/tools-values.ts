@@ -19,7 +19,7 @@ export const TOOL_PURPOSE: Record<ToolName, string> = {
   ffprobe: "Reads a video's length and streams",
   uv: "Runs the transcription, contact-sheet and render scripts",
   "yt-dlp": "Downloads videos from a link",
-  "background-removal": "Lifts the hero and the face out of their frames for bold thumbnails. Fetched in the background"
+  "background-removal": "Lifts the hero and the face out of their frames for bold thumbnails. On a Mac, macOS's own cut-out does it; rembg's models are a fallback"
 }
 
 // The tools first run still has to set up: required ones that are missing, or failed last time. The
@@ -68,3 +68,9 @@ export const shortVersion = (version: string | null): string | null =>
   version === null ? null : (version.match(/\d+(?:\.\d+)+/)?.[0] ?? version)
 
 export const sourceLabel = (tool: Tool) => tool.source === "viral" ? "Viral" : tool.source === "system" ? "System" : "—"
+
+// Apple's built-in cut-out is doing the work, and rembg's fallback models aren't downloaded yet: Settings ›
+// Tools offers them for anyone who wants the fallback ready ahead of time.
+export const offersFallbackDownload = (tool: Tool) =>
+  tool.name === "background-removal" && tool.status === "ready" && tool.version !== null &&
+  tool.version.startsWith("Apple's built-in cut-out") && !tool.version.includes("fallback downloaded")

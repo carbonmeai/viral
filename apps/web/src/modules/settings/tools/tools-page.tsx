@@ -9,7 +9,7 @@ import { SettingRow, SettingsGroup } from "@viral/ui/primitives/setting-row"
 import { Status } from "@viral/ui/primitives/status"
 import { Detail } from "../../system/detail.tsx"
 import { prefetchBackgroundRemoval, toolsAtom } from "../../tools/tools-api.ts"
-import { downloadFraction, formatBytes, shortVersion, sourceLabel, TOOL_PURPOSE } from "../../tools/tools-values.ts"
+import { downloadFraction, formatBytes, offersFallbackDownload, shortVersion, sourceLabel, TOOL_PURPOSE } from "../../tools/tools-values.ts"
 
 // How often the page looks again while something downloads in the background.
 const POLL_MS = 2000
@@ -46,6 +46,7 @@ export function ToolsPage() {
                 {tool.status === "installing" && tool.progress !== null
                   ? <DownloadProgress tool={tool} />
                   : <span className="text-xs text-fg-2">{shortVersion(tool.version) ?? tool.error ?? "Not installed"}</span>}
+                {offersFallbackDownload(tool) ? <Button onClick={startDownload}>Download fallback models</Button> : null}
                 {tool.status === "ready"
                   ? <Status tone="ok">{sourceLabel(tool)}</Status>
                   : !tool.required && (tool.status === "missing" || tool.status === "failed")

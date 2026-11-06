@@ -125,14 +125,14 @@ const ParentWatchLive = Layer.effectDiscard(Effect.gen(function*() {
   )
 }))
 
-// Viral's own yt-dlp keeps up with YouTube: a background check at start, at most every few days. The
-// background-removal models are fetched quietly once first-run setup has the required tools, so a bold
-// thumbnail never has to wait for them (VIRAL_PREFETCH_MODELS=off skips it).
+// Viral's own yt-dlp keeps up with YouTube: a background check at start, at most every few days. Where macOS's
+// own cut-out works, rembg's models are a fallback fetched only when a thumbnail needs them; elsewhere they're
+// fetched quietly once first-run setup has the required tools (VIRAL_PREFETCH_MODELS=off skips it).
 const ToolUpdatesLive = Layer.effectDiscard(Effect.gen(function*() {
   const tools = yield* Tools
   yield* tools.updateYtDlp.pipe(Effect.forkDetach)
   const prefetch = yield* Config.String("VIRAL_PREFETCH_MODELS").pipe(Config.withDefault("on"), Effect.orDie)
-  if (prefetch === "off") return
+  if (prefetch === "off" || tools.appleCutout) return
   const requiredReady = tools.list.pipe(Effect.map((list) => list.every((t) => !t.required || t.status === "ready")))
   yield* requiredReady.pipe(
     Effect.repeat({ schedule: Schedule.spaced(Duration.seconds(30)), until: (ready) => ready }),

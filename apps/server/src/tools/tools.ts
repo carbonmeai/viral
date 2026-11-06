@@ -30,7 +30,21 @@ export interface ToolsOptions {
   readonly models?: ReadonlyArray<ModelSpec>
   // cutout.py, whose Python environment is prepared once the models are in; null skips that
   readonly cutoutScript?: string | null
+  // macOS's own subject cut-out (Vision, macOS 14+) works here, so rembg's models are only a fallback,
+  // fetched when a cut-out actually needs them rather than in the background
+  readonly appleCutout?: boolean
 }
+
+// Whether macOS's own subject cut-out is available: macOS 14 or later. VIRAL_CUTOUT_APPLE=on|off overrides it
+// (render-thumbnail.py reads the same variable).
+export const appleCutoutAvailable = Effect.gen(function*() {
+  const forced = yield* Config.option(Config.String("VIRAL_CUTOUT_APPLE")).pipe(Effect.orDie)
+  if (Option.isSome(forced) && (forced.value === "on" || forced.value === "off")) return forced.value === "on"
+  if (process.platform !== "darwin") return false
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const version = yield* spawner.string(ChildProcess.make("sw_vers", ["-productVersion"])).pipe(Effect.orElseSucceed(() => ""))
+  return Number(version.trim().split(".")[0]) >= 14
+})
 
 // Where the background-removal models live: ~/Library/Caches/Viral/models on macOS, ~/.cache/viral/models
 // elsewhere (the folder render-thumbnail.py hands cutout.py); VIRAL_MODELS_DIR overrides it.
@@ -96,6 +110,8 @@ export class Tools extends Context.Service<Tools, {
   // starts fetching the background-removal models if they're missing or failed (one download at a time,
   // shared by every caller) and returns their state at once
   readonly prefetchBackgroundRemoval: Effect.Effect<Tool>
+  // whether macOS's own cut-out does the work here, making the models a fallback that isn't fetched ahead
+  readonly appleCutout: boolean
   // waits for the background-removal models, starting the download if needed and reporting it through
   // `progress`; never fails (a thumbnail falls back to a framed inset without them)
   ensureBackgroundRemoval(progress: (pct: number | null, message: string) => Effect.Effect<void>): Effect.Effect<"ready" | "unavailable">
@@ -200,6 +216,11 @@ export class Tools extends Context.Service<Tools, {
       const base = { name: "background-removal" as const, required: false, path: present ? modelsFolder : null }
       if (state.running !== null) {
         return { ...base, status: "installing", source: null, version: null, error: null, progress: { bytes: state.bytes, total: state.total } } satisfies Tool
+      }
+      // with Apple's cut-out the entry is ready as it is; the models only say whether the fallback is in
+      if (options.appleCutout === true) {
+        const fallback = present ? "rembg fallback downloaded" : "rembg fallback downloads if needed"
+        return { ...base, status: "ready", source: "system", version: `Apple's built-in cut-out · ${fallback}`, error: state.error, progress: null } satisfies Tool
       }
       if (present) {
         const size = modelsSize > 0 ? ` · ${Math.round(modelsSize / 1e6)} MB` : ""
@@ -512,7 +533,7 @@ export class Tools extends Context.Service<Tools, {
       return "updated" as const
     }).pipe(Effect.withSpan("Tools.updateYtDlp"))
 
-    return Tools.of({ list, install, prefetchBackgroundRemoval, ensureBackgroundRemoval, updateYtDlp })
+    return Tools.of({ list, install, prefetchBackgroundRemoval, appleCutout: options.appleCutout === true, ensureBackgroundRemoval, updateYtDlp })
   })
 
   static readonly layer = Layer.effect(
@@ -527,7 +548,8 @@ export class Tools extends Context.Service<Tools, {
         updateEvery: UPDATE_EVERY,
         modelsDir: yield* modelsDir,
         models: BACKGROUND_REMOVAL_MODELS,
-        cutoutScript: path.join(import.meta.dirname, "..", "thumbnail", "cutout.py")
+        cutoutScript: path.join(import.meta.dirname, "..", "thumbnail", "cutout.py"),
+        appleCutout: yield* appleCutoutAvailable
       })
     })
   ).pipe(Layer.provide([NodeServices.layer, FetchHttpClient.layer]))

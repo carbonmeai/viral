@@ -39,10 +39,13 @@ apps/server/src/
                        the layout, the hero moment and crop, the strongest reaction face, the colours and the words,
                        with `contact_sheet` and `preview_thumbnail`; crops are frame fractions turned into pixels.
                        render-thumbnail.py draws two layouts: `bold` (the default: a gradient, the hero and the face
-                       cut out with outlines by cutout.py (rembg, models cached in ~/Library/Caches/Viral/models,
-                       VIRAL_MODELS_DIR overrides), curiosity words, an arrow or emoji; a failed cut-out falls back
-                       to a framed inset, VIRAL_CUTOUT=off forces that) and `classic` (the skill's thumbnail.py,
-                       unchanged). Once approved (the stage's `approved` hook) the jpg is published as
+                       cut out with outlines, curiosity words, an arrow or emoji) and `classic` (the skill's
+                       thumbnail.py, unchanged). Cut-outs, per layer: macOS's own subject cut-out first
+                       (cutout-apple.py, Vision, macOS 14+, no download; VIRAL_CUTOUT_APPLE=on|off overrides), then
+                       rembg (cutout.py) if its models are on disk (~/Library/Caches/Viral/models, VIRAL_MODELS_DIR
+                       overrides); otherwise the layer reports "fallback: needs rembg models" and the stage fetches
+                       them with progress and draws again (thumbnail-draw.ts). Anything else falls back to a framed
+                       inset; VIRAL_CUTOUT=off forces that. Once approved (the stage's `approved` hook) the jpg is published as
                        ~/.viral/renders/<slug>.jpg
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
@@ -54,9 +57,11 @@ apps/server/src/
                        standalone macOS build takes 25–40 s to start; it upgrades via uv every few days.
                        ListTools / InstallTools. The background-removal models (rembg's isnet-general-use and
                        u2net_human_seg, ~355 MB, pinned by SHA-256, in ~/Library/Caches/Viral/models) are not
-                       first-run tools: the server fetches them in the background once the required tools are
-                       ready (VIRAL_PREFETCH_MODELS=off skips), Settings › Tools shows the progress
-                       (PrefetchBackgroundRemoval), and a bold thumbnail waits for them with a progress message
+                       first-run tools. Where Apple's cut-out works (macOS 14+) they're only a fallback: never
+                       prefetched, fetched when a thumbnail needs them or from Settings › Tools ("Download fallback
+                       models"). Elsewhere the server fetches them in the background once the required tools are
+                       ready (VIRAL_PREFETCH_MODELS=off skips), with progress in Settings › Tools
+                       (PrefetchBackgroundRemoval)
   projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
   presets/             style profiles; one default, seeded on first start
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;
