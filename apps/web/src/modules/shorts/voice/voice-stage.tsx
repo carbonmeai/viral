@@ -2,6 +2,7 @@ import type { TranscriptWord, Voiceover } from "@viral/contracts"
 import { cn } from "@viral/ui/cn"
 import { Pause, Play } from "lucide-react"
 import { Fragment, useEffect, useRef, useState } from "react"
+import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { Detail } from "../../system/detail.tsx"
 import { peaksOf, wordIndexAt } from "./voice-values.ts"
 
@@ -16,8 +17,10 @@ function Waveform({ url, duration, time, pauses, onSeek }: {
   readonly onSeek: (t: number) => void
 }) {
   const [peaks, setPeaks] = useState<ReadonlyArray<number>>([])
+  const [decoding, setDecoding] = useState(true)
   useEffect(() => {
     let live = true
+    setDecoding(true)
     const context = new AudioContext()
     fetch(url)
       .then((res) => res.arrayBuffer())
@@ -28,7 +31,10 @@ function Waveform({ url, duration, time, pauses, onSeek }: {
       .catch(() => {
         if (live) setPeaks([])
       })
-      .finally(() => void context.close())
+      .finally(() => {
+        if (live) setDecoding(false)
+        void context.close()
+      })
     return () => {
       live = false
     }
@@ -48,6 +54,12 @@ function Waveform({ url, duration, time, pauses, onSeek }: {
         onSeek(((e.clientX - box.left) / box.width) * duration)
       }}
     >
+      {decoding && peaks.length === 0 ? (
+        // the waveform's shape in grey while the take decodes
+        <SkeletonRegion label="Reading the take" className="absolute inset-0 flex items-center gap-[2px]">
+          {Array.from({ length: 64 }, (_, i) => <Skeleton key={i} className="w-full" style={{ height: `${28 + 44 * Math.abs(Math.sin(i * 0.7))}%` }} />)}
+        </SkeletonRegion>
+      ) : null}
       <svg viewBox={`0 0 ${BARS} 100`} preserveAspectRatio="none" className="absolute inset-0 size-full" aria-hidden>
         {peaks.map((p, i) => {
           const h = Math.max(3, p * 96)

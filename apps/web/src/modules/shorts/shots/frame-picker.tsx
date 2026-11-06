@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import type { FrameAt, SourceId } from "@viral/contracts"
 import { Button } from "@viral/ui/primitives/button"
 import { cn } from "@viral/ui/cn"
+import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
@@ -31,7 +32,11 @@ export function FramePicker({ sourceId, around, current, chosen, onChoose, onUse
   const loading = AsyncResult.isWaiting(result) || (AsyncResult.isInitial(result) && frames.length === 0)
   return (
     <InspectorBlock title={`Frames around ${mmss(around)}`} action={<span className="text-xs font-normal text-fg-3">one a second</span>}>
-      {loading && frames.length === 0 ? <span className="text-xs text-fg-2">Pulling stills from the video…</span> : null}
+      {loading && frames.length === 0 ? (
+        <SkeletonRegion label="Pulling stills from the video" className="grid grid-cols-3 gap-1.5">
+          {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="aspect-video w-full" />)}
+        </SkeletonRegion>
+      ) : null}
       {AsyncResult.isFailure(result) ? <span className="text-xs text-danger">Couldn’t get stills from the video.</span> : null}
       <div className="grid grid-cols-3 gap-1.5">
         {frames.map((frame) => {
