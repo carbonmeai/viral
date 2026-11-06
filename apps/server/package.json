@@ -12,6 +12,7 @@
     "@viral/provider-claude-cli": "workspace:*",
     "@viral/provider-codex": "workspace:*",
     "@viral/provider-core": "workspace:*",
+    "@viral/provider-opencode": "workspace:*",
     "@viral/provider-testing": "workspace:*",
     "ai": "7.0.97",
     "effect": "4.1.2",

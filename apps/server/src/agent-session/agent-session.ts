@@ -10,6 +10,7 @@ import { Settings } from "../settings/settings.ts"
 import { makeAiGatewayProvider } from "@viral/provider-ai-gateway"
 import { makeClaudeCliProvider } from "@viral/provider-claude-cli"
 import { makeCodexProvider } from "@viral/provider-codex"
+import { makeOpencodeProvider } from "@viral/provider-opencode"
 import { replayRun } from "@viral/provider-testing"
 import type { LanguageModel } from "ai"
 import type { AgentError, AgentHooks, AgentRoute, AgentRun, AgentTask } from "./agent-task.ts"
@@ -51,7 +52,8 @@ export class AgentSession extends Context.Service<AgentSession, {
         ...(options.gatewayModel === undefined ? {} : { languageModel: options.gatewayModel })
       })
       const codex = yield* makeCodexProvider()
-      const providers: Record<AgentRoute["provider"], AgentRun> = { "claude-cli": claude, codex, "ai-gateway": gateway }
+      const opencode = yield* makeOpencodeProvider()
+      const providers: Record<AgentRoute["provider"], AgentRun> = { "claude-cli": claude, codex, opencode, "ai-gateway": gateway }
       // a CLI with an API key bills per use; signed in to a Claude plan, its reported cost is the plan's value
       const cliBilling = Option.isSome(yield* Config.option(Config.String("ANTHROPIC_API_KEY")).pipe(Effect.orDie))
         ? "billed" as const
