@@ -61,9 +61,9 @@ export function ThemePicker({ value, onChange }: { readonly value: Theme; readon
           >
             <span
               className={cn(
-                "block h-[48px] w-[76px] overflow-hidden rounded-[8px] ring-offset-1 ring-offset-panel transition-shadow",
-                selected ? "ring-[1.5px] ring-lemon" : "ring-1 ring-line-2 group-hover:ring-fg-3",
-                "group-focus-visible:ring-[1.5px] group-focus-visible:ring-ring"
+                "block h-[48px] w-[76px] overflow-hidden rounded-[8px] ring-1 transition-shadow",
+                selected ? "ring-lemon" : "ring-line-2 group-hover:ring-fg-3",
+                "group-focus-visible:ring-ring"
               )}
             >
               <Preview theme={option.value} />
