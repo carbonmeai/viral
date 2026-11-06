@@ -15,17 +15,32 @@ export const SECTION_LIMITS = {
   hookWords: 8
 }
 
-// The renderer's snap: a section never starts or ends mid-word, with a little air before and after.
+// A little air before a section's first word and after its last, never reaching into the next word.
 const BEFORE = 0.06
 const AFTER = 0.15
 
+// Snaps a section to the nearest word boundaries so it never starts or ends mid-word: a boundary inside a word
+// keeps that word only if it covers at least half of it. The air around the section stops at the neighbouring
+// words, so a section that starts on "it" never picks up the "get," before it.
 export const snapSection = (start: number, end: number, words: ReadonlyArray<TranscriptWord>, duration: number) => {
   const inside = words.filter((w) => w.e > start && w.s < end)
-  const first = inside[0]
-  const last = inside.at(-1)
-  const s = first === undefined ? start : Math.min(start, first.s)
-  const e = last === undefined ? end : Math.max(end, last.e)
-  return { start: Math.max(0, s - BEFORE), end: Math.min(duration, e + AFTER), words: inside }
+  let trimmed = inside
+  const half = (w: TranscriptWord) => w.s + (w.e - w.s) / 2
+  if (trimmed[0] !== undefined && start > half(trimmed[0]) && trimmed.length > 1) trimmed = trimmed.slice(1)
+  const last = trimmed.at(-1)
+  if (last !== undefined && end < half(last) && trimmed.length > 1) trimmed = trimmed.slice(0, -1)
+  const first = trimmed[0]
+  const final = trimmed.at(-1)
+  if (first === undefined || final === undefined) {
+    return { start: Math.max(0, start), end: Math.min(duration, end), words: trimmed }
+  }
+  const before = words[words.indexOf(first) - 1]
+  const after = words[words.indexOf(final) + 1]
+  return {
+    start: Math.max(0, before?.e ?? 0, first.s - BEFORE),
+    end: Math.min(duration, after?.s ?? duration, final.e + AFTER),
+    words: trimmed
+  }
 }
 
 const fmt = (t: number) => t.toFixed(1)
@@ -38,7 +53,7 @@ export interface SectionContext {
 }
 
 // Checks a proposed cut-down short against the transcript and the source, and snaps each section to whole
-// words (as the renderer will), adding the words it says.
+// words, adding the words it says. The renderer plays the snapped times as they are.
 export const checkSections = (proposal: SectionsProposal, ctx: SectionContext): Checked<CutDraft> => {
   const problems: Array<string> = []
   if (proposal.sections.length === 0) problems.push("there are no sections")

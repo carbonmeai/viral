@@ -33,6 +33,8 @@ export const assembleCut = (input: CutInput): CutRenderPlan => {
     ...(preset.headline !== null && plan.hookText !== null ? { hook_text: plan.hookText } : {}),
     ...(preset.credit && input.credit !== null ? { credit: input.credit } : {}),
     exclude: input.excluded.map((r) => [r.start, r.end] as const),
+    // the sections stage already snapped them to words
+    snap: false,
     sections: plan.sections.map((s) => ({
       beat: s.beat,
       start: s.start,

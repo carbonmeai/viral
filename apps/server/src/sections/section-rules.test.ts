@@ -7,12 +7,21 @@ import { checkSections, snapSection } from "./section-rules.ts"
 const words = Array.from({ length: 200 }, (_, i) => ({ w: `w${i}`, s: i * 0.5, e: i * 0.5 + 0.4 }))
 const ctx = { words, sourceSeconds: 100, excluded: [{ start: 90, end: 100 }] }
 
-test("a section snaps outward to whole words, with a little air", () => {
-  // 10.2 is inside w20 (10.0–10.4); 12.1 is inside w24 (12.0–12.4)
+test("a section snaps to the nearest whole words, with air that stops at the neighbours", () => {
+  // 10.2 covers half of w20 (10.0–10.4), so w20 stays; 12.1 covers only a quarter of w24 (12.0–12.4), so it goes
   const snapped = snapSection(10.2, 12.1, words, 100)
+  assert.deepEqual(snapped.words.map((w) => w.w), ["w20", "w21", "w22", "w23"])
   assert.equal(snapped.start, 10 - 0.06)
-  assert.equal(snapped.end, 12.4 + 0.15)
-  assert.deepEqual(snapped.words.map((w) => w.w), ["w20", "w21", "w22", "w23", "w24"])
+  // w23 ends at 11.9; the air after it stops where w24 begins
+  assert.equal(snapped.end, 12)
+})
+
+test("a start a moment before a word doesn't pull in the word before it", () => {
+  // "I get, it literally": the hook should start on "it", and 1993.5 is just inside the end of "get,"
+  const said = [{ w: "I", s: 1992.9, e: 1993.1 }, { w: "get,", s: 1993.15, e: 1993.55 }, { w: "it", s: 1993.6, e: 1993.75 }, { w: "literally", s: 1993.8, e: 1994.3 }]
+  const snapped = snapSection(1993.5, 1994.3, said, 2296)
+  assert.deepEqual(snapped.words.map((w) => w.w), ["it", "literally"])
+  assert.equal(snapped.start, 1993.55, "the air before stops at the end of \"get,\"")
 })
 
 test("a good plan passes, with each section's words", () => {

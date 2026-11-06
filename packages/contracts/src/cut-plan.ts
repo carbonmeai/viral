@@ -59,6 +59,9 @@ export const CutRenderPlan = Schema.Struct({
   credit: Schema.optionalKey(Schema.String),
   // sponsor/ad/end-screen source ranges; the renderer fails if a section touches one
   exclude: Schema.optionalKey(Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite]))),
+  // false when the sections are already snapped to words (the server's plans); absent or true, the renderer
+  // snaps them outward itself, as the skill's plans expect
+  snap: Schema.optionalKey(Schema.Boolean),
   sections: Schema.Array(Schema.Struct({
     beat: CutBeat,
     start: Schema.Finite,

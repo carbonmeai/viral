@@ -307,7 +307,10 @@ def main() -> None:
     total_sections = len(plan["sections"])
     progress("sections", 0, total_sections)
     for i, sec in enumerate(plan["sections"]):
-        start, end = snap(float(sec["start"]), float(sec["end"]), words, src_dur)
+        start, end = float(sec["start"]), float(sec["end"])
+        if plan.get("snap", True):
+            start, end = snap(start, end, words, src_dur)
+        end = min(end, src_dur)
         vf = reframe_filter(sec.get("framing", framing), float(sec.get("crop_x", plan.get("crop_x", 0.5))), src_w, src_h)
         part = tmp / f"part_{i:02d}.mp4"
         cut_section(src, start, end, vf, part)

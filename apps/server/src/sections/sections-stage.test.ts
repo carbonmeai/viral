@@ -112,8 +112,8 @@ test("the sections stage fixes a rejected plan, snaps it to words and draws a st
       rendered: yield* Schema.decodeUnknownEffect(CutRenderPlan)(render.data)
     }
   }))
-  // snapped outward to whole words: 50.0 starts w100; 53.0 is inside nothing, so it ends after w105 (52.5–52.9)
-  assert.deepEqual([plan.sections[0]!.start, plan.sections[0]!.end], [50 - 0.06, 53 + 0.15])
+  // snapped to whole words: 50.0 starts w100; 53.0 falls between w105 (ends 52.9) and w106 (starts 53.0)
+  assert.deepEqual([plan.sections[0]!.start, plan.sections[0]!.end], [50 - 0.06, 53])
   assert.match(plan.sections[0]!.text, /^w100 w101/)
   assert.ok(storyboard !== null && existsSync(storyboard), "the storyboard was drawn")
   assert.ok(existsSync(join(dirname(storyboard), plan.sections[0]!.frame!)), "each section has its own frame")
@@ -122,5 +122,6 @@ test("the sections stage fixes a rejected plan, snaps it to words and draws a st
   assert.equal(rendered.hook_text, undefined)
   assert.equal(rendered.sections.length, 3)
   assert.deepEqual(rendered.exclude, [[0, 2]])
+  assert.equal(rendered.snap, false, "the renderer plays the snapped times as they are")
   await rt.dispose()
 })
