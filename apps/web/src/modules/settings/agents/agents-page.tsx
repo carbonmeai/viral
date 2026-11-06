@@ -63,7 +63,6 @@ export function AgentsPage() {
                   own={value.stageAgents[s.stage]}
                   route={value.routes[s.stage]}
                   gatewayReady={gatewayReady}
-                  evals={detailed ? evalList : []}
                 />
               ))}
             </SettingsGroup>
@@ -117,14 +116,13 @@ function DefaultGroup({ settings, gatewayReady, evals }: {
 
 type StageProvider = "default" | AgentProvider
 
-function StageRow({ stage, label, sub, own, route, gatewayReady, evals }: {
+function StageRow({ stage, label, sub, own, route, gatewayReady }: {
   readonly stage: AgentStage
   readonly label: string
   readonly sub: string
   readonly own: AgentChoice | null
   readonly route: AgentRoute
   readonly gatewayReady: boolean
-  readonly evals: ReadonlyArray<ModelEval>
 }) {
   const save = useAtomSet(setStageAgent, { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
@@ -137,10 +135,9 @@ function StageRow({ stage, label, sub, own, route, gatewayReady, evals }: {
   const note = route.inherited
     ? route.forcedCli ? `Claude CLI only for now (it looks at images) · ${modelLabel("claude-cli", null)}` : `Uses the default: ${runsOn}`
     : `Its own choice: ${runsOn}`
-  const stat = evalLine(evals, { provider: route.provider, model: route.model })
 
   return (
-    <SettingRow label={label} sub={error ?? `${sub} ${note}.${stat === null ? "" : ` ${stat}`}`}>
+    <SettingRow label={label} sub={error ?? `${sub} ${note}.`}>
       {own === null ? null : (
         <ModelPicker label={`${label} model`} provider={own.provider} value={own.model} onChange={(model) => set({ provider: own.provider, model })} />
       )}
