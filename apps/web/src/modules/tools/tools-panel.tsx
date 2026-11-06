@@ -7,7 +7,7 @@ import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { Detail } from "../system/detail.tsx"
 import { toolsAtom } from "./tools-api.ts"
-import { sourceLabel, TOOL_PURPOSE } from "./tools-values.ts"
+import { shortVersion, sourceLabel, TOOL_PURPOSE } from "./tools-values.ts"
 
 // Settings › General: each tool's version and where it comes from (Viral's own copy, or one on this Mac).
 export function ToolsPanel() {
@@ -25,7 +25,7 @@ export function ToolsPanel() {
                 {tool.status === "ready"
                   ? <Status tone="ok">{sourceLabel(tool)}</Status>
                   : <Status tone="wait">{tool.status === "installing" ? "Installing" : tool.status === "failed" ? "Couldn't install" : "Missing"}</Status>}
-                <span className="max-w-[320px] truncate" title={tool.version ?? undefined}>{tool.version ?? tool.error ?? "Not installed"}</span>
+                <span className="max-w-[320px] truncate" title={tool.version ?? tool.error ?? undefined}>{shortVersion(tool.version) ?? tool.error ?? "Not installed"}</span>
                 <Detail>{tool.path === null ? null : <span className="max-w-[320px] truncate" title={tool.path}>{tool.path}</span>}</Detail>
               </div>
             </Row>

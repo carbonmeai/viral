@@ -53,4 +53,8 @@ export const installFinished = (state: InstallState) => Object.values(state).eve
 export const formatBytes = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 
+// "ffprobe version 6.0 Copyright (c) …" → "6.0"; "uv 0.13.7 (316c…)" → "0.13.7"; falls back to the line itself.
+export const shortVersion = (version: string | null): string | null =>
+  version === null ? null : (version.match(/\d+(?:\.\d+)+/)?.[0] ?? version)
+
 export const sourceLabel = (tool: Tool) => tool.source === "viral" ? "Viral" : tool.source === "system" ? "System" : "—"

@@ -11,7 +11,7 @@ import { type ReactNode, useState } from "react"
 import { Page } from "../layout/page.tsx"
 import { Detail } from "../system/detail.tsx"
 import { installAtom, toolsAtom } from "./tools-api.ts"
-import { formatBytes, installFinished, type InstallState, sourceLabel, TOOL_PURPOSE, type ToolInstall, toolsToInstall } from "./tools-values.ts"
+import { formatBytes, installFinished, type InstallState, shortVersion, sourceLabel, TOOL_PURPOSE, type ToolInstall, toolsToInstall } from "./tools-values.ts"
 
 // The first run: when a tool the pipeline needs is missing, the page area shows "Setting up tools" (inside
 // the same shell) until it's installed. Everything else shows as usual.
@@ -63,7 +63,7 @@ function ToolRow({ tool, install }: { readonly tool: Tool; readonly install: Too
         {install === undefined
           ? <Status tone="ok">Ready · {sourceLabel(tool)}</Status>
           : install.phase === "installed"
-          ? <Status tone="ok">Installed{install.version === null ? "" : ` · ${install.version}`}</Status>
+          ? <Status tone="ok" title={install.version ?? undefined}>Installed{install.version === null ? "" : ` · ${shortVersion(install.version)}`}</Status>
           : install.phase === "failed"
           ? (
             <>
@@ -73,7 +73,10 @@ function ToolRow({ tool, install }: { readonly tool: Tool; readonly install: Too
           )
           : (
             <>
-              <Progress label={`Downloading ${tool.name}`} value={install.total === null ? null : install.bytes / install.total} />
+              <Progress
+                label={`Downloading ${tool.name}`}
+                value={install.phase === "waiting" ? 0 : install.total === null ? null : install.bytes / install.total}
+              />
               <span>
                 {install.phase === "waiting" ? "Waiting" : `${formatBytes(install.bytes)}${install.total === null ? "" : ` of ${formatBytes(install.total)}`}`}
               </span>
