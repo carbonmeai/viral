@@ -21,6 +21,9 @@ export const VoicesRpcLive = VoicesRpcs.toLayer(Effect.gen(function*() {
 
   return VoicesRpcs.of({
     ListVoices: () => eleven.voices,
+    ExploreVoices: (query) => eleven.explore(query),
+    AddLibraryVoice: ({ publicOwnerId, voiceId, name }) => eleven.addShared(publicOwnerId, voiceId, name),
+    RemoveVoice: ({ voiceId }) => eleven.remove(voiceId),
     PreviewVoice: ({ voiceId, text }) => preview(voiceId, text)
   })
 }))
