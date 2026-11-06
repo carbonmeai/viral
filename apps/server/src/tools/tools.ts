@@ -41,7 +41,8 @@ export const prependToolsPath = Effect.gen(function*() {
 })
 
 const UPDATE_EVERY = Duration.days(3)
-const VERSION_TIMEOUT = Duration.seconds(10)
+// yt-dlp's standalone macOS build unpacks itself on every start and can take half a minute
+const VERSION_TIMEOUT = Duration.seconds(60)
 // report download progress at most every this many bytes
 const PROGRESS_STEP = 512 * 1024
 
@@ -70,6 +71,8 @@ export class Tools extends Context.Service<Tools, {
     const http = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk)
     const installing = yield* Ref.make(new Set<ToolName>())
     const failures = yield* Ref.make(new Map<ToolName, string>())
+    // versions by file, kept until the file changes: asking a tool for its version can be slow
+    const versions = yield* Ref.make(new Map<string, { readonly modified: number; readonly version: string | null }>())
     const lockFile = path.join(options.dir, "tools.lock.json")
     const stateFile = path.join(options.dir, "tools.state.json")
 
@@ -91,12 +94,21 @@ export class Tools extends Context.Service<Tools, {
       return Option.none()
     })
 
-    const versionOf = (name: ToolName, file: string) =>
-      spawner.string(ChildProcess.make(file, [...VERSION_ARGS[name]])).pipe(
+    const versionOf = Effect.fn("Tools.versionOf")(function*(name: ToolName, file: string) {
+      const modified = yield* fs.stat(file).pipe(
+        Effect.map((info) => Option.getOrElse(Option.map(info.mtime, (d) => d.getTime()), () => 0)),
+        Effect.orElseSucceed(() => 0)
+      )
+      const cached = (yield* Ref.get(versions)).get(file)
+      if (cached !== undefined && cached.modified === modified) return cached.version
+      const version = yield* spawner.string(ChildProcess.make(file, [...VERSION_ARGS[name]])).pipe(
         Effect.map((out) => out.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? null),
         Effect.timeout(VERSION_TIMEOUT),
         Effect.orElseSucceed(() => null)
       )
+      yield* Ref.update(versions, (m) => new Map(m).set(file, { modified, version }))
+      return version
+    })
 
     const describe = Effect.fn("Tools.describe")(function*(name: ToolName) {
       const found = yield* locate(name)
@@ -109,7 +121,8 @@ export class Tools extends Context.Service<Tools, {
       return { name, status: "ready", source, version: yield* versionOf(name, file), path: file, error: null } satisfies Tool
     })
 
-    const list = Effect.forEach(TOOL_NAMES, describe).pipe(Effect.withSpan("Tools.list"))
+    // the four tools are looked up side by side, so one slow version check doesn't hold up the others
+    const list = Effect.forEach(TOOL_NAMES, describe, { concurrency: "unbounded" }).pipe(Effect.withSpan("Tools.list"))
 
     const readLock = fs.readFileString(lockFile).pipe(
       Effect.flatMap(Schema.decodeEffect(Lock)),
