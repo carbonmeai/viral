@@ -4,12 +4,13 @@ import { contentSecurityPolicy, isAppUrl, restartDelayMs, serverLaunch } from ".
 
 const base = { execPath: "/Applications/Viral.app/Contents/MacOS/Viral", resourcesPath: "/Applications/Viral.app/Contents/Resources", repoRoot: "/repo", port: 3410, path: "/usr/bin:/bin", parentPid: 4242 }
 
-test("packaged builds run the bundled server on Electron's Node, bundled tools first", () => {
+test("packaged builds run the bundled server on Electron's Node with the app's PATH", () => {
   const launch = serverLaunch({ ...base, packaged: true })
   assert.equal(launch.command, base.execPath)
   assert.deepEqual(launch.args, ["/Applications/Viral.app/Contents/Resources/server/main.mjs"])
   assert.equal(launch.env["ELECTRON_RUN_AS_NODE"], "1")
-  assert.equal(launch.env["PATH"], "/Applications/Viral.app/Contents/Resources/bin:/usr/bin:/bin")
+  // no bundled tools: the server finds or downloads them itself
+  assert.equal(launch.env["PATH"], "/usr/bin:/bin")
   assert.equal(launch.env["VIRAL_PORT"], "3410")
   assert.equal(launch.env["VIRAL_PARENT_PID"], "4242", "the server stops when the app is gone")
 })

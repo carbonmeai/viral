@@ -9,7 +9,6 @@
     "build": "node_modules/.bin/vp pack",
     "start": "electron .",
     "dev": "node scripts/dev.ts",
-    "fetch-tools": "node scripts/fetch-tools.ts",
     "package": "node_modules/.bin/vp pack && node scripts/build-server.ts && node_modules/.bin/electron-builder --mac --arm64 --dir"
   },
   "devDependencies": {

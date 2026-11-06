@@ -1,6 +1,6 @@
 # Packages Viral for macOS (arm64). The main process and the server are bundled JavaScript, so no
-# node_modules ship. Resources/ holds the UI (web), the server (server) and ffmpeg, uv and yt-dlp (bin,
-# from scripts/fetch-tools.ts).
+# node_modules ship. Resources/ holds the UI (web) and the server (server). ffmpeg, uv and yt-dlp aren't
+# bundled: the server downloads any that are missing on first run (apps/server/src/tools).
 appId: ai.carbonme.viral
 productName: Viral
 directories:
@@ -18,9 +18,6 @@ extraResources:
   - from: dist-server
     to: server
     filter: ["**/*", "!*.map"]
-  - from: resources/bin
-    to: bin
-    filter: ["**/*", "!tools.lock.json"]
 mac:
   target:
     - target: dir

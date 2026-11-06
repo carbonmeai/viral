@@ -4,7 +4,7 @@ export interface LaunchInput {
   readonly packaged: boolean
   // Electron's own binary; packaged builds run the server on it as plain Node
   readonly execPath: string
-  // the app's Resources folder (packaged) holding server/, web/ and bin/
+  // the app's Resources folder (packaged) holding server/ and web/
   readonly resourcesPath: string
   // the repository root (development)
   readonly repoRoot: string
@@ -21,7 +21,8 @@ export interface Launch {
   readonly env: Record<string, string>
 }
 
-// Packaged: Electron-as-Node runs the bundled server, with the bundled ffmpeg, uv and yt-dlp first on the PATH.
+// Packaged: Electron-as-Node runs the bundled server. Tools (ffmpeg, uv, yt-dlp) aren't bundled: the server
+// puts its own tools folder first on the PATH and downloads what's missing.
 // Development: node runs the server's TypeScript straight from the repo, with the repo's .env.
 export const serverLaunch = (input: LaunchInput): Launch =>
   input.packaged
@@ -32,7 +33,7 @@ export const serverLaunch = (input: LaunchInput): Launch =>
         ELECTRON_RUN_AS_NODE: "1",
         VIRAL_PORT: String(input.port),
         VIRAL_PARENT_PID: String(input.parentPid),
-        PATH: `${input.resourcesPath}/bin:${input.path}`
+        PATH: input.path
       }
     }
     : {
