@@ -130,6 +130,7 @@ test("a short renders, a rejected render goes back to the shots, and the approve
       )
     yield* runs.respond((yield* nextGate("shots")).id, { _tag: "Approve" })
     const firstRender = yield* nextGate("render")
+    assert.equal(firstRender.payload?._tag, "RenderGate")
     yield* runs.respond(firstRender.id, { _tag: "Reject", note: "open on the other shot" })
     // back at the shots, with the note
     yield* runs.respond((yield* nextGate("shots")).id, { _tag: "Approve" })

@@ -1,6 +1,7 @@
 export * from "./ads.ts"
 export * from "./approaches.ts"
 export * from "./artifacts.ts"
+export * from "./gates.ts"
 export * from "./metadata.ts"
 export * from "./music-library.ts"
 export * from "./narrated-plan.ts"

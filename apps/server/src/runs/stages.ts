@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactKind, RunId, RunOwner, StageName, StageRunId } from "@viral/contracts"
+import type { Artifact, ArtifactKind, GatePayload, RunId, RunOwner, StageName, StageRunId } from "@viral/contracts"
 import { Context, Effect, Option, Schema } from "effect"
 import type { StageCost } from "./run-store.ts"
 
@@ -34,8 +34,8 @@ export interface StageDefinition {
   run(ctx: StageContext): Effect.Effect<void, StageFailure>
   // Records your edited version of the artifact as a new version (gated stages only).
   applyEdit?(ctx: StageContext, artifact: unknown): Effect.Effect<void, StageFailure>
-  // What the gate shows you: usually the artifact itself.
-  gatePayload?(artifact: Artifact): unknown
+  // What the gate shows you; without it, the artifact as stored.
+  gatePayload?(artifact: Artifact): GatePayload
   // Where a rejection goes when this stage can't act on a note itself (the render follows its plan): that
   // earlier stage runs again with your note, and every stage after it follows.
   readonly rejectTo?: StageName

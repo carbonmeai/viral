@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type Artifact, NarratedPlan, RenderedShort } from "@viral/contracts"
+import { type Artifact, type GatePayload, NarratedPlan, RenderedShort } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Path, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -70,7 +70,11 @@ export class RenderStage extends Context.Service<RenderStage, {
         gate: "Approve the render?",
         rejectTo: "shots",
         run,
-        gatePayload: (artifact: Artifact) => artifact.data
+        gatePayload: (artifact: Artifact): GatePayload =>
+          Option.match(Schema.decodeUnknownOption(RenderedShort)(artifact.data), {
+            onNone: () => ({ _tag: "ArtifactGate", artifact }),
+            onSome: (render) => ({ _tag: "RenderGate", render })
+          })
       }
       return RenderStage.of({ stage })
     })

@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type Artifact, type Project, type ProjectId, Script, StoryMap } from "@viral/contracts"
+import { type Artifact, type GatePayload, type Project, type ProjectId, Script, StoryMap } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { approachSkill } from "../agent-skills/skill-pack.ts"
 import { AgentSession } from "../agent-session/agent-session.ts"
@@ -107,13 +107,11 @@ export class ScriptStage extends Context.Service<ScriptStage, {
         gate: "Approve the script?",
         run,
         applyEdit,
-        gatePayload: (artifact: Artifact) => ({
-          script: artifact.data,
-          narrationWords: Option.match(Schema.decodeUnknownOption(Script)(artifact.data), {
-            onNone: () => null,
-            onSome: narrationWords
+        gatePayload: (artifact: Artifact): GatePayload =>
+          Option.match(Schema.decodeUnknownOption(Script)(artifact.data), {
+            onNone: () => ({ _tag: "ArtifactGate", artifact }),
+            onSome: (script) => ({ _tag: "ScriptGate", script, narrationWords: narrationWords(script) })
           })
-        })
       }
       return ScriptStage.of({ stage })
     })

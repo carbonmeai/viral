@@ -98,6 +98,7 @@ test("the voice stage speaks the narration in one take, paces it, and waits for 
     const raised = seen.findLast((u) => u._tag === "Event" && u.event._tag === "RequestRaised")
     assert.ok(raised?._tag === "Event" && raised.event._tag === "RequestRaised")
     assert.equal(raised.event.request.title, "Approve the voiceover?")
+    assert.equal(raised.event.request.payload?._tag, "VoiceGate")
     yield* runs.respond(raised.event.request.id, { _tag: "Approve" })
     // the shots stage comes next; this test stops there
     const rest = [...yield* runs.subscribe(run.id, 0).pipe(

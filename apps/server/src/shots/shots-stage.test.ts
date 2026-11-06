@@ -108,6 +108,7 @@ test("the shots stage places the real lines, fixes a rejected plan, and draws a 
     const raised = seen.findLast((u) => u._tag === "Event" && u.event._tag === "RequestRaised")
     assert.ok(raised?._tag === "Event" && raised.event._tag === "RequestRaised")
     assert.equal(raised.event.request.title, "Approve the shots?")
+    assert.equal(raised.event.request.payload?._tag, "ShotsGate")
     yield* runs.respond(raised.event.request.id, { _tag: "Approve" })
     // assemble comes next; this test stops there
     const rest = [...yield* runs.subscribe(run.id, 0).pipe(

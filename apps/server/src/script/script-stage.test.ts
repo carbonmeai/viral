@@ -87,6 +87,8 @@ test("the script stage fixes rejected scripts, snaps real lines, and waits for a
     )]
     const raised = seen.findLast((u) => u._tag === "Event" && u.event._tag === "RequestRaised")
     assert.ok(raised?._tag === "Event" && raised.event._tag === "RequestRaised")
+    const payload = raised.event.request.payload
+    assert.ok(payload?._tag === "ScriptGate" && payload.narrationWords === 70, "the gate shows the snapped script")
     yield* runs.respond(raised.event.request.id, { _tag: "Approve" })
 
     // the voice stage comes next; this test stops there

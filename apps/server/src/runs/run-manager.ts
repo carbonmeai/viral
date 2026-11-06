@@ -1,4 +1,5 @@
 import {
+  type GatePayload,
   type GateResponse,
   type RequestId,
   RequestNotPending,
@@ -135,7 +136,7 @@ export class RunManager extends Context.Service<RunManager, {
             const artifact = yield* artifacts.latest(run.owner, stage.artifact)
             const payload = Option.match(artifact, {
               onNone: () => null,
-              onSome: (a) => stage.gatePayload?.(a) ?? a
+              onSome: (a): GatePayload => stage.gatePayload?.(a) ?? { _tag: "ArtifactGate", artifact: a }
             })
             yield* store.updateStageRun(stageRun.id, "waiting", null)
             yield* store.setRunStatus(run.id, "waiting")

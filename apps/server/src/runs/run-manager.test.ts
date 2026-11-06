@@ -124,6 +124,8 @@ test("a gated run waits for approval, then later runs reuse approved work", asyn
   const run = await start(rt, owner)
   const atGate = await until(rt, run.id, raised)
   assert.ok(atGate.some((u) => u._tag === "Progress" && u.pct === 50), "live progress reaches subscribers")
+  const shown = requestOf(atGate).payload
+  assert.ok(shown?._tag === "ArtifactGate" && shown.artifact.kind === "transcript", "a stage without a view shows its artifact")
   await respond(rt, requestOf(atGate).id, { _tag: "Approve" })
   const end = await until(rt, run.id, finished)
   const last = end.findLast(finished)

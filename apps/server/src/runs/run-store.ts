@@ -1,5 +1,6 @@
 import {
   type ArtifactKind,
+  GatePayload,
   GateResponse,
   ProjectId,
   type RequestId,
@@ -26,6 +27,7 @@ import { SqlClient, SqlSchema } from "effect/sql"
 import { DatabaseLive } from "../persistence/database.ts"
 
 const Json = Schema.fromJsonString(Schema.Unknown)
+const PayloadJson = Schema.fromJsonString(GatePayload)
 const ResponseJson = Schema.fromJsonString(GateResponse)
 const EventJson = Schema.fromJsonString(RunEvent)
 const Iso = Schema.DateTimeUtcFromString
@@ -92,7 +94,7 @@ const RequestRow = Schema.Struct({
   stage: StageNameSchema,
   kind: Schema.Literals(["approval", "input"]),
   title: Schema.String,
-  payload: Schema.NullOr(Json),
+  payload: Schema.NullOr(PayloadJson),
   status: RequestStatus,
   response: Schema.NullOr(ResponseJson),
   created_at: Iso,
@@ -151,7 +153,7 @@ export class RunStore extends Context.Service<RunStore, {
   // Points the latest artifact of a kind at a stage run, e.g. when a resumed run approves an artifact an
   // interrupted run made.
   linkLatestArtifact(owner: RunOwner, kind: ArtifactKind, stageRunId: StageRunId): Effect.Effect<void>
-  createRequest(stageRun: StageRun, title: string, payload: unknown): Effect.Effect<RunRequest>
+  createRequest(stageRun: StageRun, title: string, payload: GatePayload | null): Effect.Effect<RunRequest>
   answerRequest(id: RequestId, response: GateResponse): Effect.Effect<Option.Option<RunRequest>>
   cancelPendingRequests(runId: RunId | null): Effect.Effect<void>
   getRequest(id: RequestId): Effect.Effect<Option.Option<RunRequest>>
@@ -305,9 +307,9 @@ export class RunStore extends Context.Service<RunStore, {
       }
 
       const createRequest = Effect.fn("RunStore.createRequest")(
-        function*(stageRun: StageRun, title: string, payload: unknown) {
+        function*(stageRun: StageRun, title: string, payload: GatePayload | null) {
           const id = RequestIdSchema.make(yield* random.uuidV7())
-          const encoded = payload === null || payload === undefined ? null : yield* Schema.encodeEffect(Json)(payload)
+          const encoded = payload === null ? null : yield* Schema.encodeEffect(PayloadJson)(payload)
           yield* sql`
             INSERT INTO requests (id, run_id, stage_run_id, kind, title, payload, status, created_at)
             VALUES (${id}, ${stageRun.runId}, ${stageRun.id}, 'approval', ${title}, ${encoded}, 'pending', ${yield* now})

@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
+import { GatePayload } from "./gates.ts"
 import { ProjectId, ProjectNotFound } from "./projects.ts"
 import { SourceId, SourceNotFound } from "./sources.ts"
 
@@ -100,8 +101,8 @@ export const RunRequest = Schema.Struct({
   stage: StageName,
   kind: Schema.Literals(["approval", "input"]),
   title: Schema.String,
-  // what is being approved, e.g. the script artifact
-  payload: Schema.NullOr(Schema.Unknown),
+  // what is being approved, shaped for the gate's stage
+  payload: Schema.NullOr(GatePayload),
   status: RequestStatus,
   response: Schema.NullOr(GateResponse),
   createdAt: Schema.DateTimeUtcFromString,

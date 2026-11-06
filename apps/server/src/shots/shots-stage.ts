@@ -3,9 +3,10 @@ import {
   AdRanges,
   type Artifact,
   type ArtifactOwner,
+  type GatePayload,
   type ProjectId,
   Script,
-  type ShotPlan,
+  ShotPlan,
   ShotProposal,
   StoryMap,
   Transcript,
@@ -243,7 +244,11 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         gate: "Approve the shots?",
         run,
         applyEdit,
-        gatePayload: (artifact: Artifact) => ({ plan: artifact.data, storyboard: artifacts.resolve(artifact) })
+        gatePayload: (artifact: Artifact): GatePayload =>
+          Option.match(Schema.decodeUnknownOption(ShotPlan)(artifact.data), {
+            onNone: () => ({ _tag: "ArtifactGate", artifact }),
+            onSome: (plan) => ({ _tag: "ShotsGate", plan, storyboard: artifacts.resolve(artifact) })
+          })
       }
       return ShotsStage.of({ stage })
     })

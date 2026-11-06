@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type Artifact, type ProjectId, Script, Transcript, Voiceover } from "@viral/contracts"
+import { type Artifact, type GatePayload, type ProjectId, Script, Transcript, Voiceover } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -128,7 +128,11 @@ export class VoiceStage extends Context.Service<VoiceStage, {
         artifact: "voiceover",
         gate: "Approve the voiceover?",
         run,
-        gatePayload: (artifact: Artifact) => ({ voiceover: artifact.data, file: artifacts.resolve(artifact) })
+        gatePayload: (artifact: Artifact): GatePayload =>
+          Option.match(Schema.decodeUnknownOption(Voiceover)(artifact.data), {
+            onNone: () => ({ _tag: "ArtifactGate", artifact }),
+            onSome: (voiceover) => ({ _tag: "VoiceGate", voiceover, file: artifacts.resolve(artifact) })
+          })
       }
       return VoiceStage.of({ stage })
     })

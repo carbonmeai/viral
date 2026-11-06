@@ -1,32 +1,27 @@
-import { RenderedShort, type RunUpdate, Script, ShotPlan, Voiceover } from "@viral/contracts"
-import { Console, Effect, Option, Schema } from "effect"
+import type { GatePayload, RunUpdate } from "@viral/contracts"
+import { Console, Effect } from "effect"
 
-const ScriptPayload = Schema.Struct({ script: Script, narrationWords: Schema.NullOr(Schema.Int) })
-
-const VoicePayload = Schema.Struct({ voiceover: Voiceover, file: Schema.NullOr(Schema.String) })
-
-const describeVoice = (payload: unknown): string =>
-  Option.match(Schema.decodeUnknownOption(VoicePayload)(payload), {
-    onNone: () => describeShots(payload),
-    onSome: ({ voiceover: v, file }) =>
-      `  ${file ?? "(no file)"}\n  ${v.durationS.toFixed(1)}s · ${v.pace.toFixed(2)} words/s (raw ${v.rawPace.toFixed(2)}, atempo ${v.atempo})` +
-      ` · voice ${v.voiceId} · ${v.characters} characters\n`
-  })
-
-const describeRender = (payload: unknown): string =>
-  Option.match(Schema.decodeUnknownOption(RenderedShort)(payload), {
-    onNone: () => "",
-    onSome: (r) =>
-      `  ${r.video}\n  ${r.durationS.toFixed(1)}s · ${r.shots} shots · captions ${r.captions}\n` +
-      `  check sheet ${r.checkSheet ?? "(none)"}\n  rejecting goes back to the shots with your note\n`
-  })
-
-const ShotsPayload = Schema.Struct({ plan: ShotPlan, storyboard: Schema.NullOr(Schema.String) })
-
-const describeShots = (payload: unknown): string =>
-  Option.match(Schema.decodeUnknownOption(ShotsPayload)(payload), {
-    onNone: () => describeRender(payload),
-    onSome: ({ plan, storyboard }) => {
+// What a gate is asking you to approve, in readable form.
+const describePayload = (payload: GatePayload | null): string => {
+  if (payload === null) return ""
+  switch (payload._tag) {
+    case "ScriptGate": {
+      const { script, narrationWords } = payload
+      const headline = script.headline === null ? "" : `  HEADLINE  ${script.headline.join(" / ")}\n`
+      const beats = script.beats.map((beat) =>
+        beat._tag === "Narration"
+          ? `  NARRATOR  ${beat.text}`
+          : `    REAL    "${beat.quote}"  (${beat.start.toFixed(1)}–${beat.end.toFixed(1)}s)`
+      ).join("\n")
+      return `${headline}${beats}\n  ${narrationWords} narrated words\n`
+    }
+    case "VoiceGate": {
+      const { voiceover: v, file } = payload
+      return `  ${file ?? "(no file)"}\n  ${v.durationS.toFixed(1)}s · ${v.pace.toFixed(2)} words/s (raw ${v.rawPace.toFixed(2)}, atempo ${v.atempo})` +
+        ` · voice ${v.voiceId} · ${v.characters} characters\n`
+    }
+    case "ShotsGate": {
+      const { plan, storyboard } = payload
       const shots = plan.shots.map((shot, k) =>
         `  ${String(k + 1).padStart(2)}  w${String(shot.word).padEnd(3)} ${shot.wordText.padEnd(12)} ${shot.src.toFixed(1).padStart(7)}s` +
         `${shot.fit === true ? " fit" : ""}${shot.speed === undefined ? "" : ` ×${shot.speed}`}  ${shot.note}`
@@ -37,22 +32,15 @@ const describeShots = (payload: unknown): string =>
       ].join("\n")
       return `${shots}\n${reals}\n  ${plan.shots.length} shots · ${plan.markers.length} markers · storyboard ${storyboard ?? "(none)"}\n`
     }
-  })
-
-// What a gate is asking you to approve, in readable form; empty when there's nothing to show.
-const describePayload = (payload: unknown): string =>
-  Option.match(Schema.decodeUnknownOption(ScriptPayload)(payload), {
-    onNone: () => describeVoice(payload),
-    onSome: ({ script, narrationWords }) => {
-      const headline = script.headline === null ? "" : `  HEADLINE  ${script.headline.join(" / ")}\n`
-      const beats = script.beats.map((beat) =>
-        beat._tag === "Narration"
-          ? `  NARRATOR  ${beat.text}`
-          : `    REAL    "${beat.quote}"  (${beat.start.toFixed(1)}–${beat.end.toFixed(1)}s)`
-      ).join("\n")
-      return `${headline}${beats}\n  ${narrationWords ?? "?"} narrated words\n`
+    case "RenderGate": {
+      const r = payload.render
+      return `  ${r.video}\n  ${r.durationS.toFixed(1)}s · ${r.shots} shots · captions ${r.captions}\n` +
+        `  check sheet ${r.checkSheet ?? "(none)"}\n  rejecting goes back to the shots with your note\n`
     }
-  })
+    case "ArtifactGate":
+      return `  ${payload.artifact.kind} v${payload.artifact.version}${payload.artifact.path === null ? "" : `  ${payload.artifact.path}`}\n`
+  }
+}
 
 // One readable line per run update. Progress prints in 10% steps; agent messages print as they come.
 export const printUpdate = (): ((update: RunUpdate) => Effect.Effect<void>) => {
