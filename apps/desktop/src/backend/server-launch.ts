@@ -11,6 +11,8 @@ export interface LaunchInput {
   readonly port: number
   // the PATH the app was started with
   readonly path: string
+  // the app's own process id: the server stops when this process is gone
+  readonly parentPid: number
 }
 
 export interface Launch {
@@ -29,13 +31,14 @@ export const serverLaunch = (input: LaunchInput): Launch =>
       env: {
         ELECTRON_RUN_AS_NODE: "1",
         VIRAL_PORT: String(input.port),
+        VIRAL_PARENT_PID: String(input.parentPid),
         PATH: `${input.resourcesPath}/bin:${input.path}`
       }
     }
     : {
       command: "node",
       args: ["--env-file-if-exists=.env", "apps/server/src/main.ts"],
-      env: { VIRAL_PORT: String(input.port), PATH: input.path }
+      env: { VIRAL_PORT: String(input.port), VIRAL_PARENT_PID: String(input.parentPid), PATH: input.path }
     }
 
 // Waits between restarts after the server exits: 0.5s, 1s, 2s … up to 10s.

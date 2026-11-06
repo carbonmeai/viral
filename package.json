@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "effect-tsgo tsc -p tsconfig.json && effect-tsgo tsc -p packages/ui/tsconfig.json && effect-tsgo tsc -p apps/web/tsconfig.json",
+    "typecheck": "effect-tsgo tsc -p tsconfig.json && effect-tsgo tsc -p packages/ui/tsconfig.json && effect-tsgo tsc -p apps/web/tsconfig.json && effect-tsgo tsc -p apps/desktop/tsconfig.json",
     "dev:server": "node --env-file-if-exists=.env --watch apps/server/src/main.ts",
     "cli": "node apps/cli/src/main.ts",
     "test": "node --env-file-if-exists=.env --test \"apps/**/*.test.ts\" \"packages/**/*.test.ts\"",
@@ -15,7 +15,10 @@
     "repos:sync": "node scripts/sync-repos.ts",
     "fixtures:sync": "node scripts/sync-fixtures.ts",
     "test:golden": "node --env-file-if-exists=.env --test \"apps/**/*.golden.ts\"",
-    "start:server": "node --env-file-if-exists=.env apps/server/src/main.ts"
+    "start:server": "node --env-file-if-exists=.env apps/server/src/main.ts",
+    "dev": "node scripts/dev.ts",
+    "dev:web": "cd apps/web && node_modules/.bin/vp dev",
+    "package:desktop": "cd apps/web && node_modules/.bin/vp build && cd ../desktop && bun run package"
   },
   "devDependencies": {
     "@types/node": "^24",

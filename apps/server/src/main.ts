@@ -1,6 +1,6 @@
 import { NodeHttpServer, NodeRuntime, NodeServices } from "@effect/platform-node"
 import { ViralRpcs } from "@viral/contracts"
-import { Config, Effect, Layer } from "effect"
+import { Config, Duration, Effect, Layer, Option, Schedule } from "effect"
 import { HttpRouter } from "effect/http"
 import { RpcSerialization, RpcServer } from "effect/rpc"
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- NodeHttpServer needs a node:http server factory
@@ -79,4 +79,25 @@ const ListenLive = Layer.unwrap(Effect.gen(function*() {
 
 const ServerLive = HttpRouter.serve(Layer.mergeAll(RpcLive, HttpLive)).pipe(Layer.provide(ListenLive))
 
-Layer.launch(ServerLive).pipe(NodeRuntime.runMain)
+// When an app starts the server (the desktop app sets VIRAL_PARENT_PID), the server stops once that app is
+// gone, even if it crashed or was killed without a chance to stop it.
+const ParentWatchLive = Layer.effectDiscard(Effect.gen(function*() {
+  const parent = yield* Config.option(Config.Int("VIRAL_PARENT_PID"))
+  if (Option.isNone(parent)) return
+  const alive = Effect.sync(() => {
+    try {
+      process.kill(parent.value, 0)
+      return true
+    } catch {
+      return false
+    }
+  })
+  yield* alive.pipe(
+    Effect.repeat({ schedule: Schedule.spaced(Duration.seconds(2)), while: (up) => up }),
+    Effect.andThen(Effect.logInfo("the app that started the server is gone; stopping")),
+    Effect.andThen(Effect.sync(() => process.kill(process.pid, "SIGTERM"))),
+    Effect.forkDetach
+  )
+}))
+
+Layer.launch(Layer.mergeAll(ServerLive, ParentWatchLive)).pipe(NodeRuntime.runMain)

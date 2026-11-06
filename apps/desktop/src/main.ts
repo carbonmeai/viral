@@ -24,7 +24,8 @@ const runtime = ManagedRuntime.make(
     // dist-electron/ → apps/desktop → apps → repo
     repoRoot: resolve(__dirname, "../../.."),
     port: PORT,
-    path: process.env["PATH"] ?? ""
+    path: process.env["PATH"] ?? "",
+    parentPid: process.pid
   }).pipe(Layer.provide(NodeServices.layer))
 )
 
@@ -57,6 +58,10 @@ runtime.runPromise(start).catch((error: unknown) => {
 })
 
 app.on("window-all-closed", () => app.quit())
+
+// A terminal's Ctrl-C or a SIGTERM quits like the menu does, so the server is stopped too.
+process.on("SIGTERM", () => app.quit())
+process.on("SIGINT", () => app.quit())
 
 // Give the server its grace period before the app exits.
 let stopping = false

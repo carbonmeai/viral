@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { contentSecurityPolicy, isAppUrl, restartDelayMs, serverLaunch } from "./server-launch.ts"
 
-const base = { execPath: "/Applications/Viral.app/Contents/MacOS/Viral", resourcesPath: "/Applications/Viral.app/Contents/Resources", repoRoot: "/repo", port: 3410, path: "/usr/bin:/bin" }
+const base = { execPath: "/Applications/Viral.app/Contents/MacOS/Viral", resourcesPath: "/Applications/Viral.app/Contents/Resources", repoRoot: "/repo", port: 3410, path: "/usr/bin:/bin", parentPid: 4242 }
 
 test("packaged builds run the bundled server on Electron's Node, bundled tools first", () => {
   const launch = serverLaunch({ ...base, packaged: true })
@@ -11,6 +11,7 @@ test("packaged builds run the bundled server on Electron's Node, bundled tools f
   assert.equal(launch.env["ELECTRON_RUN_AS_NODE"], "1")
   assert.equal(launch.env["PATH"], "/Applications/Viral.app/Contents/Resources/bin:/usr/bin:/bin")
   assert.equal(launch.env["VIRAL_PORT"], "3410")
+  assert.equal(launch.env["VIRAL_PARENT_PID"], "4242", "the server stops when the app is gone")
 })
 
 test("development runs the server's TypeScript from the repo", () => {

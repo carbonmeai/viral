@@ -6,11 +6,11 @@
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
-    "build": "vp pack",
+    "build": "node_modules/.bin/vp pack",
     "start": "electron .",
     "dev": "node scripts/dev.ts",
     "fetch-tools": "node scripts/fetch-tools.ts",
-    "package": "vp pack && node scripts/build-server.ts && electron-builder --mac --arm64 --dir"
+    "package": "node_modules/.bin/vp pack && node scripts/build-server.ts && node_modules/.bin/electron-builder --mac --arm64 --dir"
   },
   "devDependencies": {
     "@effect/platform-node": "4.1.2",
