@@ -3,8 +3,9 @@ import { Input } from "@viral/ui/primitives/input"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { SettingRow, SettingsGroup } from "@viral/ui/primitives/setting-row"
 import { desktop } from "../../../config/server-url.ts"
-import { type Mode, modeAtom, nameAtom, type Theme, themeAtom } from "../../system/preferences.ts"
+import { type Mode, modeAtom, nameAtom, themeAtom } from "../../system/preferences.ts"
 import { SettingsPage } from "../settings-page.tsx"
+import { ThemePicker } from "./theme-picker.tsx"
 
 // Settings › General: how the app looks, how much detail it shows, and your name.
 export function GeneralPage() {
@@ -15,12 +16,7 @@ export function GeneralPage() {
     <SettingsPage section="general" description="How Viral looks and how much it shows you.">
       <SettingsGroup title="Appearance">
         <SettingRow label="Theme" sub="System follows your Mac’s light or dark setting.">
-          <Segmented<Theme>
-            label="Theme"
-            value={theme}
-            onChange={setTheme}
-            options={[{ value: "system", label: "System" }, { value: "dark", label: "Dark" }, { value: "light", label: "Light" }]}
-          />
+          <ThemePicker value={theme} onChange={setTheme} />
         </SettingRow>
         <SettingRow label="Detail" sub="Detailed shows costs, models, timings and sources next to everything. Simple hides them.">
           <Segmented<Mode>
