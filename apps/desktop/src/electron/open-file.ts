@@ -1,17 +1,17 @@
 import { BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from "electron"
+import { openFileDialog } from "./open-file-kinds.ts"
 
-// page → main: choose a video file with the macOS open panel; answers its path, or null when cancelled
+// page → main: choose a video (or, for the music library, an audio) file with the macOS open panel; answers its
+// path, or null when cancelled
 export const OPEN_FILE_CHANNEL = "viral:open-file"
 
-// The video files the open panel offers.
-export const VIDEO_EXTENSIONS = ["mp4", "mov", "m4v", "mkv", "webm", "avi"]
-
 export const handleOpenFile = () =>
-  ipcMain.handle(OPEN_FILE_CHANNEL, async (event) => {
+  ipcMain.handle(OPEN_FILE_CHANNEL, async (event, kind: unknown) => {
+    const dialogFor = openFileDialog(kind)
     const options: OpenDialogOptions = {
-      title: "Choose a video",
+      title: dialogFor.title,
       properties: ["openFile"],
-      filters: [{ name: "Videos", extensions: VIDEO_EXTENSIONS }]
+      filters: [{ name: dialogFor.name, extensions: [...dialogFor.extensions] }]
     }
     const window = BrowserWindow.fromWebContents(event.sender)
     const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options)
