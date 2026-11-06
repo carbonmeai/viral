@@ -17,12 +17,16 @@ export const FetchedSource = Schema.Struct({
   title: Schema.NullOr(Schema.String),
   channel: Schema.NullOr(Schema.String),
   url: Schema.NullOr(Schema.String),
-  duration_s: Schema.Finite
+  duration_s: Schema.Finite,
+  // the video's size: downloads are 1080p when the site has it, else 720p, never above 1080p
+  width: Schema.NullOr(Schema.Int),
+  height: Schema.NullOr(Schema.Int)
 })
 export type FetchedSource = typeof FetchedSource.Type
 
 const Line = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("progress"), pct: Schema.Finite }),
+  Schema.Struct({ type: Schema.Literal("log"), message: Schema.String }),
   Schema.Struct({ type: Schema.Literal("done"), ...FetchedSource.fields })
 ]))
 
@@ -46,6 +50,7 @@ export class SourceFetcher extends Context.Service<SourceFetcher, {
             if (line.type === "progress") {
               return progress(line.pct).pipe(Effect.as(undefined))
             }
+            if (line.type === "log") return progress(null, line.message).pipe(Effect.as(undefined))
             const { type: _, ...fetched } = line
             return Effect.succeed(fetched)
           }

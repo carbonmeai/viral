@@ -7,14 +7,18 @@
 Usage:
   uv run fetch-source.py (--url URL | --file PATH) --out-dir DIR
 
-A URL is downloaded with yt-dlp (up to 1080p, merged to mp4; yt-dlp is an inline dependency, so nothing
-needs installing). A local file is hard-linked when it is on the same disk, copied otherwise, and remuxed
+A URL is downloaded with yt-dlp at 1080p, else 720p, else the best there is below that (never above 1080p:
+shorts are 1080x1920, so more only costs disk), merged to mp4; yt-dlp is an inline dependency, so nothing
+needs installing. A local file is hard-linked when it is on the same disk, copied otherwise, and remuxed
 when it isn't already an mp4.
 
 stdout, one JSON object per line:
   {"type": "progress", "pct": 42.0}
   {"type": "error", "code": "download", "message": "..."}    (then exit 1)
-  {"type": "done", "path": "source.mp4", "title": ..., "channel": ..., "url": ..., "duration_s": 2280.4}
+  {"type": "done", "path": "source.mp4", "title": ..., "channel": ..., "url": ..., "duration_s": 2280.4,
+   "width": 1920, "height": 1080}
+
+`--print-format` prints the yt-dlp format selector and exits (for tests).
 """
 import argparse
 import json
@@ -35,12 +39,27 @@ class FetchFailure(Exception):
         self.code = code
 
 
-def duration(path: Path) -> float:
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-                       capture_output=True, text=True)
+# 1080p first, then 720p, then the best under 1080p, then anything; within a height, H.264 + AAC so the merge
+# into mp4 needs no re-encode.
+FORMAT = "/".join([
+    "bv*[height=1080][vcodec^=avc1]+ba[ext=m4a]",
+    "bv*[height=1080]+ba",
+    "bv*[height=720][vcodec^=avc1]+ba[ext=m4a]",
+    "bv*[height=720]+ba",
+    "bv*[height<=1080]+ba",
+    "b[height<=1080]",
+    "b",
+])
+
+
+def probe(path: Path) -> dict:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "stream=width,height:format=duration", "-of", "json", str(path)], capture_output=True, text=True)
     if r.returncode != 0:
         raise FetchFailure("probe", f"not a readable video: {r.stderr.strip()}")
-    return float(r.stdout.strip())
+    data = json.loads(r.stdout)
+    stream = (data.get("streams") or [{}])[0]
+    return {"duration_s": round(float(data["format"]["duration"]), 3), "width": stream.get("width"), "height": stream.get("height")}
 
 
 def from_url(url: str, out: Path) -> dict:
@@ -53,7 +72,7 @@ def from_url(url: str, out: Path) -> dict:
                 emit({"type": "progress", "pct": round(100 * d.get("downloaded_bytes", 0) / total, 1)})
 
     opts = {
-        "format": "bv*[height<=1080]+ba/b",
+        "format": FORMAT,
         "merge_output_format": "mp4",
         "outtmpl": str(out / "source.%(ext)s"),
         "progress_hooks": [hook],
@@ -97,6 +116,9 @@ def from_file(path: Path, out: Path) -> dict:
 
 
 def main() -> None:
+    if sys.argv[1:] == ["--print-format"]:
+        print(FORMAT)
+        return
     ap = argparse.ArgumentParser()
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--url")
@@ -107,7 +129,10 @@ def main() -> None:
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     meta = from_url(args.url, out) if args.url else from_file(Path(args.file).expanduser().resolve(), out)
-    emit({"type": "done", "path": "source.mp4", **meta, "duration_s": round(duration(out / "source.mp4"), 3)})
+    video = probe(out / "source.mp4")
+    if video["height"]:
+        emit({"type": "log", "message": f"source video is {video['width']}x{video['height']}"})
+    emit({"type": "done", "path": "source.mp4", **meta, **video})
 
 
 if __name__ == "__main__":

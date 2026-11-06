@@ -63,6 +63,12 @@ test("a source run fetches the video and records its metadata", async () => {
   assert.equal(row.title, "My Long Video")
   assert.ok(row.durationS !== null && Math.abs(row.durationS - 12) < 0.2)
   assert.equal(fetched._tag, "Some")
+  assert.ok(fetched._tag === "Some")
+  assert.deepEqual(
+    [(fetched.value.data as { width: number }).width, (fetched.value.data as { height: number }).height],
+    [640, 360],
+    "the video's size is recorded with it"
+  )
   const file = join(work, "home/sources", source.id, "source-video/v1/source.mp4")
   assert.ok(existsSync(file))
   assert.equal(statSync(file).ino, statSync(video).ino, "a local mp4 is hard-linked, not copied")
