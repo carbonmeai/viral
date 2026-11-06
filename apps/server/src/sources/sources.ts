@@ -54,6 +54,8 @@ export class Sources extends Context.Service<Sources, {
   readonly list: Effect.Effect<ReadonlyArray<Source>>
   get(id: SourceId): Effect.Effect<Source, SourceNotFound>
   setRights(id: SourceId, rights: SourceRights, rightsNote: string | null): Effect.Effect<Source, SourceNotFound>
+  setDetails(id: SourceId, title: string | null, channel: string | null): Effect.Effect<Source, SourceNotFound>
+  // What fetching found; it fills in a title or channel only where none is set, so yours are kept
   recordMetadata(id: SourceId, metadata: SourceMetadata): Effect.Effect<void>
   remove(id: SourceId): Effect.Effect<boolean>
 }>()("@viral/server/sources/sources") {
@@ -109,11 +111,19 @@ export class Sources extends Context.Service<Sources, {
         }
       )
 
+      const setDetails = Effect.fn("Sources.setDetails")(function*(id: SourceId, title: string | null, channel: string | null) {
+        const now = DateTime.formatIso(yield* DateTime.now)
+        const clean = (value: string | null) => value === null || value.trim() === "" ? null : value.trim()
+        yield* sql`UPDATE sources SET title = ${clean(title)}, channel = ${clean(channel)}, updated_at = ${now} WHERE id = ${id}`
+          .pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const recordMetadata = Effect.fn("Sources.recordMetadata")(function*(id: SourceId, metadata: SourceMetadata) {
         const now = DateTime.formatIso(yield* DateTime.now)
         yield* sql`
           UPDATE sources
-          SET title = ${metadata.title}, channel = ${metadata.channel}, url = ${metadata.url},
+          SET title = coalesce(title, ${metadata.title}), channel = coalesce(channel, ${metadata.channel}), url = ${metadata.url},
               duration_s = ${metadata.durationS}, updated_at = ${now}
           WHERE id = ${id}
         `
@@ -129,7 +139,7 @@ export class Sources extends Context.Service<Sources, {
         return true
       }, Effect.orDie)
 
-      return Sources.of({ create, list, get, setRights, recordMetadata, remove })
+      return Sources.of({ create, list, get, setRights, setDetails, recordMetadata, remove })
     })
   ).pipe(Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto]))
 }

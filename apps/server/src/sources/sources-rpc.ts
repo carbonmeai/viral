@@ -9,6 +9,7 @@ export const SourcesRpcLive = SourcesRpcs.toLayer(Effect.gen(function*() {
     ListSources: () => sources.list,
     GetSource: ({ id }) => sources.get(id),
     SetSourceRights: ({ id, rights, rightsNote }) => sources.setRights(id, rights, rightsNote),
+    SetSourceDetails: ({ id, title, channel }) => sources.setDetails(id, title, channel),
     DeleteSource: ({ id }) => sources.remove(id)
   })
 }))

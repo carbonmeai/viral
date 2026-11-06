@@ -47,6 +47,13 @@ export class SourcesRpcs extends RpcGroup.make(
     success: Source,
     error: SourceNotFound
   }),
+  // Names a video yourself, e.g. a local file: its title, and the channel credited when the footage isn't
+  // yours ("Video: <channel>"). Null clears one.
+  Rpc.make("SetSourceDetails", {
+    payload: { id: SourceId, title: Schema.NullOr(Schema.String), channel: Schema.NullOr(Schema.String) },
+    success: Source,
+    error: SourceNotFound
+  }),
   // Deletes the source, every short made from it, and their folders; false when the source is unknown.
   Rpc.make("DeleteSource", { payload: { id: SourceId }, success: Schema.Boolean })
 ) {}

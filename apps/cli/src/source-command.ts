@@ -8,6 +8,7 @@ import { show } from "./show.ts"
 export const SOURCE_USAGE = `  source add (--url <url> | --file <path>) [--rights owned|licensed] [--note <text>]
   source list | show <id> | delete <id>
   source rights <id> <unconfirmed|owned|licensed> [--note <text>]
+  source details <id> [--title <title>] [--channel <channel>]   (name a local video; the channel is credited)
   source run <id>                (source → transcribe → contact sheets → ads → story; reuses finished work)
   source story <id>              (the story's proposals; make one with \`project from-proposal\`)
   source artifacts <id>`
@@ -71,6 +72,15 @@ export const sourceCommand = Effect.fn("sourceCommand")(function*() {
         rightsNote: note
       })
       return yield* Console.log(describe(source))
+    }
+    case "details": {
+      const current = yield* client.GetSource({ id: SourceId.make(id ?? "") })
+      const source = yield* client.SetSourceDetails({
+        id: current.id,
+        title: option("--title") ?? current.title,
+        channel: option("--channel") ?? current.channel
+      })
+      return yield* Console.log(`${describe(source)}${source.channel === null ? "" : `  (by ${source.channel})`}`)
     }
     case "run": {
       const sourceId = SourceId.make(id ?? "")
