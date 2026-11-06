@@ -24,6 +24,8 @@ import { SoundLibrary } from "./sound-library/sound-library.ts"
 import { SoundLibraryRpcLive } from "./sound-library/sound-library-rpc.ts"
 import { Sources } from "./sources/sources.ts"
 import { SourcesRpcLive } from "./sources/sources-rpc.ts"
+import { SourceOverviews } from "./sources/source-overview.ts"
+import { SourceOverviewRpcLive } from "./sources/source-overview-rpc.ts"
 import { Transcriber } from "./transcribe/transcriber.ts"
 import { ElevenLabs } from "./voice/eleven-labs.ts"
 import { VoicesRpcLive } from "./voice/voices-rpc.ts"
@@ -57,6 +59,7 @@ const DomainsLive = Layer.mergeAll(
   AppSettingsStore.layer,
   StorageReport.layer,
   UsageReport.layer,
+  SourceOverviews.layer,
   NodeServices.layer
 )
 
@@ -77,7 +80,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     RunsRpcLive,
     VoicesRpcLive,
     ToolsRpcLive,
-    SettingsRpcLive
+    SettingsRpcLive,
+    SourceOverviewRpcLive
   ]),
   Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)
