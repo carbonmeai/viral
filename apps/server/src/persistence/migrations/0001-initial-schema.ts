@@ -54,6 +54,7 @@ const SCHEMA = `
     bpm           REAL,                           -- filled by analysis; null until analysed
     drop_s        REAL,                           -- where the drop hits inside the track
     loudness_lufs REAL,
+    beat_source   TEXT CHECK (beat_source IN ('analysis', 'manual')),  -- who set bpm/drop_s; manual is never overwritten
     analyzed_at   TEXT,
     created_at    TEXT NOT NULL
   );

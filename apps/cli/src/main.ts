@@ -48,6 +48,7 @@ const program = Effect.gen(function*() {
     PresetNotFound: (e) => Console.error(`no preset ${e.id}`),
     PresetIsDefault: (e) => Console.error(`preset ${e.id} is the default; make another one the default first`),
     MusicTrackNotFound: (e) => Console.error(`no music track ${e.id}`),
+    MusicAnalysisError: (e) => Console.error(`couldn't analyse the track (${e.code}): ${e.message}`),
     MusicFileUnreadable: (e) => Console.error(`can't read ${e.file}: ${e.message}`),
     SchemaError: (e) => Console.error(e.message),
     RunNotFound: (e) => Console.error(`no run ${e.id}`),

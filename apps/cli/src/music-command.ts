@@ -6,13 +6,18 @@ import { show } from "./show.ts"
 
 export const MUSIC_USAGE = `  music add <file> [--title <title>] [--rights owned|licensed]
   music rights <id> <unconfirmed|owned|licensed>
-  music beat <id> <bpm> <drop-seconds>   (tempo and drop time, until tracks are analysed)
+  music analyse <id>                     (measure tempo, drop and loudness again; adding a track already does)
+  music beat <id> <bpm> <drop-seconds>   (set tempo and drop yourself; analysis never overwrites these)
   music list | show <id> | remove <id>`
 
 const decodeRights = Schema.decodeUnknownEffect(Rights)
 
 const describe = (track: MusicTrack) => {
-  const analysis = track.bpm === null ? "not analysed" : `${track.bpm} bpm, drop ${track.dropS}s`
+  const beat = track.bpm === null
+    ? track.analyzedAt === null ? "not analysed yet" : "no clear beat"
+    : `${track.bpm} bpm, ${track.dropS === null ? "no drop" : `drop ${track.dropS}s`}${track.beatSource === "manual" ? " (set by you)" : ""}`
+  const loudness = track.loudnessLufs === null ? "" : `, ${track.loudnessLufs} LUFS`
+  const analysis = `${beat}${loudness}`
   return `${track.id}  ${track.rights.padEnd(11)} ${track.title}  (${analysis})`
 }
 
@@ -36,6 +41,8 @@ export const musicCommand = Effect.fn("musicCommand")(function*() {
         id: MusicTrackId.make(arg ?? ""),
         rights: yield* decodeRights(value)
       })))
+    case "analyse":
+      return yield* Console.log(describe(yield* client.AnalyseMusicTrack({ id: MusicTrackId.make(arg ?? "") })))
     case "beat": {
       const bpm = Number(value)
       const drop = Number(positionals[4])

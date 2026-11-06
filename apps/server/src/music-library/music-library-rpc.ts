@@ -8,6 +8,7 @@ export const MusicLibraryRpcLive = MusicLibraryRpcs.toLayer(Effect.gen(function*
     AddMusicTrack: ({ file, title, rights }) => music.add(file, title, rights),
     SetMusicTrackRights: ({ id, rights }) => music.setRights(id, rights),
     SetMusicTrackBeat: ({ id, bpm, dropS }) => music.setBeat(id, bpm, dropS),
+    AnalyseMusicTrack: ({ id }) => music.analyse(id),
     ListMusicTracks: () => music.list,
     GetMusicTrack: ({ id }) => music.get(id),
     RemoveMusicTrack: ({ id }) => music.remove(id)

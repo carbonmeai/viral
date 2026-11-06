@@ -4,7 +4,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
+import { NodeServices } from "@effect/platform-node"
+import { Layer } from "effect"
+import { SecureRandom } from "effect/crypto"
+import { MusicAnalysisError } from "@viral/contracts"
+import { ViralHome } from "../home/viral-home.ts"
+import { DatabaseLive } from "../persistence/database.ts"
 import { MusicLibrary } from "./music-library.ts"
+import { TrackAnalyser } from "./track-analyser.ts"
 
 let home: string
 before(() => {
@@ -13,8 +20,17 @@ before(() => {
 })
 after(() => rmSync(home, { recursive: true, force: true }))
 
-const run = <A, E>(effect: Effect.Effect<A, E, MusicLibrary>) =>
-  Effect.runPromise(Effect.provide(effect, MusicLibrary.layer))
+// fake audio can't be analysed; the library must still keep it
+const library = Layer.effect(MusicLibrary, MusicLibrary.make).pipe(
+  Layer.provide([
+    TrackAnalyser.replay(() => new MusicAnalysisError({ code: "decode", message: "fake audio" })),
+    DatabaseLive,
+    ViralHome.layer,
+    NodeServices.layer,
+    SecureRandom.layerWebCrypto
+  ])
+)
+const run = <A, E>(effect: Effect.Effect<A, E, MusicLibrary>) => Effect.runPromise(Effect.provide(effect, library))
 
 test("copies a track into the library and removes it again", async () => {
   const original = join(home, "Viral Drop Song.WAV")
