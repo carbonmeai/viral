@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { FrameAt, GateResponse, ProjectId, RunId, RunRequest, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
+import type { FrameAt, GateResponse, ProjectId, RunId, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Button } from "@viral/ui/primitives/button"
 import { Status } from "@viral/ui/primitives/status"
@@ -16,6 +16,7 @@ import { Detail } from "../system/detail.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
 import { EditorFrame } from "./editor-frame.tsx"
+import { EditorSkeleton } from "./editor-skeleton.tsx"
 import {
   type EditorStepId,
   editorSteps,
@@ -33,7 +34,11 @@ import { RenderInspector, type RenderTab } from "./render/render-inspector.tsx"
 import { ShortPlayer } from "./render/short-player.tsx"
 import { ScriptInspector, type ScriptTab } from "./script/script-inspector.tsx"
 import { ScriptStage } from "./script/script-stage.tsx"
-import { checkScriptEdit, checkShotsEdit, checkThumbnailEdit, respondToRequest, setProjectVoice, workspaceAtom } from "./shorts-api.ts"
+import { checkScriptEdit, checkSectionsEdit, checkShotsEdit, checkThumbnailEdit, respondToRequest, setProjectVoice, stillAt, workspaceAtom } from "./shorts-api.ts"
+import { CutTimeline } from "./sections/cut-timeline.tsx"
+import { SectionsInspector, type SectionsTab } from "./sections/sections-inspector.tsx"
+import { SectionsStage, type SectionsView } from "./sections/sections-stage.tsx"
+import { changeCount, draftOf, proposalOf as sectionsProposal, sectionBlocks, type SectionsDraft } from "./sections/sections-values.ts"
 import { ShotsInspector, type ShotsTab } from "./shots/shots-inspector.tsx"
 import { ShotsStage, type ShotsView } from "./shots/shots-stage.tsx"
 import { proposalOf, type ShotChange, shotSpans, timelineShots } from "./shots/shots-values.ts"
@@ -55,6 +60,8 @@ export function ShortPage({ projectId, step, onStep }: {
   const refresh = useAtomRefresh(workspaceAtom(projectId))
   const data = AsyncResult.value(result)
   if (Option.isNone(data)) {
+    // loading draws the editor itself in grey; only a failure shows the server's state
+    if (!AsyncResult.isFailure(result)) return <EditorSkeleton />
     return (
       <>
         <TitleBar title="Short" />
@@ -134,6 +141,17 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [thumbWords, setThumbWords] = useState<ThumbnailWords | null>(null)
   const [thumbProblems, setThumbProblems] = useState<ReadonlyArray<string>>([])
   const [copied, setCopied] = useState(false)
+  // the Sections step (cut-down shorts): the selected section, the stage's view, your edit in progress, and the
+  // stills fetched for sections whose start you moved (by source second)
+  const [sectionK, setSectionK] = useState(0)
+  const [sectionsView, setSectionsView] = useState<SectionsView>("preview")
+  const [sectionsTab, setSectionsTab] = useState<SectionsTab>("section")
+  const [sectionsDraft, setSectionsDraft] = useState<SectionsDraft | null>(null)
+  const [sectionProblems, setSectionProblems] = useState<ReadonlyArray<string>>([])
+  const [sectionPlaying, setSectionPlaying] = useState(false)
+  const [stills, setStills] = useState<ReadonlyMap<number, string>>(new Map())
+  const checkSections = useAtomSet(checkSectionsEdit, { mode: "promise" })
+  const fetchStill = useAtomSet(stillAt, { mode: "promise" })
 
   const request = waitingOn === open ? pending : null
   const answer = (response: GateResponse) => {
@@ -159,6 +177,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         ? check({ payload: { projectId: ws.project.id, script: artifact as typeof ws.script.script } }).then((r) => r.problems)
         : open === "shots"
         ? checkShots({ payload: { projectId: ws.project.id, proposal: artifact as ShotProposal } }).then((r) => r.problems)
+        : open === "sections"
+        ? checkSections({ payload: { projectId: ws.project.id, proposal: artifact as SectionsProposal } }).then((r) => r.problems)
         : open === "thumbnail"
         ? checkThumbnail({ payload: { projectId: ws.project.id, config: artifact as ThumbConfig } }).then((r) => r.problems)
         : Promise.resolve([] as ReadonlyArray<string>)
@@ -189,6 +209,33 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const shotBlocks = ws.shotPlan !== null && layout !== null && ws.voiceover !== null
     ? timelineShots(shotSpans(ws.shotPlan.plan, ws.voiceover.words, ws.voiceover.voiceover.durationS), layout)
     : null
+  // a cut-down short's sections: your edit in progress, else the plan's
+  const planDraft = useMemo(() => (ws.cutPlan === null ? null : draftOf(ws.cutPlan.plan)), [ws.cutPlan])
+  const sections = sectionsDraft ?? planDraft
+  // the timeline shows your edit only on the Sections step; the other steps show what was rendered
+  const timelineSections = open === "sections" ? sections : planDraft
+  const stillOf = (draft: SectionsDraft | null) => (k: number) => {
+    const section = draft?.sections[k]
+    if (section === undefined || ws.cutPlan === null) return null
+    if (section.frame !== null) return artifactFileUrl(serverUrl, projectOwner, "cut-plan", ws.cutPlan.version, section.frame)
+    const still = stills.get(Math.round(section.start))
+    return still === undefined ? null : stillUrl(still)
+  }
+  const sectionStill = stillOf(sections)
+  // a section whose start moved, or that you added, gets a still of the video at its new start
+  const missing = sections?.sections.filter((s) => s.frame === null && !stills.has(Math.round(s.start))).map((s) => Math.round(s.start)) ?? []
+  const missingKey = missing.join(",")
+  useEffect(() => {
+    for (const t of missing) {
+      void fetchStill({ payload: { sourceId: ws.source.id, t, span: 0, every: 1 } })
+        .then((r) => {
+          const frame = r.frames[0]
+          if (frame !== undefined) setStills((m) => new Map(m).set(t, frame.path))
+        })
+        .catch(() => undefined)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when the set of missing starts changes
+  }, [missingKey])
   const voiceName = voices.find((v) => v.voiceId === ws.voiceId)?.name.split(" - ")[0] ?? "Voice"
   const working = openStep.stages.map((s) => progress.live[s]).find((l) => l !== undefined) ?? null
   const state = states.get(open) ?? "next"
@@ -216,6 +263,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     else if (open === "shots") setShotsTab("ask")
     else if (open === "render") setRenderTab("back")
     else if (open === "thumbnail") setThumbTab("ask")
+    else if (open === "sections") setSectionsTab("ask")
     else setScriptTab("ask")
   }
   const metadata = ws.metadata
@@ -476,8 +524,89 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         />
       )
     }
+  } else if (open === "sections") {
+    if (sections === null || ws.cutSource === null) {
+      stage = notYet("sections")
+      inspector = null
+    } else {
+      const k = Math.min(sectionK, Math.max(0, sections.sections.length - 1))
+      const select = (next: number) => {
+        setSectionK(Math.max(0, Math.min(sections.sections.length - 1, next)))
+        setSectionPlaying(false)
+      }
+      const edit = (next: SectionsDraft) => {
+        setSectionProblems([])
+        setSectionsDraft(next)
+      }
+      stage = (
+        <>
+          <div className="flex shrink-0 items-center gap-2 px-3.5 py-2.5">
+            <Segmented<SectionsView>
+              label="Stage"
+              value={sectionsView}
+              onChange={(v) => {
+                setSectionsView(v)
+                setSectionPlaying(false)
+              }}
+              options={[
+                { value: "preview", label: <><Eye className="size-3.5" />Preview</> },
+                { value: "storyboard", label: <><LayoutGrid className="size-3.5" />Storyboard</> }
+              ]}
+            />
+            <span className="ml-auto inline-flex h-[22px] items-center rounded-chip bg-ctl px-2 text-xs text-fg-1">{ws.preset.name}</span>
+            <Detail><span className="inline-flex h-[22px] items-center rounded-chip bg-ctl px-2 text-xs text-fg-1">{ws.project.approach}</span></Detail>
+          </div>
+          <SectionsStage
+            sections={sections.sections}
+            preset={ws.preset}
+            hookText={sections.hookText}
+            view={sectionsView}
+            selected={k}
+            onSelect={(next) => {
+              select(next)
+              setSectionsView("preview")
+            }}
+            stillOf={sectionStill}
+            sourceVideoUrl={sourceVideoUrl}
+            playing={sectionPlaying}
+            onPlaying={setSectionPlaying}
+          />
+        </>
+      )
+      inspector = (
+        <SectionsInspector
+          draft={sections}
+          onDraft={edit}
+          changes={planDraft === null ? 0 : changeCount(planDraft, sections)}
+          preset={ws.preset}
+          cut={ws.cutSource}
+          selected={k}
+          onSelect={select}
+          stillOf={sectionStill}
+          sourceVideoUrl={sourceVideoUrl}
+          onPlay={() => {
+            setSectionsView("preview")
+            setSectionPlaying(true)
+          }}
+          problems={sectionProblems}
+          onRevert={() => {
+            setSectionsDraft(null)
+            setSectionProblems([])
+          }}
+          onSend={() => {
+            void gate.edit(sectionsProposal(sections)).then((refused) => {
+              setSectionProblems(refused)
+              if (refused.length === 0) setSectionsDraft(null)
+            })
+          }}
+          stages={stages}
+          gate={gate}
+          tab={sectionsTab}
+          onTab={setSectionsTab}
+        />
+      )
+    }
   } else {
-    // a cut-down short's Sections step has no view yet
     stage = <LaterStep step={openStep} milestone="a later milestone" />
     inspector = null
   }
@@ -495,7 +624,30 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         }
         stage={stage}
         inspector={inspector ?? <div className="p-4 text-xs text-fg-2">Nothing to inspect here yet.</div>}
-        timeline={
+        timeline={ws.project.format === "cut-down" ? (
+          timelineSections === null || ws.cutSource === null ? (
+            <div className="grid h-[120px] place-items-center text-xs text-fg-2">The timeline appears once the sections are planned.</div>
+          ) : (
+            <CutTimeline
+              sections={timelineSections.sections}
+              sourceSeconds={ws.cutSource.sourceSeconds}
+              excluded={ws.cutSource.excluded}
+              stillOf={stillOf(timelineSections)}
+              selected={open === "sections" ? Math.min(sectionK, timelineSections.sections.length - 1) : null}
+              onSelect={(k) => {
+                setSectionK(k)
+                setSectionPlaying(false)
+                if (open !== "sections") onStep("sections")
+              }}
+              head={open === "sections"
+                ? sectionBlocks(timelineSections.sections)[Math.min(sectionK, timelineSections.sections.length - 1)]?.start ?? null
+                : (open === "render" || open === "publish") && playTime !== null
+                ? playTime
+                : null}
+              captions={`${captions.enabled ? `${captions.mode === "chunk" ? `${captions.maxWords} words at a time` : "One word at a time"} · ${captions.case}` : "No captions (finish in an editor from the .srt)"}`}
+            />
+          )
+        ) : (
           <Timeline
             layout={layout}
             head={open === "voice" && voTime !== null && layout !== null
@@ -521,7 +673,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
               }
             }}
           />
-        }
+        )}
       />
     </>
   )

@@ -6,7 +6,7 @@ import { clockOf, type TimelineLayout } from "./editor-values.ts"
 import type { ShotBlock } from "./shots/shots-values.ts"
 
 // One track's colour tile, like Cap's soft icon tiles.
-function TrackName({ icon: Icon, color, name }: { readonly icon: LucideIcon; readonly color: string; readonly name: string }) {
+export function TrackName({ icon: Icon, color, name }: { readonly icon: LucideIcon; readonly color: string; readonly name: string }) {
   return (
     <div className="flex h-9 items-center gap-2 text-xs text-fg-1">
       <span
@@ -20,12 +20,12 @@ function TrackName({ icon: Icon, color, name }: { readonly icon: LucideIcon; rea
   )
 }
 
-function Lane({ children }: { readonly children?: ReactNode }) {
+export function Lane({ children }: { readonly children?: ReactNode }) {
   return <div className="relative h-9 rounded-ctl bg-ctl">{children}</div>
 }
 
 // A coloured block on a lane, from `start` to `end` (seconds), labelled.
-function Block({ start, end, total, color, label, dim }: {
+export function Block({ start, end, total, color, label, dim }: {
   readonly start: number
   readonly end: number
   readonly total: number
