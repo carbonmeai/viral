@@ -69,7 +69,9 @@ apps/server/src/
                        models"). Elsewhere the server fetches them in the background once the required tools are
                        ready (VIRAL_PREFETCH_MODELS=off skips), with progress in Settings › Tools
                        (PrefetchBackgroundRemoval)
-  projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…)
+  projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…). A short's optional
+                       brief (what it should achieve; CreateProject/CreateProjectFromProposal, SetProjectBrief) goes
+                       first in the script, shots, sections, thumbnail and metadata prompts (creator-brief.ts)
   presets/             style profiles; one default, seeded on first start. Edits (UpdatePreset) and renames
                        (RenamePreset) go through preset-rules.ts first; a bad one is PresetInvalid with plain problems
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;
@@ -140,9 +142,11 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        videos, shorts, settings, …). layout/ is the fixed frame: sidebar, title bar, page column.
                        videos/: New source and a video's page (GetSourceOverview; the source run followed live
                        by folding SubscribeRun in run-progress.ts); frames come from contact-sheet stills, or from
-                       sheet tiles on older sheets
+                       sheet tiles on older sheets. "Make this short" asks for the optional brief first
+                       (make-short-dialog.tsx)
                        shorts/: a short's editor, one fixed frame for every step (editor-frame.tsx: step bar, stage,
-                       inspector, timeline), from GetShortWorkspace and the run followed live. Script and Voice
+                       inspector, timeline), from GetShortWorkspace and the run followed live. The title bar's Brief
+                       button edits the brief (just save, or save and re-run from Script/Sections). Script and Voice
                        answer their gates (approve, ask with a note, edit; a script edit is checked first with
                        CheckScriptEdit so a bad one never fails the run); editor-values.ts lays the short out on
                        its timeline the way the renderer plays it. shots/: the Shots step (preview in the style's
@@ -167,7 +171,7 @@ apps/desktop/          the Electron shell: starts the server (node in dev; Elect
                        vp pack bundles main/preload and the server (dist-server); electron-builder makes Viral.app
 packages/contracts/    wire schemas + RpcGroups, one file per domain
 packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,
-                       28/32px controls) and primitives on Base UI + cva
+                       28/32px controls) and primitives on Base UI + cva (incl. Dialog, Textarea)
 repos/                 gitignored reference source checkouts — read-only
 scripts/               repo tooling (sync-repos.ts)
 ```
