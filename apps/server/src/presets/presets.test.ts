@@ -54,3 +54,22 @@ test("moves the default, protects it from deletion and rejects duplicate names",
   assert.equal(result.deleteOriginal, true)
   assert.ok(Exit.isFailure(result.duplicate))
 })
+
+test("edits are checked before they're saved, and renames keep names unique", async () => {
+  const [edited, refused, renamed, taken, blank] = await run(Effect.gen(function*() {
+    const presets = yield* Presets
+    const style = yield* presets.create("Edit me", DEFAULT_PRESET_CONFIG)
+    const edited = yield* presets.edit(style.id, { ...style.config, captions: { ...style.config.captions, highlight: "#FF3B30" } })
+    const refused = yield* presets.edit(style.id, { ...style.config, loudnessLufs: 3 }).pipe(Effect.flip)
+    const renamed = yield* presets.rename(style.id, "  Red pop  ")
+    const taken = yield* presets.rename(style.id, DEFAULT_PRESET_NAME).pipe(Effect.flip)
+    const blank = yield* presets.rename(style.id, "   ").pipe(Effect.flip)
+    return [edited, refused, renamed, taken, blank] as const
+  }))
+  assert.equal(edited.config.captions.highlight, "#FF3B30")
+  assert.ok(refused._tag === "PresetInvalid" && refused.problems.some((p) => p.includes("loudness")))
+  assert.equal(renamed.name, "Red pop")
+  assert.equal(renamed.config.captions.highlight, "#FF3B30", "an invalid edit changed nothing")
+  assert.equal(taken._tag, "PresetNameTaken")
+  assert.equal(blank._tag, "PresetInvalid")
+})

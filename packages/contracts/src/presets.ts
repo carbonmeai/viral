@@ -81,6 +81,11 @@ export class PresetIsDefault extends Schema.TaggedError<PresetIsDefault>()("Pres
   id: PresetId
 }) {}
 
+// A style edit the server refused, with every problem it found ("caption position must be 0–1").
+export class PresetInvalid extends Schema.TaggedError<PresetInvalid>()("PresetInvalid", {
+  problems: Schema.Array(Schema.String)
+}) {}
+
 export class PresetsRpcs extends RpcGroup.make(
   Rpc.make("ListPresets", { success: Schema.Array(Preset) }),
   Rpc.make("GetPreset", { payload: { id: PresetId }, success: Preset, error: PresetNotFound }),
@@ -90,6 +95,17 @@ export class PresetsRpcs extends RpcGroup.make(
     error: PresetNameTaken
   }),
   Rpc.make("SetDefaultPreset", { payload: { id: PresetId }, success: Preset, error: PresetNotFound }),
+  // Replaces a style's settings after checking them; refused with every problem found.
+  Rpc.make("UpdatePreset", {
+    payload: { id: PresetId, config: PresetConfig },
+    success: Preset,
+    error: Schema.Union([PresetNotFound, PresetInvalid])
+  }),
+  Rpc.make("RenamePreset", {
+    payload: { id: PresetId, name: Schema.String },
+    success: Preset,
+    error: Schema.Union([PresetNotFound, PresetNameTaken, PresetInvalid])
+  }),
   // The default preset can't be deleted; make another one the default first.
   Rpc.make("DeletePreset", {
     payload: { id: PresetId },

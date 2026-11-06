@@ -2,6 +2,7 @@ import {
   type Preset,
   PresetConfig,
   PresetId,
+  PresetInvalid,
   PresetIsDefault,
   PresetNameTaken,
   PresetNotFound
@@ -11,6 +12,7 @@ import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { DatabaseLive } from "../persistence/database.ts"
 import { BUILT_IN_PRESETS, DEFAULT_PRESET_NAME } from "./built-in-presets.ts"
+import { checkPresetConfig, checkPresetName } from "./preset-rules.ts"
 
 const ConfigJson = Schema.fromJsonString(PresetConfig)
 
@@ -41,6 +43,9 @@ export class Presets extends Context.Service<Presets, {
   setDefault(id: PresetId): Effect.Effect<Preset, PresetNotFound>
   // replaces a preset's settings, e.g. the default style's voice from Settings › Voice
   updateConfig(id: PresetId, config: PresetConfig): Effect.Effect<Preset, PresetNotFound>
+  // a style's settings from the Styles page: checked first, refused with every problem
+  edit(id: PresetId, config: PresetConfig): Effect.Effect<Preset, PresetNotFound | PresetInvalid>
+  rename(id: PresetId, name: string): Effect.Effect<Preset, PresetNotFound | PresetNameTaken | PresetInvalid>
   remove(id: PresetId): Effect.Effect<boolean, PresetIsDefault>
 }>()("@viral/server/presets/presets") {
   static readonly layer = Layer.effect(
@@ -120,6 +125,25 @@ export class Presets extends Context.Service<Presets, {
         return yield* get(id)
       })
 
+      const edit = Effect.fn("Presets.edit")(function*(id: PresetId, config: PresetConfig) {
+        const problems = checkPresetConfig(config)
+        if (problems.length > 0) return yield* new PresetInvalid({ problems })
+        return yield* updateConfig(id, config)
+      })
+
+      const rename = Effect.fn("Presets.rename")(function*(id: PresetId, name: string) {
+        const problems = checkPresetName(name)
+        if (problems.length > 0) return yield* new PresetInvalid({ problems })
+        const trimmed = name.trim()
+        const current = yield* get(id)
+        if (current.name === trimmed) return current
+        const taken = yield* sql`SELECT 1 FROM presets WHERE name = ${trimmed} AND id != ${id}`.pipe(Effect.orDie)
+        if (taken.length > 0) return yield* new PresetNameTaken({ presetName: trimmed })
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql`UPDATE presets SET name = ${trimmed}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const remove = Effect.fn("Presets.remove")(function*(id: PresetId) {
         const row = yield* findById(id).pipe(Effect.orDie)
         if (row._tag === "None") return false
@@ -128,7 +152,7 @@ export class Presets extends Context.Service<Presets, {
         return true
       })
 
-      return Presets.of({ list, get, getDefault, create, setDefault, updateConfig, remove })
+      return Presets.of({ list, get, getDefault, create, setDefault, updateConfig, edit, rename, remove })
     })
   ).pipe(Layer.provide([DatabaseLive, SecureRandom.layerWebCrypto]))
 }
