@@ -13,6 +13,7 @@ export const usageAtom = Atom.family((days: number) => ViralClient.query("GetUsa
 export const setSecret = ViralClient.mutation("SetSecret")
 export const removeSecret = ViralClient.mutation("RemoveSecret")
 export const setStageModel = ViralClient.mutation("SetStageModel")
+export const setStageProvider = ViralClient.mutation("SetStageProvider")
 export const setTranscriber = ViralClient.mutation("SetTranscriber")
 export const setDefaultVoice = ViralClient.mutation("SetDefaultVoice")
 

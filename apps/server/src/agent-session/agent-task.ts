@@ -1,3 +1,4 @@
+import { AgentProvider } from "@viral/contracts"
 import { Effect, Schema } from "effect"
 import { fromJSONSchema, type ZodObject } from "zod"
 import type { SkillName } from "../agent-skills/skill-pack.ts"
@@ -36,8 +37,8 @@ export const agentTool = <A, I>(spec: {
 
 // Which provider runs an agent job, and on which model. The Claude CLI is the default; the AI Gateway is an
 // experimental second provider, mainly for evals.
-export const AgentProviderName = Schema.Literals(["claude-cli", "ai-gateway"])
-export type AgentProviderName = typeof AgentProviderName.Type
+export const AgentProviderName = AgentProvider
+export type AgentProviderName = AgentProvider
 export interface AgentRoute {
   readonly provider: AgentProviderName
   // a CLI alias or id ("haiku"; null = the CLI's default), or a gateway model id ("openai/gpt-6-luna")

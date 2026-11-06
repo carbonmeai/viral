@@ -11,7 +11,11 @@ import { Loaded, SettingsPage } from "../settings-page.tsx"
 const ABOUT: Record<Account["name"], { readonly label: string; readonly sub: string }> = {
   claude: { label: "Claude", sub: "Every agent runs on your Claude CLI, signed in as you." },
   elevenlabs: { label: "ElevenLabs", sub: "Voiceovers and voice samples." },
-  xai: { label: "xAI", sub: "Grok transcription. Without it, Viral transcribes on this Mac with Whisper." }
+  xai: { label: "xAI", sub: "Grok transcription. Without it, Viral transcribes on this Mac with Whisper." },
+  gateway: {
+    label: "AI Gateway",
+    sub: "Experimental: tries agent steps on other models (Vercel AI Gateway). Sends the step’s material to that model’s provider."
+  }
 }
 
 const sourceText = (account: Account) =>

@@ -40,12 +40,14 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
   const keyError = (error: { readonly message: string }) => new SettingsError({ message: error.message })
 
   return SettingsRpcs.of({
-    GetAccounts: () => Effect.all([claude, keyAccount("elevenlabs"), keyAccount("xai")], { concurrency: "unbounded" }),
+    GetAccounts: () =>
+      Effect.all([claude, keyAccount("elevenlabs"), keyAccount("xai"), keyAccount("gateway")], { concurrency: "unbounded" }),
     SetSecret: ({ name, value }) =>
       secrets.set(name, Redacted.make(value)).pipe(Effect.mapError(keyError), Effect.andThen(keyAccount(name))),
     RemoveSecret: ({ name }) => secrets.remove(name).pipe(Effect.mapError(keyError), Effect.andThen(keyAccount(name))),
     GetSettings: () => store.get,
     SetStageModel: ({ stage, model }) => store.setStageModel(stage, model),
+    SetStageProvider: ({ stage, provider, model }) => store.setStageProvider(stage, provider, model),
     SetTranscriber: ({ choice }) => store.setTranscriber(choice),
     SetDefaultVoice: ({ voiceId, wordsPerSecond }) => setDefaultVoice(voiceId, wordsPerSecond),
     GetStorage: () => storage.get,
