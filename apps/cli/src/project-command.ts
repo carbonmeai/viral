@@ -9,6 +9,7 @@ export const PROJECT_USAGE = `  project create <source-id> <title> [--approach q
                  [--preset <id>] [--music <track-id>]
   project from-proposal <source-id> <n>   (proposal n from \`source story\`)
   project style <id> <preset-id|default>  (the short's style; see \`preset list\`)
+  project music <id> <track-id|none>      (none = voice only)
   project voice <id> <voice-id|preset>   (the voiceover's voice; "preset" goes back to the preset's)
   project run <id> [--from <stage>]
   project list [--source <id>] | show <id> | delete <id>`
@@ -49,6 +50,14 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
         presetId: title === "default" ? null : PresetId.make(title)
       })
       return yield* Console.log(`${describe(project)}  style ${project.presetId ?? "(default)"}`)
+    }
+    case "music": {
+      if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)
+      const project = yield* client.SetProjectMusic({
+        id: ProjectId.make(first),
+        musicTrackId: title === "none" ? null : MusicTrackId.make(title)
+      })
+      return yield* Console.log(`${describe(project)}  music ${project.musicTrackId ?? "(none)"}`)
     }
     case "voice": {
       if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)

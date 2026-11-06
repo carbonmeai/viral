@@ -67,6 +67,12 @@ export class ProjectsRpcs extends RpcGroup.make(
     success: Project,
     error: Schema.Union([ProjectNotFound, PresetNotFound])
   }),
+  // Picks the short's music track (null = voice only).
+  Rpc.make("SetProjectMusic", {
+    payload: { id: ProjectId, musicTrackId: Schema.NullOr(MusicTrackId) },
+    success: Project,
+    error: Schema.Union([ProjectNotFound, MusicTrackNotFound])
+  }),
   // Picks the voiceover's voice for this short (null = back to the preset's voice).
   Rpc.make("SetProjectVoice", {
     payload: { id: ProjectId, voiceId: Schema.NullOr(Schema.String) },

@@ -1,4 +1,4 @@
-import { PresetId, SourceId } from "@viral/contracts"
+import { MusicTrackId, PresetId, SourceId } from "@viral/contracts"
 import { Effect, Exit, Layer } from "effect"
 import assert from "node:assert/strict"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
@@ -108,4 +108,18 @@ test("a short's style can be changed, checked against the presets, and reset to 
   assert.ok(styled)
   assert.equal(missing, "PresetNotFound")
   assert.equal(reset, null)
+})
+
+test("a short's music can be set to a library track or back to voice only", async () => {
+  const { unknown, cleared } = await Effect.runPromise(Effect.provide(Effect.gen(function*() {
+    const sources = yield* Sources
+    const projects = yield* Projects
+    const source = yield* sources.create({ origin: { _tag: "File", path: "/videos/candy.mp4" }, rights: "owned", rightsNote: null })
+    const project = yield* projects.create({ sourceId: source.id, title: "Music", approach: "question-recap", presetId: null, musicTrackId: null })
+    const unknown = yield* projects.setMusic(project.id, MusicTrackId.make("nope")).pipe(Effect.flip)
+    const cleared = yield* projects.setMusic(project.id, null)
+    return { unknown: unknown._tag, cleared: cleared.musicTrackId }
+  }), Layer.mergeAll(Projects.layer, Sources.layer)))
+  assert.equal(unknown, "MusicTrackNotFound")
+  assert.equal(cleared, null)
 })

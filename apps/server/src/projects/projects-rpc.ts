@@ -8,6 +8,7 @@ export const ProjectsRpcLive = ProjectsRpcs.toLayer(Effect.gen(function*() {
     CreateProject: (input) => projects.create(input),
     CreateProjectFromProposal: ({ sourceId, proposal }) => projects.fromProposal(sourceId, proposal),
     SetProjectPreset: ({ id, presetId }) => projects.setPreset(id, presetId),
+    SetProjectMusic: ({ id, musicTrackId }) => projects.setMusic(id, musicTrackId),
     SetProjectVoice: ({ id, voiceId }) => projects.setVoice(id, voiceId),
     ListProjects: ({ sourceId }) => projects.list(sourceId),
     GetProject: ({ id }) => projects.get(id),
