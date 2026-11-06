@@ -1,10 +1,11 @@
-import { SourceId } from "@viral/contracts"
+import { PresetId, SourceId } from "@viral/contracts"
 import { Effect, Exit, Layer } from "effect"
 import assert from "node:assert/strict"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
+import { Presets } from "../presets/presets.ts"
 import { Sources } from "../sources/sources.ts"
 import { Projects } from "./projects.ts"
 
@@ -89,4 +90,22 @@ test("deleting a source removes its shorts and their folders", async () => {
   assert.equal(deletedAgain, false)
   assert.ok(!existsSync(join(home, "sources", source.id)))
   assert.ok(!existsSync(join(home, "projects", short.id)))
+})
+
+test("a short's style can be changed, checked against the presets, and reset to the default", async () => {
+  const { styled, reset, missing } = await Effect.runPromise(Effect.provide(Effect.gen(function*() {
+    const sources = yield* Sources
+    const projects = yield* Projects
+    const presets = yield* Presets
+    const source = yield* sources.create({ origin: { _tag: "File", path: "/videos/candy.mp4" }, rights: "owned", rightsNote: null })
+    const project = yield* projects.create({ sourceId: source.id, title: "Style", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const fullBleed = (yield* presets.list).find((p) => p.name === "Headline full-bleed")!
+    const styled = yield* projects.setPreset(project.id, fullBleed.id)
+    const missing = yield* projects.setPreset(project.id, PresetId.make("nope")).pipe(Effect.flip)
+    const reset = yield* projects.setPreset(project.id, null)
+    return { styled: styled.presetId === fullBleed.id, reset: reset.presetId, missing: missing._tag }
+  }), Layer.mergeAll(Projects.layer, Sources.layer, Presets.layer)))
+  assert.ok(styled)
+  assert.equal(missing, "PresetNotFound")
+  assert.equal(reset, null)
 })

@@ -70,6 +70,7 @@ export class Projects extends Context.Service<Projects, {
   // A short from the source story's proposal number `proposal` (0-based): its approach and title.
   fromProposal(sourceId: SourceId, proposal: number): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
   setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
+  setPreset(id: ProjectId, presetId: PresetId | null): Effect.Effect<Project, ProjectNotFound | PresetNotFound>
   list(sourceId: SourceId | null): Effect.Effect<ReadonlyArray<Project>>
   get(id: ProjectId): Effect.Effect<Project, ProjectNotFound>
   remove(id: ProjectId): Effect.Effect<boolean>
@@ -166,6 +167,14 @@ export class Projects extends Context.Service<Projects, {
         return yield* get(id)
       })
 
+      const setPreset = Effect.fn("Projects.setPreset")(function*(id: ProjectId, presetId: PresetId | null) {
+        yield* get(id)
+        if (presetId !== null) yield* presets.get(presetId)
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql`UPDATE projects SET preset_id = ${presetId}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const remove = Effect.fn("Projects.remove")(function*(id: ProjectId) {
         const deleted = yield* sql`DELETE FROM projects WHERE id = ${id} RETURNING id`
         if (deleted.length === 0) return false
@@ -173,7 +182,7 @@ export class Projects extends Context.Service<Projects, {
         return true
       }, Effect.orDie)
 
-      return Projects.of({ create, fromProposal, setVoice, list, get, remove })
+      return Projects.of({ create, fromProposal, setVoice, setPreset, list, get, remove })
     })
   ).pipe(
     Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer]),
