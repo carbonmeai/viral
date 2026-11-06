@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
-import { CutPlan } from "./cut-plan.ts"
+import { CutPlan, SectionsProposal } from "./cut-plan.ts"
 import { PublishedShort } from "./metadata.ts"
 import { Preset } from "./presets.ts"
 import { Project, ProjectId, ProjectNotFound } from "./projects.ts"
@@ -73,7 +73,19 @@ export const ShortWorkspace = Schema.Struct({
   // `path` is the jpg, relative to the short's folder
   thumbnail: Schema.NullOr(Schema.Struct({ ...at, thumbnail: Thumbnail })),
   // the long video's file, relative to its folder, for playing the real lines
-  sourceVideo: Schema.NullOr(Schema.String)
+  sourceVideo: Schema.NullOr(Schema.String),
+  // what a cut-down short is cut from and checked against, for editing its sections: the long video's words with
+  // their times, its length, the ranges a section may not touch, and the section limits; null for narrated shorts
+  cutSource: Schema.NullOr(Schema.Struct({
+    words: Schema.Array(TranscriptWord),
+    sourceSeconds: Schema.Finite,
+    excluded: Schema.Array(Schema.Struct({ start: Schema.Finite, end: Schema.Finite })),
+    limits: Schema.Struct({
+      minSection: Schema.Finite,
+      total: Schema.Tuple([Schema.Finite, Schema.Finite]),
+      hookWords: Schema.Int
+    })
+  }))
 })
 export type ShortWorkspace = typeof ShortWorkspace.Type
 
@@ -94,6 +106,12 @@ export class ShortWorkspaceRpcs extends RpcGroup.make(
   // The same for an edited shot list (frames, framing, speed) before it's sent to the shots gate.
   Rpc.make("CheckShotsEdit", {
     payload: { projectId: ProjectId, proposal: ShotProposal },
+    success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
+    error: ProjectNotFound
+  }),
+  // The same for a cut-down short's edited sections (their times, order, framing and hook text).
+  Rpc.make("CheckSectionsEdit", {
+    payload: { projectId: ProjectId, proposal: SectionsProposal },
     success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
     error: ProjectNotFound
   }),

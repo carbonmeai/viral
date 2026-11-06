@@ -218,3 +218,55 @@ test("a published short shows its render, files and thumbnail as media paths, an
   assert.ok(inAd.some((p) => /the hero at 55\.0s is inside an excluded range/.test(p)))
   await rt.dispose()
 })
+
+test("a cut-down short's workspace carries what its sections are cut from, and an edit is checked before it's sent", async () => {
+  const rt = ManagedRuntime.make(Layer.mergeAll(ShortWorkspaces.layer, Sources.layer, Projects.layer, Artifacts.layer, RunStore.layer))
+  // a minute of speech, a word every half second, with an ad read in the last five seconds
+  const words = Array.from({ length: 120 }, (_, i) => ({ w: `w${i}`, s: i * 0.5, e: i * 0.5 + 0.4 }))
+  const { ws, narrated, good, refused } = await rt.runPromise(Effect.gen(function*() {
+    const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/cut" }, rights: "owned", rightsNote: null })
+    const artifacts = yield* Artifacts
+    const owner = { _tag: "Source", id: source.id } as const
+    const tx = yield* artifacts.allocate(owner, "transcript")
+    writeFileSync(join(tx.dir, "transcript.json"), JSON.stringify({
+      source: "source.mp4",
+      language: "en",
+      segments: [{ start: 0, end: 59.9, text: words.map((w) => w.w).join(" "), words }]
+    }))
+    yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
+    yield* artifacts.record(yield* artifacts.allocate(owner, "ad-ranges"), {
+      data: { ranges: [{ start: 55, end: 60, kind: "sponsor", evidence: "use code" }] },
+      path: null
+    })
+    const projects = yield* Projects
+    const cut = yield* projects.create({ sourceId: source.id, title: "Cut", approach: "cut-down", presetId: null, musicTrackId: null })
+    const story = yield* projects.create({ sourceId: source.id, title: "Story", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const workspaces = yield* ShortWorkspaces
+    const section = (beat: "hook" | "rising_action" | "payoff", start: number, end: number) => ({ beat, start, end, note: "n" })
+    return {
+      ws: yield* workspaces.get(cut.id),
+      narrated: yield* workspaces.get(story.id),
+      good: yield* workspaces.checkSections(cut.id, {
+        hookText: "It worked",
+        sections: [section("hook", 10, 15), section("rising_action", 20, 30), section("payoff", 40, 50)]
+      }),
+      refused: yield* workspaces.checkSections(cut.id, {
+        hookText: null,
+        sections: [section("payoff", 40, 50), section("hook", 45, 52), section("rising_action", 54, 58)]
+      })
+    }
+  }))
+
+  assert.equal(ws.cutSource?.words.length, 120, "the long video's words, for nudging a section to them")
+  assert.equal(ws.cutSource?.sourceSeconds, 59.9)
+  assert.deepEqual(ws.cutSource?.excluded, [{ start: 55, end: 60 }])
+  assert.deepEqual(ws.cutSource?.limits, { minSection: 0.8, total: [20, 60], hookWords: 8 })
+  assert.equal(narrated.cutSource, null, "a narrated short isn't cut from the transcript")
+
+  assert.deepEqual(good, [])
+  const text = refused.join("\n")
+  assert.match(text, /first section must be the hook/)
+  assert.match(text, /sections 1 and 2 overlap/)
+  assert.match(text, /excluded range \(55\.0–60\.0s\)/)
+  await rt.dispose()
+})

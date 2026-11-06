@@ -9,6 +9,7 @@ import {
   PublishedShort,
   RenderedShort,
   Script,
+  type SectionsProposal,
   ShotPlan,
   type ShotProposal,
   type ShortWorkspace,
@@ -25,6 +26,7 @@ import { ThumbnailRenderer } from "../thumbnail/thumbnail-renderer.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { checkScript as checkScriptRules, SCRIPT_LIMITS } from "../script/script-rules.ts"
+import { checkSections as checkSectionsRules, SECTION_LIMITS, type SectionContext } from "../sections/section-rules.ts"
 import { checkShots as checkShotsRules, placeReals } from "../shots/shot-rules.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
 import { Sources } from "../sources/sources.ts"
@@ -41,6 +43,8 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
   checkScript(projectId: ProjectId, script: Script): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
   // the shots stage's own rules, for an edited shot list before it's sent
   checkShots(projectId: ProjectId, proposal: ShotProposal): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
+  // the sections stage's own rules, for a cut-down short's edited sections before they're sent
+  checkSections(projectId: ProjectId, proposal: SectionsProposal): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
   // the thumbnail stage's own rules, for an edited thumbnail config before it's sent
   checkThumbnail(projectId: ProjectId, config: ThumbConfig): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
 }>()("@viral/server/projects/short-workspace/ShortWorkspaces") {
@@ -86,6 +90,19 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const adRangesOf = (sourceId: Project["sourceId"]) =>
         Effect.map(artifacts.latest({ _tag: "Source", id: sourceId }, "ad-ranges"), (a) =>
           Option.match(Option.flatMap(a, (x) => Schema.decodeUnknownOption(AdRanges)(x.data)), { onNone: () => [], onSome: (r) => r.ranges }))
+
+      // What a cut-down short is cut from: the long video's words, its length and its ads, as the sections stage
+      // checks them. None when the video has no transcript yet.
+      const sectionContext = Effect.fn("ShortWorkspaces.sectionContext")(function*(project: Project) {
+        const transcript = yield* transcripts.forSource(project.sourceId).pipe(Effect.option)
+        if (Option.isNone(transcript)) return Option.none<SectionContext>()
+        const source = yield* sources.get(project.sourceId).pipe(Effect.orDie)
+        return Option.some({
+          words: transcript.value.segments.flatMap((s) => s.words),
+          sourceSeconds: source.durationS ?? transcript.value.segments.at(-1)?.end ?? 0,
+          excluded: yield* adRangesOf(project.sourceId)
+        } satisfies SectionContext)
+      })
 
       const get = Effect.fn("ShortWorkspaces.get")(function*(projectId: ProjectId) {
         const project = yield* projects.get(projectId)
@@ -140,6 +157,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
             })
         })
         const sourceVideo = yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "source-video")
+        const cut = project.format === "cut-down" ? yield* sectionContext(project) : Option.none<SectionContext>()
 
         return {
           project,
@@ -170,7 +188,13 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
             files: { folder: home.renders, thumbnail: thumbnailPublished ? publishedThumbnail : null }
           }))),
           thumbnail: Option.getOrNull(Option.map(thumbnail, (a) => ({ version: a.version, path: a.path, thumbnail: a.data }))),
-          sourceVideo: Option.getOrNull(Option.flatMapNullishOr(sourceVideo, (a) => a.path))
+          sourceVideo: Option.getOrNull(Option.flatMapNullishOr(sourceVideo, (a) => a.path)),
+          cutSource: Option.getOrNull(Option.map(cut, (c) => ({
+            words: c.words,
+            sourceSeconds: c.sourceSeconds,
+            excluded: c.excluded.map((r) => ({ start: r.start, end: r.end })),
+            limits: { minSection: SECTION_LIMITS.minSection, total: [...SECTION_LIMITS.total], hookWords: SECTION_LIMITS.hookWords }
+          })))
         } satisfies ShortWorkspace
       })
 
@@ -209,6 +233,15 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         }).problems
       })
 
+      // Checked against the long video's words, length and ads, exactly as the sections gate checks an edit.
+      const checkSections = Effect.fn("ShortWorkspaces.checkSections")(function*(projectId: ProjectId, proposal: SectionsProposal) {
+        const project = yield* projects.get(projectId)
+        if (project.format !== "cut-down") return ["only cut-down shorts have sections"]
+        const ctx = yield* sectionContext(project)
+        if (Option.isNone(ctx)) return ["the video has no transcript to check the sections against"]
+        return checkSectionsRules(proposal, ctx.value).problems
+      })
+
       // Checked against the long video's frame size and length and its ads, exactly as the thumbnail gate checks
       // an edit.
       const checkThumbnail = Effect.fn("ShortWorkspaces.checkThumbnail")(function*(projectId: ProjectId, config: ThumbConfig) {
@@ -226,7 +259,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         })
       })
 
-      return ShortWorkspaces.of({ get, checkScript, checkShots, checkThumbnail })
+      return ShortWorkspaces.of({ get, checkScript, checkShots, checkSections, checkThumbnail })
     })
   ).pipe(Layer.provide([
     Projects.layer,
