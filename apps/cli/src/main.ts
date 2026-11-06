@@ -7,10 +7,11 @@ import { PRESET_USAGE, presetCommand } from "./preset-command.ts"
 import { PROJECT_USAGE, projectCommand } from "./project-command.ts"
 import { RUN_USAGE, runCommand } from "./run-command.ts"
 import { SOURCE_USAGE, sourceCommand } from "./source-command.ts"
+import { TOOLS_USAGE, toolsCommand } from "./tools-command.ts"
 import { VOICE_USAGE, voiceCommand } from "./voice-command.ts"
 
 // Dev client for the local Viral server (ws://127.0.0.1:3410/rpc).
-const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, RUN_USAGE].join("\n")
+const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE].join("\n")
 
 const program = Effect.gen(function*() {
   switch (positionals[0]) {
@@ -24,6 +25,8 @@ const program = Effect.gen(function*() {
       return yield* musicCommand()
     case "voices":
       return yield* voiceCommand()
+    case "tools":
+      return yield* toolsCommand()
     case "follow":
     case "cancel":
     case "resume":
