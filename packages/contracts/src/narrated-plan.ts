@@ -159,6 +159,9 @@ export const NarratedPlan = Schema.Struct({
   sfx: Schema.optionalKey(Schema.Array(SfxCue)),
   sfx_gain: Schema.optionalKey(Schema.Finite),
   music: Schema.optionalKey(Schema.Union([Schema.String, MusicConfig])),
+  // the short's music already fitted at assemble time (fit-music.py): the renderer plays it as it is instead of
+  // fitting `music` again
+  music_bed: Schema.optionalKey(Schema.Struct({ file: Schema.String, drop_at: Seconds })),
   music_gain: Schema.optionalKey(Schema.Finite),
   music_start: Schema.optionalKey(Seconds),
   duck_ratio: Schema.optionalKey(Schema.Finite),

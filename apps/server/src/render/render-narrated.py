@@ -27,8 +27,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+from music_bed import build_music  # needs numpy (in this script's dependencies)
 
 FPS = 30
 # Caption font. Arial Rounded Bold is macOS-only and can't be redistributed; set VIRAL_CAPTION_FONT
@@ -334,60 +335,7 @@ def write_track(events: list[tuple[float, float, Path]], total: float, tmp: Path
 
 
 # ---------------------------------------------------------------- music
-
-SR = 48000
-
-
-def read_audio(path: str) -> np.ndarray:
-    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", path, "-vn", "-ac", "2", "-ar", str(SR),
-                          "-f", "f32le", "-"], capture_output=True, check=True).stdout
-    return np.frombuffer(raw, dtype=np.float32).reshape(-1, 2).copy()
-
-
-def write_audio(path: Path, y: np.ndarray) -> None:
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "f32le", "-ar", str(SR), "-ac", "2", "-i", "-",
-                    str(path)], input=y.astype(np.float32).tobytes(), check=True)
-
-
-def build_music(cfg: dict, base: Path, drop_at: float, total: float, out: Path) -> None:
-    """Loop the song's pre-drop groove (whole bars) so its own build-up + drop land exactly at `drop_at`.
-
-    timeline: [groove loop xN, entered mid-loop] -> [last `build_bars` bars before the drop] -> [drop -> end]
-    """
-    y = read_audio(resolve(base, cfg["file"]))
-    bar = float(cfg["bar"]) if "bar" in cfg else 240.0 / float(cfg["bpm"])
-    d = float(cfg["drop"])                                  # drop time inside the song
-    build = int(round(min(float(cfg.get("build_bars", 8)) * bar, d) * SR))
-    groove = int(round(float(cfg.get("groove_bars", 4)) * bar * SR))
-    ds = int(round(d * SR))
-    build_seg = y[ds - build:ds]
-    groove_start = ds - build                               # groove = first bars of the build section
-    groove_seg = y[groove_start:groove_start + groove]
-    pre_need = int(round(drop_at * SR))
-    fade = int(0.006 * SR)
-
-    def seam(a: np.ndarray) -> np.ndarray:                 # tiny fades so loop seams never click
-        a = a.copy()
-        a[:fade] *= np.linspace(0, 1, fade)[:, None]
-        a[-fade:] *= np.linspace(1, 0, fade)[:, None]
-        return a
-
-    if pre_need <= len(build_seg):
-        pre = build_seg[len(build_seg) - pre_need:]
-    else:
-        rest = pre_need - len(build_seg)
-        reps = -(-rest // len(groove_seg))
-        loops = np.concatenate([seam(groove_seg)] * reps)
-        pre = np.concatenate([loops[len(loops) - rest:], build_seg])
-    post_need = int(round((total - drop_at) * SR)) + SR
-    post = y[ds:ds + post_need]
-    if len(post) < post_need:                               # song ends before the short: loop the drop section
-        drop_seg = seam(y[ds:ds + int(round(float(cfg.get("drop_bars", 8)) * bar * SR))])
-        while len(post) < post_need:
-            post = np.concatenate([post, drop_seg])
-        post = post[:post_need]
-    write_audio(out, np.concatenate([pre, post])[: int(round(total * SR))])
-
+# The bed-fitting lives in music_bed.py, shared with fit-music.py (which fits a short's bed at assemble time).
 
 # ---------------------------------------------------------------- main
 
@@ -600,12 +548,17 @@ def main() -> None:
         m = n
         mcfg = plan["music"] if isinstance(plan["music"], dict) else {"file": plan["music"]}
         if "drop" in mcfg:
-            if "drop_word" in mcfg:
-                drop_at = shifted(vo_words[int(mcfg["drop_word"])]["s"]) + float(mcfg.get("drop_offset", 0))
+            if plan.get("music_bed"):
+                # fitted once at assemble time and saved with the short (fit-music.py): used as it is
+                drop_at = float(plan["music_bed"]["drop_at"])
+                built = Path(resolve(base, plan["music_bed"]["file"]))
             else:
-                drop_at = float(mcfg.get("drop_at", narr_end))
-            built = tmp / "music_built.wav"
-            build_music(mcfg, base, drop_at, total, built)
+                if "drop_word" in mcfg:
+                    drop_at = shifted(vo_words[int(mcfg["drop_word"])]["s"]) + float(mcfg.get("drop_offset", 0))
+                else:
+                    drop_at = float(mcfg.get("drop_at", narr_end))
+                built = tmp / "music_built.wav"
+                build_music(mcfg, base, drop_at, total, built)
             inputs += ["-i", str(built)]
             start = 0.0
             emit({"type": "log", "message": f"music: drop lands at {drop_at:.2f}s (song {mcfg['drop']}s)"})
