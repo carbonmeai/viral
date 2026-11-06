@@ -17,6 +17,7 @@ import { agentTool, AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ContactSheets, ContactSheetSet } from "../contact-sheet/contact-sheets.ts"
+import { detailSheetTool } from "../contact-sheet/detail-sheet-tool.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Presets } from "../presets/presets.ts"
 import { Projects } from "../projects/projects.ts"
@@ -35,9 +36,6 @@ const projectOf = (ctx: StageContext): ProjectId => {
   return ctx.owner.id
 }
 
-// A detail sheet covers at most this many seconds, a frame each second.
-const DETAIL_SECONDS = 60
-const DetailRequest = Schema.Struct({ start: Schema.Finite, end: Schema.Finite })
 const StoryboardLine = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("progress"), done: Schema.Int, total: Schema.Int }),
   Schema.Struct({ type: Schema.Literal("done"), tiles: Schema.Int })
@@ -216,22 +214,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
 
         // one-per-second sheets the agent asks for, kept with the project for later attempts
         const detailRoot = path.join(home.projectDir(c.project.id), "shots-detail")
-        const detail = agentTool({
-          name: "contact_sheet",
-          description: `A contact sheet with a frame every second between two source times (at most ${DETAIL_SECONDS}s). Returns the image files to Read.`,
-          schema: DetailRequest,
-          run: ({ start, end }) => {
-            const from = Math.max(0, Math.floor(start))
-            const to = Math.min(Math.floor(c.sourceSeconds), Math.ceil(end))
-            if (!(to > from) || end - start > DETAIL_SECONDS) {
-              return Effect.succeed(`ask for a range of 1–${DETAIL_SECONDS}s inside the video (0–${c.sourceSeconds.toFixed(0)}s)`)
-            }
-            return contactSheets.make(c.video, path.join(detailRoot, `${from}-${to}`), { every: 1, cols: 6, rows: 5, start: from, end: to }, () => Effect.void).pipe(
-              Effect.map((set) => set.sheets.map((s) => `${path.join(detailRoot, `${from}-${to}`, s.file)}  (${s.start.toFixed(0)}–${s.end.toFixed(0)}s)`).join("\n")),
-              Effect.catch((error) => Effect.succeed(`couldn't make that sheet: ${error.message}`))
-            )
-          }
-        })
+        const detail = detailSheetTool(contactSheets, path, c.video, c.sourceSeconds, detailRoot)
         yield* fs.makeDirectory(detailRoot, { recursive: true }).pipe(Effect.mapError(failWith("write")))
         const previewRoot = path.join(home.projectDir(c.project.id), "shots-preview")
         yield* fs.makeDirectory(previewRoot, { recursive: true }).pipe(Effect.mapError(failWith("write")))

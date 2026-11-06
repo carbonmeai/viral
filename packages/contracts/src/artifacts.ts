@@ -19,6 +19,8 @@ export const ProjectArtifactKind = Schema.Literals([
   "voiceover",
   "voiceover-transcript",
   "narrated-plan",
+  // a cut-down short's assembled plan, the renderer's input (render-short.py)
+  "cut-render-plan",
   "music-config",
   "render",
   "captions",

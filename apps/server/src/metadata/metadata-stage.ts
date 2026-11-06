@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type ProjectId, type PublishedShort, RenderedShort, Script, ShortMetadata, StoryMap } from "@viral/contracts"
+import { CutPlan, type ProjectId, type PublishedShort, RenderedShort, Script, ShortMetadata, StoryMap } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
@@ -19,7 +19,7 @@ const projectOf = (ctx: StageContext): ProjectId => {
 }
 
 const METADATA_PROMPT = `You write what a finished short is posted with, following the short-metadata skill below: a title,
-two or three alternate titles, a two-sentence description and hashtags. Work only from the script and the
+two or three alternate titles, a two-sentence description and hashtags. Work only from what the short says and the
 video details given. Call \`propose_metadata\` once.`
 
 // Titles and describes the approved render (Haiku), then publishes it: the mp4, srt and the post notes
@@ -45,19 +45,21 @@ export class MetadataStage extends Context.Service<MetadataStage, {
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
-        const latest = <A, I>(kind: "script" | "render", schema: Schema.Codec<A, I>) =>
+        const latest = <A, I>(kind: "script" | "cut-plan" | "render", schema: Schema.Codec<A, I>) =>
           Effect.flatMap(artifacts.latest(ctx.owner, kind), (a) =>
             Effect.fromOption(Option.flatMap(a, (x) => Schema.decodeUnknownOption(schema)(x.data))).pipe(
               Effect.mapError(() => fail("not-ready", `no ${kind} yet`))
             ))
-        const script = yield* latest("script", Script)
         const render = yield* latest("render", RenderedShort)
         const story = Option.flatMap(
           yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "story-map"),
           (a) => Schema.decodeUnknownOption(StoryMap)(a.data)
         )
 
-        const lines = script.beats.map((b) => b._tag === "Narration" ? `NARRATOR: ${b.text}` : `REAL: "${b.quote}"`).join("\n")
+        // what the short says: the narrated script, or a cut-down short's sections in the creator's words
+        const lines = project.format === "cut-down"
+          ? (yield* latest("cut-plan", CutPlan)).sections.map((s) => `CREATOR (${s.beat}): "${s.text}"`).join("\n")
+          : (yield* latest("script", Script)).beats.map((b) => b._tag === "Narration" ? `NARRATOR: ${b.text}` : `REAL: "${b.quote}"`).join("\n")
         const brief = [
           `Video: ${source.title ?? "untitled"}${source.channel === null ? "" : ` (by ${source.channel})`}`,
           Option.match(story, { onNone: () => "", onSome: (s) => `What happens: ${s.summary}` }),
