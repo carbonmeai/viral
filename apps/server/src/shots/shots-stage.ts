@@ -23,7 +23,7 @@ import { type StageContext, type StageDefinition, StageFailure } from "../runs/s
 import { ScriptRunner } from "../script-runner/script-runner.ts"
 import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
-import { checkShots, narrationEnds, placeReals, type ShotContext } from "./shot-rules.ts"
+import { checkShots, narrationEnds, placeReals, type ShotContext, type ShotDraft } from "./shot-rules.ts"
 import { buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "shots", code, message })
@@ -44,21 +44,32 @@ const StoryboardLine = Schema.fromJsonString(Schema.Union([
 const TranscriptJson = Schema.fromJsonString(Transcript)
 const StoryboardSpec = Schema.fromJsonString(Schema.Struct({
   cols: Schema.Int,
-  tiles: Schema.Array(Schema.Struct({ t: Schema.Finite, label: Schema.String, kind: Schema.Literals(["shot", "real"]) }))
+  tiles: Schema.Array(Schema.Struct({
+    t: Schema.Finite,
+    label: Schema.String,
+    kind: Schema.Literals(["shot", "real"]),
+    file: Schema.String
+  }))
 }))
 
-// The storyboard's tiles in playing order: each shot's first frame, with the real clips where they play.
-const storyboardTiles = (plan: Omit<ShotPlan, "storyboard">) => {
-  const tiles: Array<{ t: number; label: string; kind: "shot" | "real" }> = []
-  const real = (clip: { readonly start: number; readonly end: number; readonly quote: string }) =>
-    tiles.push({ t: (clip.start + clip.end) / 2, label: `REAL ${clip.quote}`, kind: "real" })
-  const pending = [...plan.inserts]
+const frameFile = (kind: "shot" | "insert" | "outro", index: number) => `frames/${kind}-${String(index + 1).padStart(2, "0")}.jpg`
+
+// The storyboard's tiles in playing order: each shot's first frame, with the real clips where they play. Every
+// tile's frame is also saved on its own (`file`).
+const storyboardTiles = (plan: ShotDraft) => {
+  const tiles: Array<{ t: number; label: string; kind: "shot" | "real"; file: string }> = []
+  const real = (clip: { readonly start: number; readonly end: number; readonly quote: string }, file: string) =>
+    tiles.push({ t: (clip.start + clip.end) / 2, label: `REAL ${clip.quote}`, kind: "real", file })
+  let nextInsert = 0
   plan.shots.forEach((shot, k) => {
-    while (pending[0] !== undefined && pending[0].afterWord < shot.word) real(pending.shift()!)
-    tiles.push({ t: shot.src + 0.2, label: `${k + 1}  w${shot.word} ${shot.wordText}`, kind: "shot" })
+    while (plan.inserts[nextInsert] !== undefined && plan.inserts[nextInsert]!.afterWord < shot.word) {
+      real(plan.inserts[nextInsert]!, frameFile("insert", nextInsert))
+      nextInsert++
+    }
+    tiles.push({ t: shot.src + 0.2, label: `${k + 1}  w${shot.word} ${shot.wordText}`, kind: "shot", file: frameFile("shot", k) })
   })
-  pending.forEach(real)
-  plan.outro.forEach(real)
+  for (; nextInsert < plan.inserts.length; nextInsert++) real(plan.inserts[nextInsert]!, frameFile("insert", nextInsert))
+  plan.outro.forEach((clip, k) => real(clip, frameFile("outro", k)))
   return tiles
 }
 
@@ -118,12 +129,8 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         return { project, source, video, script, words, excluded, sourceSeconds, reals, shotContext }
       })
 
-      // Checks a proposal and records it with its storyboard.
-      const record = Effect.fn("ShotsStage.record")(function*(
-        ctx: StageContext,
-        video: string,
-        plan: Omit<ShotPlan, "storyboard">
-      ) {
+      // Draws the plan's frames and storyboard, and records it.
+      const record = Effect.fn("ShotsStage.record")(function*(ctx: StageContext, video: string, plan: ShotDraft) {
         const slot = yield* artifacts.allocate(ctx.owner, "shot-plan")
         const spec = path.join(slot.dir, "storyboard.json")
         yield* Schema.encodeEffect(StoryboardSpec)({ cols: 6, tiles: storyboardTiles(plan) }).pipe(
@@ -139,8 +146,17 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           Effect.tapError((error) => Effect.logWarning("no storyboard", { error: error.message })),
           Effect.orElseSucceed(() => null)
         )
+        // the storyboard and the frames are drawn together
+        const drawn = storyboard !== null
+        const shotPlan: ShotPlan = {
+          shots: plan.shots.map((shot, k) => ({ ...shot, frame: drawn ? frameFile("shot", k) : null })),
+          markers: plan.markers,
+          inserts: plan.inserts.map((clip, k) => ({ ...clip, frame: drawn ? frameFile("insert", k) : null })),
+          outro: plan.outro.map((clip, k) => ({ ...clip, frame: drawn ? frameFile("outro", k) : null })),
+          storyboard
+        }
         yield* artifacts.record(slot, {
-          data: { ...plan, storyboard } satisfies ShotPlan,
+          data: shotPlan,
           path: storyboard === null ? null : path.join(slot.relDir, storyboard),
           stageRunId: ctx.stageRunId
         })

@@ -28,7 +28,10 @@ export const ContactSheetSet = Schema.Struct({
   rows: Schema.Int,
   frames: Schema.Int,
   // each sheet's file (relative to the artifact folder) and the source seconds of its first/last tile
-  sheets: Schema.Array(Schema.Struct({ file: Schema.String, start: Schema.Finite, end: Schema.Finite }))
+  sheets: Schema.Array(Schema.Struct({ file: Schema.String, start: Schema.Finite, end: Schema.Finite })),
+  // every frame on its own (relative to the artifact folder) with its source second, so a client can show
+  // or offer any one of them; absent on sheets made before frames were kept
+  stills: Schema.optionalKey(Schema.Array(Schema.Struct({ file: Schema.String, t: Schema.Finite })))
 })
 export type ContactSheetSet = typeof ContactSheetSet.Type
 
@@ -37,7 +40,8 @@ const Line = Schema.fromJsonString(Schema.Union([
   Schema.Struct({
     type: Schema.Literal("done"),
     frames: Schema.Int,
-    sheets: ContactSheetSet.fields.sheets
+    sheets: ContactSheetSet.fields.sheets,
+    stills: Schema.Array(Schema.Struct({ file: Schema.String, t: Schema.Finite }))
   })
 ]))
 
@@ -65,7 +69,7 @@ export class ContactSheets extends Context.Service<ContactSheets, {
             (line): Effect.Effect<ContactSheetSet | undefined> =>
               line.type === "progress"
                 ? progress(100 * line.done / line.total).pipe(Effect.as(undefined))
-                : Effect.succeed({ every: options.every, cols: options.cols, rows: options.rows, frames: line.frames, sheets: line.sheets })
+                : Effect.succeed({ every: options.every, cols: options.cols, rows: options.rows, frames: line.frames, sheets: line.sheets, stills: line.stills })
           ).pipe(Effect.mapError((error) => new ContactSheetError({ code: error.code, message: error.message })))
         }
       )

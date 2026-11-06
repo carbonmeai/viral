@@ -1,5 +1,5 @@
-import type { ApproachName, ShotInsert, ShotPlan, StoryMap, TranscriptWord } from "@viral/contracts"
-import type { Range } from "./shot-rules.ts"
+import type { ApproachName, StoryMap, TranscriptWord } from "@viral/contracts"
+import type { Range, ShotDraft } from "./shot-rules.ts"
 
 // The stage's job and tool contract; how to plan shots comes from the narrated-shots skill.
 export const SHOTS_PROMPT = `You plan the b-roll for a narrated short: which moment of the long video plays under each part
@@ -28,8 +28,8 @@ export interface ShotsBrief {
   readonly words: ReadonlyArray<TranscriptWord>
   // the last voiceover word of each narration beat
   readonly narrationEnds: ReadonlyArray<number>
-  readonly inserts: ReadonlyArray<ShotInsert>
-  readonly outro: ShotPlan["outro"]
+  readonly inserts: ShotDraft["inserts"]
+  readonly outro: ShotDraft["outro"]
   readonly story: StoryMap | null
   readonly excluded: ReadonlyArray<Range>
   readonly sourceSeconds: number

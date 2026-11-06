@@ -44,14 +44,18 @@ export const RealClip = Schema.Struct({
 export const ShotInsert = Schema.Struct({ ...RealClip.fields, afterWord: Schema.Int, afterWordText: Schema.String })
 export type ShotInsert = typeof ShotInsert.Type
 
+// Each shot and real clip keeps its own frame (a jpg next to the plan, e.g. "frames/shot-01.jpg"), so a client
+// can show it on its own and offer another; null when the frames couldn't be drawn.
+const Frame = { frame: Schema.NullOr(Schema.String) }
+
 // The approved shot plan: the proposal with each anchor's word text, and the inserts and outro the server
 // placed from the script. Assemble turns it into the renderer's narrated plan.
 export const ShotPlan = Schema.Struct({
-  shots: Schema.Array(Schema.Struct({ ...PlannedShot.fields, wordText: Schema.String })),
+  shots: Schema.Array(Schema.Struct({ ...PlannedShot.fields, wordText: Schema.String, ...Frame })),
   markers: Schema.Array(Marker),
-  inserts: Schema.Array(ShotInsert),
-  outro: Schema.Array(RealClip),
-  // the storyboard image next to the plan: one frame per shot, then the real clips
+  inserts: Schema.Array(Schema.Struct({ ...ShotInsert.fields, ...Frame })),
+  outro: Schema.Array(Schema.Struct({ ...RealClip.fields, ...Frame })),
+  // the storyboard: the frames above stitched into one image in playing order
   storyboard: Schema.NullOr(Schema.String)
 })
 export type ShotPlan = typeof ShotPlan.Type

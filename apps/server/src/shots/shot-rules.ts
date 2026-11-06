@@ -3,6 +3,11 @@ import type { Checked } from "../agent-session/run-checked.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
+// A shot plan before its frames are drawn.
+export type ShotDraft = {
+  readonly [K in "shots" | "inserts" | "outro"]: ReadonlyArray<Omit<ShotPlan[K][number], "frame">>
+} & Pick<ShotPlan, "markers">
+
 // A shot longer than this drags; the styles cut every 1–2s.
 export const MAX_SHOT_SECONDS = 3
 const SPEED: readonly [number, number] = [0.5, 4]
@@ -39,11 +44,11 @@ export const narrationEnds = (script: Script, words: ReadonlyArray<TranscriptWor
 
 // The script's real lines on the voiceover: a line after the last narration is an outro clip; any other
 // plays as an insert after the last voiceover word of the narration before it.
-export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>): Pick<ShotPlan, "inserts" | "outro"> => {
+export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>): Pick<ShotDraft, "inserts" | "outro"> => {
   const ends = narrationEnds(script, words)
   const lastNarration = script.beats.findLastIndex((b) => b._tag === "Narration")
   const inserts: Array<ShotInsert> = []
-  const outro: Array<ShotPlan["outro"][number]> = []
+  const outro: Array<ShotDraft["outro"][number]> = []
   let narrated = -1
   script.beats.forEach((beat, i) => {
     if (beat._tag === "Narration") {
@@ -73,7 +78,7 @@ export interface ShotContext {
 const fmt = (t: number) => t.toFixed(1)
 
 // Checks a proposed shot list against the voiceover and the source, and fills in each anchor's word text.
-export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Omit<ShotPlan, "storyboard" | "inserts" | "outro">> => {
+export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pick<ShotDraft, "shots" | "markers">> => {
   const problems: Array<string> = []
   const { words } = ctx
   const wordAt = (i: number) => words[i]?.w ?? ""

@@ -42,7 +42,9 @@ apps/server/src/
                        The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice
   shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
                        asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
-                       script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate
+                       script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate.
+                       Frames are always kept one image per file (contact sheets: frames/frame_NNNNN.jpg;
+                       shot plans: frames/shot-NN.jpg…) and stitched from those, so clients can offer any frame
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
   agent-session/       runs every agent stage on the Claude CLI: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,

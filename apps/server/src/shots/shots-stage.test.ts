@@ -4,7 +4,7 @@ import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { after, before, test } from "node:test"
 import { AgentSession, type AgentTask } from "../agent-session/agent-session.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -128,10 +128,16 @@ test("the shots stage places the real lines, fixes a rejected plan, and draws a 
     const artifact = Option.getOrThrow(yield* artifacts.latest({ _tag: "Project", id: projectId }, "shot-plan"))
     return { plan: yield* Schema.decodeUnknownEffect(ShotPlan)(artifact.data), storyboard: artifacts.resolve(artifact) }
   }))
-  assert.deepEqual(plan.inserts, [{ start: 40, end: 41.2, quote: "Ow, that hurts.", afterWord: 3, afterWordText: "it." }])
-  assert.deepEqual(plan.outro, [{ start: 50, end: 50.4, quote: "Nasty." }])
+  assert.deepEqual(plan.inserts, [
+    { start: 40, end: 41.2, quote: "Ow, that hurts.", afterWord: 3, afterWordText: "it.", frame: "frames/insert-01.jpg" }
+  ])
+  assert.deepEqual(plan.outro, [{ start: 50, end: 50.4, quote: "Nasty.", frame: "frames/outro-01.jpg" }])
   assert.equal(plan.shots[2]!.wordText, "It")
   assert.ok(storyboard !== null && existsSync(storyboard), "the storyboard was drawn")
+  // every shot and real clip has its own frame next to the storyboard
+  const frames = [...plan.shots, ...plan.inserts, ...plan.outro].map((item) => item.frame)
+  assert.deepEqual(frames, ["frames/shot-01.jpg", "frames/shot-02.jpg", "frames/shot-03.jpg", "frames/insert-01.jpg", "frames/outro-01.jpg"])
+  for (const frame of frames) assert.ok(existsSync(join(dirname(storyboard), frame!)), `${frame} exists`)
   await rt.dispose()
 })
 

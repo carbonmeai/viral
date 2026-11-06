@@ -7,14 +7,14 @@
 Usage:
   uv run storyboard.py <video> <spec.json> <out.png>
 
-spec.json: {"cols": 6, "tiles": [{"t": 25.0, "label": "1  w0 This", "kind": "shot"}, ...]}; kind "real"
-tiles (inserts and outro clips) get a red frame. stdout carries one JSON object per line:
-{"type": "progress", "done": 3, "total": 30}, an error line, or {"type": "done", "tiles": 30}.
+spec.json: {"cols": 6, "tiles": [{"t": 25.0, "label": "1  w0 This", "kind": "shot", "file": "frames/shot-01.jpg"}, ...]}.
+Each tile's frame is saved on its own at `file` (relative to out.png's folder), then the frames are stitched
+into out.png; kind "real" tiles (inserts and outro clips) get a red frame. stdout carries one JSON object per
+line: {"type": "progress", "done": 3, "total": 30}, an error line, or {"type": "done", "tiles": 30}.
 """
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -27,6 +27,7 @@ def main() -> None:
     if len(sys.argv) != 4:
         fail("usage", "storyboard.py <video> <spec.json> <out.png>")
     video, spec_path, out = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
+    out.parent.mkdir(parents=True, exist_ok=True)
     spec = json.loads(spec_path.read_text())
     tiles = spec["tiles"]
     if not tiles:
@@ -34,15 +35,15 @@ def main() -> None:
     cols = int(spec.get("cols", 6))
     font = ImageFont.load_default(16)
     frames = []
-    with tempfile.TemporaryDirectory() as td:
-        for i, tile in enumerate(tiles):
-            fp = Path(td) / f"t_{i:03d}.jpg"
-            r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{float(tile['t']):.3f}", "-i", video,
-                                "-frames:v", "1", "-vf", f"scale={TILE_W}:-2", str(fp)], capture_output=True, text=True)
-            if r.returncode != 0 or not fp.exists():
-                fail("ffmpeg", f"no frame at {tile['t']}s: {r.stderr.strip()[-500:]}")
-            frames.append(Image.open(fp).copy())
-            emit({"type": "progress", "done": i + 1, "total": len(tiles)})
+    for i, tile in enumerate(tiles):
+        fp = out.parent / tile["file"]
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{float(tile['t']):.3f}", "-i", video,
+                            "-frames:v", "1", "-vf", f"scale={TILE_W}:-2", str(fp)], capture_output=True, text=True)
+        if r.returncode != 0 or not fp.exists():
+            fail("ffmpeg", f"no frame at {tile['t']}s: {r.stderr.strip()[-500:]}")
+        frames.append(Image.open(fp).copy())
+        emit({"type": "progress", "done": i + 1, "total": len(tiles)})
     th = frames[0].height
     rows = (len(tiles) + cols - 1) // cols
     board = Image.new("RGB", (cols * TILE_W, rows * (th + LABEL_H)), "black")
@@ -54,7 +55,6 @@ def main() -> None:
         d.text((x + 6, y + 4), str(tile["label"])[:40], font=font, fill="#FF5A4F" if real else "yellow")
         if real:
             d.rectangle((x, y + LABEL_H, x + TILE_W - 1, y + LABEL_H + th - 1), outline="#FF3B30", width=4)
-    out.parent.mkdir(parents=True, exist_ok=True)
     board.save(out)
     emit({"type": "done", "tiles": len(tiles)})
 

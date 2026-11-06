@@ -7,17 +7,18 @@
 Usage:
   uv run contact-sheet.py <video> <out_dir> [--every 4] [--cols 8] [--rows 6] [--start 0] [--end END]
 
-Writes <out_dir>/sheet_000.png, sheet_001.png, ... Each tile is labelled mm:ss.
+Writes <out_dir>/sheet_000.png, sheet_001.png, ... Each tile is labelled mm:ss. Every frame is also kept on its
+own as <out_dir>/frames/frame_00000.jpg, ..., so a client can show or offer any single frame.
 
 Ported from the viral-shorts skill's contact_sheet.py; the sheets are unchanged. stdout carries one JSON
 object per line: {"type": "progress", "done": 2, "total": 9}, an error line, or
-{"type": "done", "frames": 456, "sheets": [{"file": "sheet_000.png", "start": 0.0, "end": 315.0}, ...]}.
+{"type": "done", "frames": 456, "sheets": [{"file": "sheet_000.png", "start": 0.0, "end": 315.0}, ...],
+ "stills": [{"file": "frames/frame_00000.jpg", "t": 0.0}, ...]}.
 """
 import argparse
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -38,42 +39,46 @@ def main() -> None:
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory() as td:
-        cmd = ["ffmpeg", "-loglevel", "error", "-ss", str(args.start)]
-        if args.end:
-            cmd += ["-to", str(args.end)]
-        cmd += ["-i", args.video, "-vf", f"fps=1/{args.every},scale={TILE_W}:-2", f"{td}/f_%05d.jpg"]
-        # -to before -i is relative to the input, so recompute when start is set
-        if args.end:
-            cmd[cmd.index("-to") + 1] = str(args.end)
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if r.returncode != 0:
-            fail("ffmpeg", f"can't extract frames: {r.stderr.strip()[-2000:]}")
-        frames = sorted(Path(td).glob("f_*.jpg"))
-        if not frames:
-            fail("no-frames", "no frames extracted")
-        th = Image.open(frames[0]).height
-        font = ImageFont.load_default(18)
-        per = args.cols * args.rows
-        total = (len(frames) + per - 1) // per
-        sheets = []
-        for si in range(0, len(frames), per):
-            sheet = Image.new("RGB", (args.cols * TILE_W, args.rows * th), "black")
-            d = ImageDraw.Draw(sheet)
-            for i, fp in enumerate(frames[si:si + per]):
-                t = args.start + (si + i) * args.every
-                x, y = (i % args.cols) * TILE_W, (i // args.cols) * th
-                sheet.paste(Image.open(fp), (x, y))
-                label = f"{int(t // 60):02d}:{int(t % 60):02d}"
-                d.rectangle((x, y, x + 60, y + 22), fill="black")
-                d.text((x + 4, y + 2), label, font=font, fill="yellow")
-            name = f"sheet_{si // per:03d}.png"
-            sheet.save(out / name)
-            count = len(frames[si:si + per])
-            sheets.append({"file": name, "start": args.start + si * args.every,
-                           "end": args.start + (si + count - 1) * args.every})
-            emit({"type": "progress", "done": len(sheets), "total": total})
-        emit({"type": "done", "frames": len(frames), "sheets": sheets})
+    td = out / "frames"
+    td.mkdir(exist_ok=True)
+    for stale in td.glob("frame_*.jpg"):
+        stale.unlink()
+    cmd = ["ffmpeg", "-loglevel", "error", "-ss", str(args.start)]
+    if args.end:
+        cmd += ["-to", str(args.end)]
+    cmd += ["-i", args.video, "-vf", f"fps=1/{args.every},scale={TILE_W}:-2", "-start_number", "0", f"{td}/frame_%05d.jpg"]
+    # -to before -i is relative to the input, so recompute when start is set
+    if args.end:
+        cmd[cmd.index("-to") + 1] = str(args.end)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        fail("ffmpeg", f"can't extract frames: {r.stderr.strip()[-2000:]}")
+    frames = sorted(td.glob("frame_*.jpg"))
+    if not frames:
+        fail("no-frames", "no frames extracted")
+    th = Image.open(frames[0]).height
+    font = ImageFont.load_default(18)
+    per = args.cols * args.rows
+    total = (len(frames) + per - 1) // per
+    sheets = []
+    for si in range(0, len(frames), per):
+        sheet = Image.new("RGB", (args.cols * TILE_W, args.rows * th), "black")
+        d = ImageDraw.Draw(sheet)
+        for i, fp in enumerate(frames[si:si + per]):
+            t = args.start + (si + i) * args.every
+            x, y = (i % args.cols) * TILE_W, (i // args.cols) * th
+            sheet.paste(Image.open(fp), (x, y))
+            label = f"{int(t // 60):02d}:{int(t % 60):02d}"
+            d.rectangle((x, y, x + 60, y + 22), fill="black")
+            d.text((x + 4, y + 2), label, font=font, fill="yellow")
+        name = f"sheet_{si // per:03d}.png"
+        sheet.save(out / name)
+        count = len(frames[si:si + per])
+        sheets.append({"file": name, "start": args.start + si * args.every,
+                       "end": args.start + (si + count - 1) * args.every})
+        emit({"type": "progress", "done": len(sheets), "total": total})
+    stills = [{"file": f"frames/{fp.name}", "t": args.start + i * args.every} for i, fp in enumerate(frames)]
+    emit({"type": "done", "frames": len(frames), "sheets": sheets, "stills": stills})
 
 
 def emit(obj: dict) -> None:
