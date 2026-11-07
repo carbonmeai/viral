@@ -8,7 +8,7 @@ import { Fragment, type ReactNode, useEffect, useRef, useState } from "react"
 import { Detail } from "../../system/detail.tsx"
 import { clockOf, shortTimeOf, type TimelineLayout } from "../editor-values.ts"
 import { wordIndexAt } from "../voice/voice-values.ts"
-import { bedBlocks, voiceAt } from "./music-values.ts"
+import { bedBlocks, blockLabel, voiceAt } from "./music-values.ts"
 import { MusicWaveform } from "./music-waveform.tsx"
 
 // "Add a song": opens the song picker, or Library › Music when there are no songs to pick from.
@@ -36,8 +36,10 @@ function Calm({ title, children }: { readonly title: string; readonly children: 
 
 // The music step's stage: the short's fitted bed played with the voiceover (which pauses while a real line plays,
 // as in the short), so you can hear where the drop lands. The bed's waveform, its parts and the narration's
-// words follow along; the drop word is marked.
-export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layout, hasSongs, onAddSong, onTime }: {
+// words follow along; the drop word is marked, and the words parts of the arrangement are pinned to. While you pick
+// a word for a part (`onPickWord`), clicking a word picks it instead of playing from it. `preview`: the bed is a
+// preview of your arrangement, not yet applied.
+export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layout, hasSongs, onAddSong, onTime, pins, onPickWord, preview }: {
   readonly bed: MusicBed | null
   readonly bedUrl: string | null
   // the short's song, when it has one (it may not be fitted yet)
@@ -50,6 +52,10 @@ export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layou
   readonly hasSongs: boolean
   readonly onAddSong: () => void
   readonly onTime: (shortSeconds: number | null) => void
+  // word index → what starts on it ("Part 3 starts here")
+  readonly pins?: ReadonlyMap<number, string>
+  readonly onPickWord?: ((word: number) => void) | null
+  readonly preview?: boolean
 }) {
   if (track === null && !fitting) {
     return (
@@ -80,16 +86,32 @@ export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layou
       </Calm>
     )
   }
-  return <BedPlayer key={bedUrl} bed={bed} bedUrl={bedUrl} voiceUrl={voiceUrl} words={words} layout={layout} onTime={onTime} />
+  return (
+    <BedPlayer
+      key={bedUrl}
+      bed={bed}
+      bedUrl={bedUrl}
+      voiceUrl={voiceUrl}
+      words={words}
+      layout={layout}
+      onTime={onTime}
+      pins={pins ?? new Map()}
+      onPickWord={onPickWord ?? null}
+      preview={preview ?? false}
+    />
+  )
 }
 
-function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime }: {
+function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime, pins, onPickWord, preview }: {
   readonly bed: MusicBed
   readonly bedUrl: string
   readonly voiceUrl: string | null
   readonly words: ReadonlyArray<TranscriptWord>
   readonly layout: TimelineLayout | null
   readonly onTime: (shortSeconds: number | null) => void
+  readonly pins: ReadonlyMap<number, string>
+  readonly onPickWord: ((word: number) => void) | null
+  readonly preview: boolean
 }) {
   const music = useRef<HTMLAudioElement>(null)
   const voice = useRef<HTMLAudioElement>(null)
@@ -144,7 +166,11 @@ function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime }: {
   }
   const voTime = voiceAt(pauses, time).t
   const current = playing || time > 0 ? wordIndexAt(words, voTime) : -1
-  const blocks = bedBlocks(bed)
+  // an arranged bed is labelled by its parts ("Bars 13–16 ×3", "Drop"); an older one by the automatic recipe's
+  const arrangement = bed.arrangement
+  const blocks = arrangement === undefined ? bedBlocks(bed) : arrangement.blocks.flatMap((b) =>
+    b.atS === null || b.endS === null ? [] : [{ start: b.atS, end: b.endS, label: blockLabel(b, arrangement.dropBar) }]
+  )
   const pct = (s: number) => `${(s / Math.max(bed.durationS, 0.001)) * 100}%`
 
   return (
@@ -160,7 +186,10 @@ function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime }: {
             {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
           </button>
           <div className="grid min-w-0">
-            <span className="truncate font-medium">{bed.trackTitle}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-medium">{bed.trackTitle}</span>
+              {preview ? <span className="inline-flex h-[20px] shrink-0 items-center rounded-chip bg-lemon px-1.5 text-[11px] font-semibold text-lemon-ink">Preview</span> : null}
+            </span>
             <span className="text-xs text-fg-2">
               The drop lands at {clockOf(bed.dropAtS)}{bed.dropWordText === null ? "" : <> on “{bed.dropWordText}”</>}
               <Detail><> · {bed.dropAtS.toFixed(2)}s, a bar is {bed.barS.toFixed(2)}s</></Detail>
@@ -213,16 +242,20 @@ function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime }: {
           )}
         </div>
 
+        {onPickWord === null ? null : (
+          <span className="-mb-3 text-xs font-medium text-fg">Click the word the part starts on.</span>
+        )}
         <p className="m-0 text-[15px] leading-[1.75]">
           {words.map((w, i) => (
             <Fragment key={i}>
               <span
-                onClick={() => seek(shortTimeOf({ pauses }, w.s))}
-                title={i === bed.dropWord ? "The drop lands here" : undefined}
+                onClick={() => (onPickWord === null ? seek(shortTimeOf({ pauses }, w.s)) : onPickWord(i))}
+                title={[i === bed.dropWord ? "The drop lands here" : null, pins.get(i) ?? null].filter((t) => t !== null).join(" · ") || undefined}
                 className={cn(
                   "cursor-pointer rounded-[4px] px-[1px]",
-                  i === bed.dropWord && "shadow-[inset_0_0_0_1px_var(--lemon)]",
-                  i === current ? "bg-lemon text-lemon-ink" : i < current ? "text-fg" : "text-fg-2"
+                  (i === bed.dropWord || pins.has(i)) && "shadow-[inset_0_0_0_1px_var(--lemon)]",
+                  onPickWord !== null && "hover:bg-lemon hover:text-lemon-ink",
+                  i === current ? "bg-lemon text-lemon-ink" : i < current || onPickWord !== null ? "text-fg" : "text-fg-2"
                 )}
               >
                 {w.w}

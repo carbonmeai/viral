@@ -12,7 +12,7 @@ import { artifactFileUrl, artifactPathUrl, homeFileUrl } from "../../lib/media-u
 import { ServerState } from "../home/server-state.tsx"
 import { TitleBar } from "../layout/title-bar.tsx"
 import { tracksAtom, voicesAtom } from "../library/library-api.ts"
-import { Detail } from "../system/detail.tsx"
+import { Detail, useDetailed } from "../system/detail.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
 import { BriefButton } from "./brief-button.tsx"
@@ -31,7 +31,20 @@ import type { GateControls } from "./gate.ts"
 import { LaterStep } from "./later-step.tsx"
 import { MusicInspector, type MusicTab } from "./music/music-inspector.tsx"
 import { MusicStage } from "./music/music-stage.tsx"
-import { bedBlocks, defaultDropWord } from "./music/music-values.ts"
+import { ArrangeInspector, ArrangeUnavailable } from "./music/music-arrange.tsx"
+import {
+  bedBlocks,
+  blockLabel,
+  defaultDropWord,
+  gridOf,
+  loopTicks,
+  type PlaceContext,
+  type PlacedBlock,
+  placeBlocks,
+  placedFrom,
+  withBlock
+} from "./music/music-values.ts"
+import { useArrangeDraft } from "./music/use-arrange-draft.ts"
 import { PublishInspector, type PublishTab } from "./publish/publish-inspector.tsx"
 import { postText } from "./publish/publish-values.ts"
 import { RenderInspector, type RenderTab } from "./render/render-inspector.tsx"
@@ -62,7 +75,7 @@ import { StepBar } from "./step-bar.tsx"
 import { ThumbnailInspector, type ThumbnailTab } from "./thumbnail/thumbnail-inspector.tsx"
 import { ThumbnailStage } from "./thumbnail/thumbnail-stage.tsx"
 import { type ThumbnailWords, withWords, wordsOf } from "./thumbnail/thumbnail-values.ts"
-import { Timeline } from "./timeline.tsx"
+import { Timeline, type TimelineMark, type TimelineMusicParts } from "./timeline.tsx"
 import { VoiceInspector, type VoiceTab } from "./voice/voice-inspector.tsx"
 import { VoiceStage } from "./voice/voice-stage.tsx"
 
@@ -297,6 +310,64 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       .catch(() => setError("Couldn't change the music. Is the server running?"))
       .finally(() => setBusy(false))
   }
+
+  // the Music step's arrangement: your draft over the fitted bed, its preview, and the word picker for a pinned part
+  const detailed = useDetailed()
+  const [pickingWord, setPickingWord] = useState(false)
+  const arrange = useArrangeDraft({
+    projectId: ws.project.id,
+    bed: fitted?.bed ?? null,
+    stopRun: () => (runGoing && liveRun !== null ? cancel({ payload: { runId: liveRun.id } }) : Promise.resolve(true)),
+    onApplied: () => {
+      setPickingWord(false)
+      refresh()
+    }
+  })
+  const voWords = ws.voiceover?.words ?? []
+  const musicPlace: PlaceContext | null = fitted === null || layout === null ? null : {
+    barS: fitted.bed.barS,
+    dropWord: fitted.bed.dropWord,
+    wordAt: (i) => {
+      const w = voWords[i]
+      return w === undefined ? null : shortTimeOf(layout, w.s)
+    },
+    total: fitted.bed.durationS
+  }
+  // the song's bar grid: from the fitted bed, or (a bed fitted before arrangements) from the last preview
+  const musicGrid = (fitted === null ? null : gridOf(fitted.bed)) ?? (arrange.lastPreview === null ? null : gridOf(arrange.lastPreview))
+  const appliedPlaced: ReadonlyArray<PlacedBlock | null> = musicPlace === null || fitted?.bed.arrangement === undefined ? [] : placedFrom(fitted.bed.arrangement.blocks, musicPlace)
+  const draftPlaced: ReadonlyArray<PlacedBlock | null> = musicPlace === null || arrange.draft === null ? appliedPlaced
+    : arrange.heard?.bed.arrangement !== undefined ? placedFrom(arrange.heard.bed.arrangement.blocks, musicPlace)
+    : placeBlocks(arrange.draft.blocks, musicPlace)
+  // the timeline shows your draft only on the Music step; the other steps show what was rendered
+  const laneBlocks = open === "music" ? arrange.blocks : fitted?.bed.arrangement?.blocks ?? null
+  const lanePlaced = open === "music" ? draftPlaced : appliedPlaced
+  const musicParts: TimelineMusicParts | null = ws.project.musicTrackId === null || laneBlocks === null || musicGrid === null || musicPlace === null ? null : {
+    parts: laneBlocks.flatMap((b, i) => {
+      const p = lanePlaced[i]
+      return p === null || p === undefined ? [] : [{ index: i, start: p.atS, end: p.endS, label: blockLabel(b, musicGrid.dropBar), ticks: loopTicks(p, b, musicPlace.barS) }]
+    }),
+    selected: open === "music" && musicTab === "arrange" && detailed ? arrange.selected : null,
+    onSelect: (i) => {
+      arrange.select(i)
+      setPickingWord(false)
+      if (detailed) setMusicTab("arrange")
+      if (open !== "music") onStep("music")
+    }
+  }
+  const wordText = (i: number) => voWords[i]?.w.replace(/[^\p{L}\p{N}'’-]/gu, "") ?? ""
+  const musicPins = new Map<number, string>()
+  laneBlocks?.forEach((b, i) => {
+    const word = typeof b.start === "object" ? b.start.word : null
+    if (word !== null) musicPins.set(word, `Part ${i + 1} starts here`)
+  })
+  const musicMarks: ReadonlyArray<TimelineMark> = ws.project.musicTrackId === null || musicPlace === null ? [] : [
+    ...(fitted?.bed.dropWord === null || fitted === null ? [] : [{ word: fitted.bed.dropWord, label: `The drop: “${wordText(fitted.bed.dropWord)}”` }]),
+    ...[...musicPins].map(([word, label]) => ({ word, label: `${label}: “${wordText(word)}”` }))
+  ].flatMap((m) => {
+    const at = musicPlace.wordAt(m.word)
+    return at === null ? [] : [{ at, label: m.label }]
+  })
 
   const status = pending !== null && waitingOn !== null
     ? <Status tone="wait">Waiting on {steps.find((s) => s.id === waitingOn)?.name}</Status>
@@ -665,8 +736,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       <>
         {stageBar(ws.project.musicTrackId === null ? "Voice only" : fitting ? "Fitting the song…" : bed === null ? "Not fitted" : `${bed.durationS.toFixed(1)}s of music under the voice`)}
         <MusicStage
-          bed={bed}
-          bedUrl={fitted === null ? null : homeFileUrl(serverUrl, fitted.media)}
+          bed={arrange.heard?.bed ?? bed}
+          bedUrl={arrange.heard !== null ? homeFileUrl(serverUrl, arrange.heard.media) : fitted === null ? null : homeFileUrl(serverUrl, fitted.media)}
           track={track}
           fitting={fitting}
           voiceUrl={voiceUrl}
@@ -678,6 +749,12 @@ function Editor({ ws, progress, step, onStep, refresh }: {
             setPickingSong(true)
           }}
           onTime={setBedTime}
+          pins={musicPins}
+          onPickWord={pickingWord && arrange.blocks !== null ? (word) => {
+            arrange.edit(withBlock(arrange.blocks ?? [], arrange.selected, { start: { word } }))
+            setPickingWord(false)
+          } : null}
+          preview={arrange.heard !== null}
         />
       </>
     )
@@ -697,7 +774,27 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         onApply={(trackId, dropWord) => void applyMusic(trackId, dropWord)}
         stages={stages}
         tab={musicTab}
-        onTab={setMusicTab}
+        onTab={(t) => {
+          setMusicTab(t)
+          setPickingWord(false)
+        }}
+        arrange={track === null || bed === null || bed.trackId !== track.id || fitting ? null
+          : musicGrid === null || musicPlace === null ? <ArrangeUnavailable busy={arrange.busy !== null} onStart={arrange.resetToAutomatic} />
+          : (
+            <ArrangeInspector
+              arrange={arrange}
+              bed={bed}
+              grid={musicGrid}
+              track={track}
+              trackUrl={homeFileUrl(serverUrl, `music/${track.path}`)}
+              words={words}
+              place={musicPlace}
+              placed={draftPlaced}
+              picking={pickingWord}
+              onPicking={setPickingWord}
+              running={runGoing}
+            />
+          )}
       />
     )
   } else {
@@ -758,6 +855,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
               : null}
             drop={ws.project.musicTrackId === null ? null : fitted?.bed.dropAtS ?? layout?.narration.at(-1)?.start ?? null}
             musicBlocks={ws.project.musicTrackId === null || fitted === null ? null : bedBlocks(fitted.bed)}
+            musicParts={musicParts}
+            marks={musicMarks}
             captions={`${captions.enabled ? `${captions.mode === "chunk" ? `${captions.maxWords} words at a time` : "One word at a time"} · ${captions.case}` : "No captions (finish in an editor from the .srt)"}`}
             music={ws.project.musicTrackId === null ? "No music · voice only" : "Music · fitted when the short is laid out"}
             shots={ws.shotPlan !== null ? `${ws.shotPlan.plan.shots.length} shots` : "Shots are planned in step 3"}

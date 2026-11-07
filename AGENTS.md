@@ -168,6 +168,15 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        that plays on its waveform), Change song over the library plus No music, and the drop word
                        picked from the narration. Applying calls RefitMusic (stopping a run that's going) and
                        follows the re-run from assemble; no song is a calm "Voice only", never a warning.
+                       Detailed mode adds an Arrange tab (music-arrange.tsx, use-arrange-draft.ts): the bed's
+                       arrangement blocks as parts ("Bars 9–12 ×3", "Drop") on the Music lane (loops as ticks,
+                       pinned words and the drop marked on the narration; click to select), the selected part's
+                       bars dragged on the song's waveform (snapping to bars), plays, start (after / drop word /
+                       a word picked on the stage's narration), ⋯ Split, Duplicate, Move, Delete; Add a part;
+                       Reset to automatic. Edits are a draft (undo, Discard) checked client-side
+                       (music-values.ts mirrors the bed's layout) and on the server: Preview plays a
+                       PreviewMusicArrangement bed on the stage, Apply calls ArrangeMusic and follows the re-run
+
                        render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows, the
                        check sheet, "Send back" to Shots/Sections or Style via Reject.to). publish/: the post
                        text (choose a title, copy it all), the files, and a rights reminder. thumbnail/: the

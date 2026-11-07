@@ -37,3 +37,6 @@ export const musicBedAtom = Atom.family((projectId: ProjectId) =>
 )
 export const refitMusic = ViralClient.mutation("RefitMusic")
 export const cancelRun = ViralClient.mutation("CancelRun")
+// the short's music arrangement: set it (null: automatic, re-runs from assemble), or hear it first
+export const arrangeMusic = ViralClient.mutation("ArrangeMusic")
+export const previewMusicArrangement = ViralClient.mutation("PreviewMusicArrangement")

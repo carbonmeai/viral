@@ -1,6 +1,6 @@
 import { cn } from "@viral/ui/cn"
 import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
-import { useEffect, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { peaksOf } from "../voice/voice-values.ts"
 
 // A stretch of the audio, in its own seconds.
@@ -11,8 +11,9 @@ export interface Span {
 
 // A song's or a bed's waveform, decoded in the page (adapted from Library › Music's track waveform), with the drop
 // marked and where it's playing. `lit` brightens the parts that play (the rest is dimmed); `shaded` tints
-// stretches (where a real line plays over the bed). Skeleton bars while the audio downloads and decodes.
-export function MusicWaveform({ url, durationS, dropS, time, onSeek, lit, shaded, bars = 140, tall }: {
+// stretches (where a real line plays over the bed); `overlay` draws on top, given the audio's length. Skeleton bars
+// while the audio downloads and decodes.
+export function MusicWaveform({ url, durationS, dropS, time, onSeek, lit, shaded, bars = 140, tall, overlay }: {
   readonly url: string
   readonly durationS: number | null
   readonly dropS: number | null
@@ -23,6 +24,7 @@ export function MusicWaveform({ url, durationS, dropS, time, onSeek, lit, shaded
   readonly shaded?: ReadonlyArray<Span & { readonly title: string }> | undefined
   readonly bars?: number
   readonly tall?: boolean
+  readonly overlay?: (lengthS: number) => ReactNode
 }) {
   const [peaks, setPeaks] = useState<ReadonlyArray<number> | null>(null)
   const [decodedLength, setDecodedLength] = useState<number | null>(null)
@@ -99,6 +101,7 @@ export function MusicWaveform({ url, durationS, dropS, time, onSeek, lit, shaded
         </span>
       )}
       {time === null || length === null ? null : <span className="absolute inset-y-0 w-px bg-fg" style={{ left: `${pct(time)}%` }} />}
+      {overlay === undefined || length === null ? null : overlay(length)}
     </div>
   )
 }

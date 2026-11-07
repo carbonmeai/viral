@@ -58,6 +58,19 @@ export interface TimelineShots {
   readonly onSelect: (k: number) => void
 }
 
+// The arrangement's parts on the Music track, where each plays (its loops as ticks); clicking one selects it.
+export interface TimelineMusicParts {
+  readonly parts: ReadonlyArray<{ readonly index: number; readonly start: number; readonly end: number; readonly label: string; readonly ticks: ReadonlyArray<number> }>
+  readonly selected: number | null
+  readonly onSelect: (index: number) => void
+}
+
+// A word on the narration something starts on (the drop, a pinned part), in the short's seconds.
+export interface TimelineMark {
+  readonly at: number
+  readonly label: string
+}
+
 export interface TimelineProps {
   // null until there's a script and a voiceover to lay out
   readonly layout: TimelineLayout | null
@@ -72,11 +85,15 @@ export interface TimelineProps {
   readonly drop?: number | null
   // the fitted bed's parts (groove, build-up, drop), in the short's seconds, when it has one
   readonly musicBlocks?: ReadonlyArray<TimelineSegment> | null
+  // the arrangement's parts, drawn instead of `musicBlocks` when given
+  readonly musicParts?: TimelineMusicParts | null
+  // the drop word and pinned words, marked on the narration
+  readonly marks?: ReadonlyArray<TimelineMark>
 }
 
 // The short on one timeline, read-only for now: the narration, the shots, the real lines (in the creator's own
 // voice), the captions and the music, in the short's own seconds.
-export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop, musicBlocks }: TimelineProps) {
+export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop, musicBlocks, musicParts, marks }: TimelineProps) {
   if (layout === null) {
     return (
       <div className="grid grid-cols-[112px_minmax(700px,1fr)] items-center gap-y-1.5">
@@ -103,6 +120,14 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
         <TrackName icon={Mic} color="var(--t-narr)" name="Narration" />
         <Lane>
           {layout.narration.map((n, i) => <Block key={i} start={n.start} end={n.end} total={total} color="var(--t-narr)" label={n.label} />)}
+          {marks?.map((m, i) => (
+            <span
+              key={i}
+              title={m.label}
+              className="absolute -bottom-[3px] z-[5] size-[7px] -translate-x-1/2 rotate-45 rounded-[1px] bg-lemon shadow-[0_0_0_1.5px_var(--bg)]"
+              style={{ left: `${(m.at / total) * 100}%` }}
+            />
+          ))}
           {head === null || head === undefined ? null : (
             <span className="pointer-events-none absolute -top-[3px] -bottom-[5px] z-10 w-0.5 bg-lemon" style={{ left: `${(head / total) * 100}%` }} />
           )}
@@ -145,13 +170,39 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
 
         <TrackName icon={Music} color="var(--t-music)" name="Music" />
         <Lane>
-          {musicBlocks === null || musicBlocks === undefined || musicBlocks.length === 0
+          {musicParts !== null && musicParts !== undefined && musicParts.parts.length > 0
+            ? musicParts.parts.map((p) => (
+              <button
+                key={p.index}
+                type="button"
+                title={p.label}
+                onClick={() => musicParts.onSelect(p.index)}
+                className={cn(
+                  "absolute inset-y-0 flex items-center overflow-hidden rounded-[7px] px-2 text-[11.5px] font-medium whitespace-nowrap outline-none",
+                  "bg-[color-mix(in_srgb,var(--t-music)_var(--seg-tint),var(--bg))] text-[color-mix(in_srgb,var(--t-music)_58%,var(--fg))]",
+                  p.index === musicParts.selected
+                    ? "z-10 shadow-[inset_0_0_0_1px_var(--lemon)]"
+                    : "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--t-music)_40%,transparent)] hover:brightness-110"
+                )}
+                style={{ left: `${(p.start / total) * 100}%`, width: `calc(${((Math.min(p.end, total) - p.start) / total) * 100}% - 2px)` }}
+              >
+                {p.ticks.map((t) => (
+                  <span
+                    key={t}
+                    className="absolute inset-y-2 w-px bg-[color-mix(in_srgb,var(--t-music)_45%,transparent)]"
+                    style={{ left: `${((t - p.start) / Math.max(p.end - p.start, 0.001)) * 100}%` }}
+                  />
+                ))}
+                <span className="relative">{p.label}</span>
+              </button>
+            ))
+            : musicBlocks === null || musicBlocks === undefined || musicBlocks.length === 0
             ? <Block start={0} end={total} total={total} color="" dim label={music} />
             : musicBlocks.map((b, i) => <Block key={i} start={b.start} end={Math.min(b.end, total)} total={total} color="var(--t-music)" label={b.label} />)}
           {drop === null || drop === undefined ? null : (
             <span className="pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-[var(--t-music)]" style={{ left: `${(drop / total) * 100}%` }} title="The drop">
               {/* a fitted bed's Drop block names it already */}
-              {musicBlocks === null || musicBlocks === undefined || musicBlocks.length === 0
+              {(musicBlocks === null || musicBlocks === undefined || musicBlocks.length === 0) && (musicParts === null || musicParts === undefined)
                 ? <span className="absolute top-0.5 left-1 text-[10.5px] font-medium text-[color-mix(in_srgb,var(--t-music)_70%,var(--fg))]">drop</span>
                 : null}
             </span>

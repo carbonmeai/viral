@@ -1,9 +1,9 @@
 import type { MusicBed, MusicTrack, MusicTrackId, StageRun, TranscriptWord } from "@viral/contracts"
 import { cn } from "@viral/ui/cn"
 import { Button, IconButton } from "@viral/ui/primitives/button"
-import { Crosshair, Music, Pause, Play, Shuffle } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
-import { Detail } from "../../system/detail.tsx"
+import { Crosshair, Music, Pause, Play, Rows3, Shuffle } from "lucide-react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
+import { Detail, useDetailed } from "../../system/detail.tsx"
 import { clockOf } from "../editor-values.ts"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
@@ -12,10 +12,11 @@ import { AddSong } from "./music-stage.tsx"
 import { fittable, partName, rightsName, songSpans } from "./music-values.ts"
 import { MusicWaveform } from "./music-waveform.tsx"
 
-export type MusicTab = "song" | "drop"
+export type MusicTab = "song" | "drop" | "arrange"
 const TABS: ReadonlyArray<InspectorTab<MusicTab>> = [
   { id: "song", label: "Song", icon: Music },
-  { id: "drop", label: "Drop word", icon: Crosshair }
+  { id: "drop", label: "Drop word", icon: Crosshair },
+  { id: "arrange", label: "Arrange", icon: Rows3 }
 ]
 
 // What a change costs and does, said before it's applied.
@@ -23,6 +24,7 @@ const REFIT_HELP = "The short is laid out and rendered again with it. Nothing is
 
 // The music step's inspector: the short's song (tempo, rights, which part of it plays) with Change song, and the
 // word of the narration the drop lands on. Applying a change fits a new bed and re-runs the short from assemble.
+// In Detailed mode, `arrange` (the arrangement editor, once a song is fitted) is a third tab.
 export function MusicInspector({
   track,
   bed,
@@ -37,8 +39,9 @@ export function MusicInspector({
   running,
   onApply,
   stages,
-  tab,
-  onTab
+  tab: openTab,
+  onTab,
+  arrange
 }: {
   readonly track: MusicTrack | null
   readonly bed: MusicBed | null
@@ -59,10 +62,23 @@ export function MusicInspector({
   readonly stages: ReadonlyArray<StageRun>
   readonly tab: MusicTab
   readonly onTab: (tab: MusicTab) => void
+  readonly arrange: ReactNode
 }) {
+  const detailed = useDetailed()
+  const arranging = detailed && arrange !== null
+  const tabs = arranging ? TABS : TABS.filter((t) => t.id !== "arrange")
+  if (openTab === "arrange" && arranging) {
+    return (
+      <>
+        <InspectorTabs tabs={tabs} open={openTab} onOpen={onTab} />
+        {arrange}
+      </>
+    )
+  }
+  const tab = openTab === "arrange" ? "song" : openTab
   return (
     <>
-      <InspectorTabs tabs={TABS} open={tab} onOpen={onTab} />
+      <InspectorTabs tabs={tabs} open={tab} onOpen={onTab} />
       <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
         {tab === "song" ? (
           picking ? (
