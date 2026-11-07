@@ -11,3 +11,5 @@ docs/
 .claude/settings.local.json
 dist/
 dist-electron/
+
+__pycache__/
