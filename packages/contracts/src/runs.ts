@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { GatePayload } from "./gates.ts"
 import { ProjectId, ProjectNotFound } from "./projects.ts"
@@ -73,13 +73,14 @@ export const StageRun = Schema.Struct({
   status: StageRunStatus,
   model: Schema.NullOr(Schema.String),
   // who ran it (claude-cli, ai-gateway, elevenlabs), and whether its cost is real money or a CLI plan's value
-  provider: Schema.NullOr(Schema.String),
-  billing: Schema.NullOr(Schema.Literals(["billed", "subscription"])),
+  // older libraries stored run events before these existed, so a missing key reads as null
+  provider: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  billing: Schema.NullOr(Schema.Literals(["billed", "subscription"])).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   error: Schema.NullOr(Schema.String),
   inputTokens: Schema.NullOr(Schema.Int),
   outputTokens: Schema.NullOr(Schema.Int),
   costUsd: Schema.NullOr(Schema.Finite),
-  ttsCharacters: Schema.NullOr(Schema.Int),
+  ttsCharacters: Schema.NullOr(Schema.Int).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   durationMs: Schema.NullOr(Schema.Int),
   startedAt: Schema.DateTimeUtcFromString,
   finishedAt: Schema.NullOr(Schema.DateTimeUtcFromString)
