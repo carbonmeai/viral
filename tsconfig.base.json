@@ -151,6 +151,7 @@
             "include": [
               "**/*.test.ts",
               "**/*.golden.ts",
+              "**/*.live.ts",
               "**/testing/**/*"
             ],
             "options": {

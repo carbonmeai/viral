@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "@effect/platform-node": "4.1.2",
-    "@modelcontextprotocol/sdk": "1.32.2"
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@viral/provider-testing": "workspace:*"
   }
 }

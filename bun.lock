@@ -99,6 +99,10 @@
         "@viral/provider-core": "workspace:*",
         "effect": "4.1.2",
       },
+      "devDependencies": {
+        "@effect/platform-node": "4.1.2",
+        "@viral/provider-testing": "workspace:*",
+      },
     },
     "packages/provider-codex": {
       "name": "@viral/provider-codex",
@@ -109,6 +113,7 @@
       "devDependencies": {
         "@effect/platform-node": "4.1.2",
         "@modelcontextprotocol/sdk": "1.32.2",
+        "@viral/provider-testing": "workspace:*",
       },
     },
     "packages/provider-core": {
@@ -130,6 +135,7 @@
       "devDependencies": {
         "@effect/platform-node": "4.1.2",
         "@modelcontextprotocol/sdk": "1.32.2",
+        "@viral/provider-testing": "workspace:*",
       },
     },
     "packages/provider-testing": {

@@ -181,7 +181,7 @@ packages/provider-codex/ our own `codex app-server` JSON-RPC client: one app-ser
 packages/provider-opencode/ `opencode serve` per run (free port, password) configured by OPENCODE_CONFIG_CONTENT
                        (Viral agent, every permission denied but viral_* tools); SDK v2 sessions, abort after the
                        output tool, USD cost; refuses OpenCode < 1.14.19 with how to update. Tests use a fake
-packages/provider-testing/ replayRun, the replay provider behind AgentSession.replay
+packages/provider-testing/ replayRun, the replay provider behind AgentSession.replay, and the live checks' task (*.live.ts)
 packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,
                        28/32px controls) and primitives on Base UI + cva (incl. Dialog, Textarea)
 repos/                 gitignored reference source checkouts — read-only
@@ -243,6 +243,7 @@ bun run cli eval all --models claude-cli,codex,gateway:openai/gpt-6-luna --runs 
                       # agent-stage eval vs the CLI baseline → ~/.viral/evals/<date>-<stages>/eval.html
                       # (spend recorded in your library; --include <earlier eval dirs> combines the pages)
 bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
+bun run test:live     # each agent provider on its real CLI (Claude, Codex, OpenCode; a cent or so); skips any not set up
 bun run fixtures:sync # copy the candy project (plans, media, golden outputs) into ~/.viral/fixtures (not in git)
 ```
 
