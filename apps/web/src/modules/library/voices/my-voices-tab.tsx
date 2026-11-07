@@ -1,13 +1,14 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import type { Preset, Voice } from "@viral/contracts"
-import { Button, IconButton } from "@viral/ui/primitives/button"
+import { Button } from "@viral/ui/primitives/button"
+import { Dialog } from "@viral/ui/primitives/dialog"
 import { Input } from "@viral/ui/primitives/input"
-import { Select } from "@viral/ui/primitives/select"
+import { Menu, MenuItem, MenuSeparator, MenuSub } from "@viral/ui/primitives/menu"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { MessageSquareText, Star, Trash2 } from "lucide-react"
+import { MessageSquareText, Palette, Star, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { serverUrl } from "../../../config/server-url.ts"
 import { homeFileUrl } from "../../../lib/media-url.ts"
@@ -22,8 +23,9 @@ import { splitName } from "./voices-values.ts"
 const SAMPLE_LINE = "This guy made a candy that hits every single taste at the exact same time."
 
 // Library › Voices › My voices: the voices on your ElevenLabs account, the default voice (the default style's,
-// which every short uses unless its style or the short picks another) tagged and any other one a click from it, the
-// other styles narrating with each, a free sample, a line of your own spoken in it (that one costs its characters), and Remove for voices you added.
+// which every short uses unless its style or the short picks another) tagged, and the other styles narrating with
+// each. A row is a free sample and a ⋯ menu: Set as default, Use for style, Try a line (a line of your own spoken
+// in it, which costs its characters), and Remove for voices you added.
 export function MyVoicesTab({ styles }: { readonly styles: ReadonlyArray<Preset> }) {
   const voices = useAtomValue(voicesAtom)
   return Option.match(AsyncResult.value(voices), {
@@ -67,6 +69,11 @@ function MyVoiceRow({ voice, styles }: { readonly voice: Voice; readonly styles:
   const [problem, setProblem] = useState<string | null>(null)
   const split = splitName(voice.name)
   const removable = voice.category !== "premade"
+  const useFor = (style: Preset) => {
+    setProblem(null)
+    void save({ payload: { id: style.id, config: { ...style.config, voice: { ...style.config.voice, voiceId: voice.voiceId } } }, reactivityKeys: ["presets"] })
+      .catch((e: unknown) => setProblem(refusal(e)[0] ?? null))
+  }
 
   return (
     <div className="border-b border-line last:border-b-0">
@@ -78,69 +85,68 @@ function MyVoiceRow({ voice, styles }: { readonly voice: Voice; readonly styles:
             {using.filter((s) => !s.isDefault).map((s) => <Status key={s.id}>{s.name}</Status>)}
           </>
         }
-        detail={<Detail>{` · ${voice.category ?? "voice"} · ${voice.voiceId}`}</Detail>}
+        detail={<Detail><span className="text-fg-3">{` · ${voice.voiceId}`}</span></Detail>}
         actions={
+          <span className="flex items-center gap-0.5">
+            <SampleButton url={voice.previewUrl} name={split.name} />
+            <Menu label={`More for ${split.name}`}>
+              {defaultStyle === undefined || isDefault ? null : (
+                <MenuItem
+                  onClick={() => {
+                    setProblem(null)
+                    void saveDefault({ payload: { voiceId: voice.voiceId, wordsPerSecond: defaultStyle.config.voice.wordsPerSecond }, reactivityKeys: ["presets"] })
+                      .catch((e: unknown) => setProblem(refusal(e)[0] ?? "Couldn’t set it as the default voice."))
+                  }}
+                >
+                  <Star />Set as default
+                </MenuItem>
+              )}
+              {others.length === 0 ? null : (
+                <MenuSub label={<><Palette />Use for style</>}>
+                  {others.map((s) => <MenuItem key={s.id} onClick={() => useFor(s)}><span className="truncate">{s.name}</span></MenuItem>)}
+                </MenuSub>
+              )}
+              <MenuItem onClick={() => setTrying(true)}><MessageSquareText />Try a line</MenuItem>
+              {removable ? (
+                <>
+                  <MenuSeparator />
+                  <MenuItem tone="danger" onClick={() => setConfirming(true)}><Trash2 />Remove</MenuItem>
+                </>
+              ) : null}
+            </Menu>
+          </span>
+        }
+      />
+      {problem === null ? null : <div className="px-2 pb-2 text-xs text-danger">{problem}</div>}
+      {trying ? <TryLine voiceId={voice.voiceId} onClose={() => setTrying(false)} /> : null}
+      <Dialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Remove ${split.name}?`}
+        description={`It’s removed from your ElevenLabs account.${using.length === 0 ? "" : ` ${using.map((s) => s.name).join(", ")} narrate${using.length === 1 ? "s" : ""} with it.`}`}
+        footer={
           <>
-            {defaultStyle === undefined || isDefault ? null : (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setProblem(null)
-                  void saveDefault({ payload: { voiceId: voice.voiceId, wordsPerSecond: defaultStyle.config.voice.wordsPerSecond }, reactivityKeys: ["presets"] })
-                    .catch((e: unknown) => setProblem(refusal(e)[0] ?? "Couldn’t set it as the default voice."))
-                }}
-              >
-                <Star />Set as default
-              </Button>
-            )}
-            {others.length === 0 ? null : (
-              <Select<string>
-                label={`Use ${split.name} for a style`}
-                className="min-w-[150px]"
-                value=""
-                options={[{ value: "", label: "Use for style…" }, ...others.map((s) => ({ value: s.id, label: s.name }))]}
-                onChange={(id) => {
-                  const style = others.find((s) => s.id === id)
-                  if (style === undefined) return
-                  setProblem(null)
-                  void save({ payload: { id: style.id, config: { ...style.config, voice: { ...style.config.voice, voiceId: voice.voiceId } } }, reactivityKeys: ["presets"] })
-                    .catch((e: unknown) => setProblem(refusal(e)[0] ?? null))
-                }}
-              />
-            )}
-            <span className="flex items-center gap-0.5">
-              <IconButton label="Try a line" variant={trying ? "default" : "ghost"} onClick={() => setTrying(!trying)}><MessageSquareText /></IconButton>
-              <SampleButton url={voice.previewUrl} name={split.name} />
-              {removable ? <IconButton label={`Remove ${split.name}`} onClick={() => setConfirming(true)}><Trash2 /></IconButton> : null}
-            </span>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>Keep</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setConfirming(false)
+                setProblem(null)
+                void remove({ payload: { voiceId: voice.voiceId }, reactivityKeys: ["voices"] })
+                  .catch((e: unknown) => setProblem(refusal(e)[0] ?? "ElevenLabs didn’t remove it."))
+              }}
+            >
+              Remove
+            </Button>
           </>
         }
       />
-      {confirming ? (
-        <div className="flex flex-wrap items-center gap-2 px-2 pb-2.5 text-xs text-fg-1">
-          Remove {split.name} from your ElevenLabs account?{using.length === 0 ? "" : ` ${using.map((s) => s.name).join(", ")} narrate${using.length === 1 ? "s" : ""} with it.`}
-          <Button
-            variant="primary"
-            onClick={() => {
-              setProblem(null)
-              void remove({ payload: { voiceId: voice.voiceId }, reactivityKeys: ["voices"] })
-                .catch((e: unknown) => setProblem(refusal(e)[0] ?? "ElevenLabs didn’t remove it."))
-                .finally(() => setConfirming(false))
-            }}
-          >
-            Remove
-          </Button>
-          <Button variant="ghost" onClick={() => setConfirming(false)}>Keep</Button>
-        </div>
-      ) : null}
-      {problem === null ? null : <div className="px-2 pb-2 text-xs text-danger">{problem}</div>}
-      {trying ? <TryLine voiceId={voice.voiceId} /> : null}
     </div>
   )
 }
 
 // Your own line in this voice. ElevenLabs charges for its characters, so the cost shows before you press it.
-function TryLine({ voiceId }: { readonly voiceId: string }) {
+function TryLine({ voiceId, onClose }: { readonly voiceId: string; readonly onClose: () => void }) {
   const speak = useAtomSet(previewVoice, { mode: "promise" })
   const [text, setText] = useState(SAMPLE_LINE)
   const [take, setTake] = useState<string | null>(null)
@@ -163,6 +169,7 @@ function TryLine({ voiceId }: { readonly voiceId: string }) {
         {state === "speaking" ? "Speaking…" : "Speak it"}
       </Button>
       <span className="text-xs text-fg-2">about {text.trim().length} ElevenLabs characters</span>
+      <Button variant="ghost" onClick={onClose}>Close</Button>
       {take === null ? null : <audio src={take} controls autoPlay className="h-8 w-full" />}
       {state === "failed" ? <span className="text-xs text-danger">ElevenLabs didn’t speak it. Check your key in Settings › Accounts.</span> : null}
     </div>

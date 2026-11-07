@@ -1,16 +1,18 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
-import { Link } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
 import type { MusicTrack, MusicTrackKind, Project, Rights } from "@viral/contracts"
-import { Button, buttonVariants } from "@viral/ui/primitives/button"
+import { cn } from "@viral/ui/cn"
+import { Button, IconButton } from "@viral/ui/primitives/button"
+import { Dialog } from "@viral/ui/primitives/dialog"
 import { Input } from "@viral/ui/primitives/input"
+import { Menu, MenuChoices, MenuItem, MenuNote, MenuSeparator, MenuSub } from "@viral/ui/primitives/menu"
 import { Panel } from "@viral/ui/primitives/panel"
-import { Segmented } from "@viral/ui/primitives/segmented"
 import { Select } from "@viral/ui/primitives/select"
-import { Skeleton, SkeletonRegion, SkeletonText } from "@viral/ui/primitives/skeleton"
+import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { FolderOpen, Music, Pause, Play, Plus, RefreshCw, SkipForward, Trash2 } from "lucide-react"
+import { FolderOpen, Play, Plus, Square, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { desktop, serverUrl } from "../../../config/server-url.ts"
 import { homeFileUrl } from "../../../lib/media-url.ts"
@@ -18,10 +20,9 @@ import { overviewAtom } from "../../home/overview.ts"
 import { Page } from "../../layout/page.tsx"
 import { EDITOR_STEP_IDS } from "../../shorts/editor-values.ts"
 import { Detail } from "../../system/detail.tsx"
-import { addMusicFolder, addMusicTrack, analyseMusicTrack, removeMusicTrack, setMusicTrackBeat, setMusicTrackKind, setMusicTrackRights, tracksAtom } from "../library-api.ts"
+import { addMusicFolder, addMusicTrack, removeMusicTrack, setMusicTrackKind, setMusicTrackRights, tracksAtom } from "../library-api.ts"
 import { Loaded } from "../library-loading.tsx"
-import { buildStart, fileName, musicStep, pathKind, refusal, shortsByTrack, trackLength } from "../library-values.ts"
-import { TrackWaveform } from "./track-waveform.tsx"
+import { fileName, musicStep, pathKind, refusal, shortsByTrack, trackLength } from "../library-values.ts"
 
 const RIGHTS: ReadonlyArray<{ readonly value: Rights; readonly label: string }> = [
   { value: "owned", label: "Mine" },
@@ -39,8 +40,9 @@ type Adding = { readonly _tag: "files"; readonly files: ReadonlyArray<string> } 
 
 const MUSIC_STEP = musicStep(EDITOR_STEP_IDS)
 
-// Library › Music: tracks you can put under a short, with their tempo and drop. Music is optional; a short
-// without a track is voice only.
+// Library › Music: the songs you can put under a short, as a plain list: play one, see its length and tempo,
+// which shorts use it, its rights. Rights, type and Remove sit in each row's ⋯ menu; fitting a song to a short
+// happens in that short's Music step. Music is optional; a short without a song is voice only.
 export function MusicPage() {
   const tracks = useAtomValue(tracksAtom)
   const overview = useAtomValue(overviewAtom)
@@ -63,7 +65,7 @@ export function MusicPage() {
   return (
     <Page
       title="Music"
-      description="Songs for your shorts, with their tempo and drop. Music is optional: a short without a song is voice only."
+      description="Songs for your shorts. Music is optional: a short without a song is voice only."
       actions={buttons}
     >
       <div className="grid gap-2">
@@ -87,32 +89,24 @@ export function MusicPage() {
   )
 }
 
-// The song list while it loads: rows like the real ones, the first open with its waveform bars.
+// Every song row: play, the title, its length and tempo, the shorts using it, its rights, and a ⋯ menu.
+const ROW = "grid grid-cols-[28px_minmax(0,1fr)_48px_72px_88px_112px_28px] items-center gap-3"
+
+// The song list while it loads: rows like the real ones.
 function MusicSkeleton() {
   return (
     <SkeletonRegion label="Loading your music" className="rounded-panel bg-panel px-4 pt-3.5 pb-4">
       <Skeleton className="mb-3.5 h-4 w-20" />
       <div className="flex flex-col gap-[3px]">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="rounded-[8px] bg-item">
-            <div className="flex min-h-12 items-center gap-3 px-3 py-2">
-              <Skeleton className="size-8 rounded-[6px]" />
-              <SkeletonText lines={2} className="w-56" />
-              <Skeleton className="ml-auto h-5 w-16" />
-              <Skeleton className="h-5 w-20" />
-            </div>
-            {i === 0
-              ? (
-                <div className="grid gap-3 px-3 pt-1 pb-3">
-                  <div className="flex h-16 items-center gap-[2px]">
-                    {Array.from({ length: 140 }, (_, b) => (
-                      <Skeleton key={b} className="flex-1 rounded-[1px]" style={{ height: `${20 + 60 * Math.abs(Math.sin(b * 0.37) * Math.cos(b * 0.11))}%` }} />
-                    ))}
-                  </div>
-                  <div className="flex gap-1.5"><Skeleton className="h-7 w-20 rounded-ctl" /><Skeleton className="h-7 w-36 rounded-ctl" /></div>
-                </div>
-              )
-              : null}
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className={cn(ROW, "min-h-12 rounded-[8px] bg-item px-3 py-2")}>
+            <Skeleton className="size-7 rounded-full" />
+            <Skeleton className="h-3.5 w-[55%]" />
+            <Skeleton className="h-3.5 w-9" />
+            <Skeleton className="h-3.5 w-14" />
+            <Skeleton className="h-3.5 w-14" />
+            <Skeleton className="h-5 w-16 rounded-chip" />
+            <Skeleton className="size-7" />
           </div>
         ))}
       </div>
@@ -120,138 +114,135 @@ function MusicSkeleton() {
   )
 }
 
+// Only one song plays at a time across the page.
+let playingNow: HTMLAudioElement | null = null
+
 function TrackList({ tracks, usedBy }: { readonly tracks: ReadonlyArray<MusicTrack>; readonly usedBy: ReadonlyMap<string, ReadonlyArray<Project>> }) {
-  const [open, setOpen] = useState<string | null>(tracks[0]?.id ?? null)
+  useEffect(() => () => {
+    playingNow?.pause()
+    playingNow = null
+  }, [])
   return (
     <Panel title="Songs" count={tracks.length}>
-      {tracks.map((track) => (
-        <TrackRow key={track.id} track={track} usedBy={usedBy.get(track.id) ?? []} open={open === track.id} onToggle={() => setOpen(open === track.id ? null : track.id)} />
-      ))}
+      {tracks.map((track) => <TrackRow key={track.id} track={track} usedBy={usedBy.get(track.id) ?? []} />)}
     </Panel>
   )
 }
 
-function TrackRow({ track, usedBy, open, onToggle }: { readonly track: MusicTrack; readonly usedBy: ReadonlyArray<Project>; readonly open: boolean; readonly onToggle: () => void }) {
-  const beat = track.bpm === null ? "No beat yet" : `${track.bpm.toFixed(1)} BPM${track.dropS === null ? " · no drop" : ` · drop ${trackLength(track.dropS)}`}`
+function PlayButton({ track }: { readonly track: MusicTrack }) {
+  const audio = useRef<HTMLAudioElement | null>(null)
+  const [playing, setPlaying] = useState(false)
+  useEffect(() => () => audio.current?.pause(), [])
+  const toggle = () => {
+    if (audio.current === null) {
+      audio.current = new Audio(homeFileUrl(serverUrl, `music/${track.path}`))
+      audio.current.onended = () => setPlaying(false)
+      audio.current.onpause = () => setPlaying(false)
+    }
+    if (playing) {
+      audio.current.pause()
+      audio.current.currentTime = 0
+      return
+    }
+    if (playingNow !== null && playingNow !== audio.current) playingNow.pause()
+    playingNow = audio.current
+    void audio.current.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+  }
   return (
-    <div className="rounded-[8px] bg-item">
-      <button type="button" onClick={onToggle} className="flex min-h-12 w-full cursor-pointer items-center gap-3 px-3 py-2 text-left hover:bg-item-hover">
-        <span className="grid size-8 shrink-0 place-items-center rounded-[6px] bg-ctl text-fg-2 [&>svg]:size-4"><Music /></span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-medium">{track.title}</span>
-          <span className="text-xs text-fg-2">
-            {trackLength(track.durationS)} · {beat}
-            <Detail>
-              {track.loudnessLufs === null ? "" : ` · ${track.loudnessLufs.toFixed(1)} LUFS`}
-              {track.beatSource === null ? "" : ` · ${track.beatSource === "manual" ? "set by you" : "from analysis"}`}
-            </Detail>
-          </span>
-        </span>
-        <span className="rounded-[6px] bg-ctl px-1.5 py-0.5 text-xs text-fg-2">{KINDS.find((k) => k.value === track.kind)?.label}</span>
-        {usedBy.length === 0 ? null : <span className="text-xs text-fg-2">{usedBy.length === 1 ? "1 short" : `${usedBy.length} shorts`}</span>}
-        <Status tone={track.rights === "unconfirmed" ? "wait" : "ok"}>{RIGHTS.find((r) => r.value === track.rights)?.label}</Status>
-      </button>
-      {open ? <TrackDetails track={track} usedBy={usedBy} /> : null}
-    </div>
+    <IconButton
+      label={playing ? `Stop ${track.title}` : `Play ${track.title}`}
+      variant="default"
+      onClick={toggle}
+      className={cn("rounded-full", playing && "bg-lemon text-lemon-ink hover:bg-lemon")}
+    >
+      {playing ? <Square className="fill-current" /> : <Play className="fill-current" />}
+    </IconButton>
   )
 }
 
-// The open track: its waveform with the drop, playback from the start or the build-up, its beat, rights and
-// the shorts that use it.
-function TrackDetails({ track, usedBy }: { readonly track: MusicTrack; readonly usedBy: ReadonlyArray<Project> }) {
-  const url = homeFileUrl(serverUrl, `music/${track.path}`)
-  const analyse = useAtomSet(analyseMusicTrack, { mode: "promise" })
-  const setBeat = useAtomSet(setMusicTrackBeat, { mode: "promise" })
+function TrackRow({ track, usedBy }: { readonly track: MusicTrack; readonly usedBy: ReadonlyArray<Project> }) {
+  const navigate = useNavigate()
   const setRights = useAtomSet(setMusicTrackRights, { mode: "promise" })
   const setKind = useAtomSet(setMusicTrackKind, { mode: "promise" })
   const remove = useAtomSet(removeMusicTrack, { mode: "promise" })
-  const audio = useRef<HTMLAudioElement | null>(null)
-  const [time, setTime] = useState<number | null>(null)
-  const [bpm, setBpm] = useState(track.bpm === null ? "" : String(track.bpm))
-  const [drop, setDrop] = useState(track.dropS === null ? "" : String(track.dropS))
-  const [busy, setBusy] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
-  const build = buildStart(track)
-
-  useEffect(() => () => audio.current?.pause(), [])
-  const play = (from: number) => {
-    if (audio.current === null) {
-      audio.current = new Audio(url)
-      audio.current.ontimeupdate = () => setTime(audio.current?.currentTime ?? null)
-      audio.current.onended = () => setTime(null)
-    }
-    audio.current.currentTime = from
-    void audio.current.play()
-  }
-  const stop = () => {
-    audio.current?.pause()
-    setTime(null)
-  }
-  const run = (what: string, task: Promise<unknown>) => {
-    setBusy(what)
+  const run = (task: Promise<unknown>) => {
     setProblem(null)
-    void task.catch((e: unknown) => setProblem(refusal(e)[0] ?? null)).finally(() => setBusy(null))
+    void task.catch((e: unknown) => setProblem(refusal(e)[0] ?? null))
   }
-  const bpmValue = Number(bpm)
-  const dropValue = Number(drop)
-  const beatValid = bpm !== "" && drop !== "" && bpmValue > 0 && dropValue >= 0
+  const openShort = (project: Project) =>
+    void navigate({ to: "/shorts/$projectId", params: { projectId: project.id }, search: MUSIC_STEP === undefined ? {} : { step: MUSIC_STEP } })
 
   return (
-    <div className="grid gap-3 px-3 pt-1 pb-3">
-      <TrackWaveform url={url} durationS={track.durationS} dropS={track.dropS} buildS={build} time={time} onSeek={play} />
-      <div className="flex flex-wrap items-center gap-1.5">
-        {time === null ? <Button onClick={() => play(0)}><Play />Play</Button> : <Button onClick={stop}><Pause />Stop</Button>}
-        {build === null ? null : <Button variant="ghost" onClick={() => play(build)}><SkipForward />From the build-up</Button>}
-        <span className="mx-2 h-5 w-px bg-line" />
-        <Input aria-label="BPM" inputMode="decimal" className="w-[72px] text-right" placeholder="BPM" value={bpm} onChange={(e) => setBpm(e.currentTarget.value)} />
-        <Input aria-label="Drop at (seconds)" inputMode="decimal" className="w-[88px] text-right" placeholder="drop (s)" value={drop} onChange={(e) => setDrop(e.currentTarget.value)} />
-        <Button
-          disabled={!beatValid || busy !== null || (bpmValue === track.bpm && dropValue === track.dropS)}
-          onClick={() => run("beat", setBeat({ payload: { id: track.id, bpm: bpmValue, dropS: dropValue }, reactivityKeys: ["music"] }))}
-        >
-          Set beat
-        </Button>
-        <Button variant="ghost" disabled={busy !== null} onClick={() => run("analyse", analyse({ payload: { id: track.id }, reactivityKeys: ["music"] }))}>
-          <RefreshCw />{busy === "analyse" ? "Analysing…" : "Analyse again"}
-        </Button>
-        <span className="ml-auto flex items-center gap-1.5">
-          <Segmented label="Type" value={track.kind} options={KINDS} onChange={(kind) => run("kind", setKind({ payload: { id: track.id, kind }, reactivityKeys: ["music"] }))} />
-          <Select label="Rights" className="min-w-[132px]" value={track.rights} options={RIGHTS} onChange={(rights) => run("rights", setRights({ payload: { id: track.id, rights }, reactivityKeys: ["music"] }))} />
-          {confirming
-            ? (
-              <>
-                <Button className="text-danger" onClick={() => run("remove", remove({ payload: { id: track.id }, reactivityKeys: ["music"] }))}>Remove</Button>
-                <Button variant="ghost" onClick={() => setConfirming(false)}>Keep</Button>
-              </>
-            )
-            : <Button variant="ghost" aria-label={`Remove ${track.title}`} onClick={() => setConfirming(true)}><Trash2 /></Button>}
+    <div className="rounded-[8px] bg-item hover:bg-item-hover">
+      <div className={cn(ROW, "min-h-12 px-3 py-2")}>
+        <PlayButton track={track} />
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate font-medium" title={track.title}>{track.title}</span>
+          {track.kind === "clip" ? <span className="text-xs text-fg-2">Edited clip</span> : null}
+          <Detail>
+            <span className="truncate text-xs text-fg-3">
+              {[
+                track.dropS === null ? "no drop found" : `drop at ${trackLength(track.dropS)}`,
+                track.loudnessLufs === null ? null : `${track.loudnessLufs.toFixed(1)} LUFS`,
+                track.beatSource === "manual" ? "beat set by you" : null
+              ].filter((part) => part !== null).join(" · ")}
+            </span>
+          </Detail>
         </span>
+        <span className="text-fg-1 tabular-nums">{trackLength(track.durationS)}</span>
+        <span className={cn("tabular-nums", track.bpm === null ? "text-fg-3" : "text-fg-1")} title={track.bpm === null ? "Viral works out the tempo after a song is added" : "Tempo"}>
+          {track.bpm === null ? "—" : `${Math.round(track.bpm)} BPM`}
+        </span>
+        <span className="min-w-0">
+          {usedBy.length === 0 ? <span className="text-fg-3">Not used</span> : (
+            <Menu label={`Shorts using ${track.title}`} align="start" trigger={plural(usedBy.length, "short")} triggerClassName="-ml-2.5 text-base font-normal text-fg-1">
+              <MenuNote>Each uses its own fitted cut; the song isn’t changed.</MenuNote>
+              {usedBy.map((p) => <MenuItem key={p.id} onClick={() => openShort(p)}><span className="truncate">{p.title}</span></MenuItem>)}
+            </Menu>
+          )}
+        </span>
+        <span><Status tone={track.rights === "unconfirmed" ? "wait" : "ok"}>{RIGHTS.find((r) => r.value === track.rights)?.label}</Status></span>
+        <Menu label={`More for ${track.title}`}>
+          <MenuSub label="Rights">
+            <MenuChoices value={track.rights} options={RIGHTS} onChange={(rights) => run(setRights({ payload: { id: track.id, rights }, reactivityKeys: ["music"] }))} />
+          </MenuSub>
+          <MenuSub label="Type">
+            <MenuChoices value={track.kind} options={KINDS} onChange={(kind) => run(setKind({ payload: { id: track.id, kind }, reactivityKeys: ["music"] }))} />
+          </MenuSub>
+          <MenuSeparator />
+          <MenuItem tone="danger" onClick={() => setConfirming(true)}><Trash2 />Remove</MenuItem>
+        </Menu>
       </div>
-      {track.beatSource === "manual" ? <div className="text-xs text-fg-2">You set this beat, so analysing again keeps it.</div> : null}
-      {problem === null ? null : <div className="text-xs text-danger">{problem}</div>}
-      {usedBy.length === 0 ? null : (
-        <div className="grid gap-1">
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-fg-2">
-            Used by
-            {usedBy.map((p) => (
-              <Link
-                key={p.id}
-                to="/shorts/$projectId"
-                params={{ projectId: p.id }}
-                search={MUSIC_STEP === undefined ? {} : { step: MUSIC_STEP }}
-                className={buttonVariants({ variant: "ghost" })}
-              >
-                {p.title}
-              </Link>
-            ))}
-          </div>
-          <div className="text-xs text-fg-3">Each short uses its own fitted cut of this song; the song itself is never changed.</div>
-        </div>
-      )}
+      {problem === null ? null : <div className="px-3 pb-2 text-xs text-danger">{problem}</div>}
+      <Dialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Remove “${track.title}”?`}
+        description={usedBy.length === 0
+          ? "It’s taken out of your library and its file is deleted."
+          : `It’s taken out of your library and its file is deleted. ${plural(usedBy.length, "short")} use${usedBy.length === 1 ? "s" : ""} it.`}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>Keep</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setConfirming(false)
+                run(remove({ payload: { id: track.id }, reactivityKeys: ["music"] }))
+              }}
+            >
+              Remove
+            </Button>
+          </>
+        }
+      />
     </div>
   )
 }
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
 // Adding songs: the files or folder chosen in the open panel (a typed path in a browser), and their rights.
 // A folder adds every audio file in it; files Viral can't read are listed, the rest are added.

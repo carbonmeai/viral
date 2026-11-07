@@ -3,6 +3,7 @@ import type { ExploreVoicesQuery, LibraryVoice, Preset, VoiceSort, VoiceUseCase 
 import { Button, IconButton } from "@viral/ui/primitives/button"
 import { cn } from "@viral/ui/cn"
 import { Input } from "@viral/ui/primitives/input"
+import { Menu, MenuItem, MenuNote, MenuSub } from "@viral/ui/primitives/menu"
 import { Select } from "@viral/ui/primitives/select"
 import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { Option } from "effect"
@@ -12,11 +13,12 @@ import {
   BookOpen,
   Check,
   Clock3,
+  ExternalLink,
   GraduationCap,
   Languages,
   Megaphone,
   MessageSquare,
-  MoreHorizontal,
+  Palette,
   Plus,
   Search,
   SlidersHorizontal,
@@ -52,7 +54,8 @@ const SORTS: ReadonlyArray<{ readonly value: VoiceSort; readonly label: string }
 type Filters = Omit<ExploreVoicesQuery, "page">
 
 // Library › Voices › Explore: ElevenLabs' shared library (search, language, what the voice is for), with a free
-// sample on every voice and "+" to add it to yours. Narration is picked first: it's what a short's narrator needs.
+// sample on every voice, "+" to add it to yours, and a ⋯ menu (about the voice, Use for style once added, Open
+// on ElevenLabs). Narration is picked first: it's what a short's narrator needs.
 export function ExploreTab({ styles }: { readonly styles: ReadonlyArray<Preset> }) {
   const [search, setSearch] = useState("")
   const [filters, setFilters] = useState<Filters>({ search: null, language: "en", useCase: "narrative_story", gender: null, age: null, sort: "trending" })
@@ -211,11 +214,11 @@ function LibraryVoiceRow({ voice, styles }: { readonly voice: LibraryVoice; read
   const save = useAtomSet(updatePreset, { mode: "promise" })
   const [state, setState] = useState<"idle" | "adding" | "added">(voice.inMyVoices ? "added" : "idle")
   const [problem, setProblem] = useState<string | null>(null)
-  const [more, setMore] = useState(false)
   const { name, traits } = splitName(voice.name)
   const flag = flagOf(voice.locale)
   const age = ageLabel(voice.createdAt, Date.now())
   const added = state === "added"
+  const about = [voice.gender, voice.age?.replace("_", " "), voice.accent].filter((v) => v !== null && v !== undefined).join(" · ")
 
   return (
     <div className="border-b border-line last:border-b-0">
@@ -263,35 +266,32 @@ function LibraryVoiceRow({ voice, styles }: { readonly voice: LibraryVoice; read
             {added ? <Check /> : <Plus />}
           </IconButton>
           <SampleButton url={voice.previewUrl} name={name} />
-          <IconButton label="More" onClick={() => setMore(!more)}><MoreHorizontal /></IconButton>
+          <Menu label={`More for ${name}`}>
+            {about === "" ? null : <MenuNote>{about}</MenuNote>}
+            <Detail><MenuNote>{`voice ${voice.voiceId}`}</MenuNote></Detail>
+            {added && styles.length > 0 ? (
+              <MenuSub label={<><Palette />Use for style</>}>
+                {styles.map((s) => (
+                  <MenuItem
+                    key={s.id}
+                    onClick={() => {
+                      setProblem(null)
+                      void save({ payload: { id: s.id, config: { ...s.config, voice: { ...s.config.voice, voiceId: voice.voiceId } } }, reactivityKeys: ["presets"] })
+                        .catch((e: unknown) => setProblem(refusal(e)[0] ?? null))
+                    }}
+                  >
+                    <span className="truncate">{s.name}</span>
+                  </MenuItem>
+                ))}
+              </MenuSub>
+            ) : null}
+            <MenuItem onClick={() => window.open(`https://elevenlabs.io/app/voice-library?voiceId=${voice.voiceId}`, "_blank", "noreferrer")}>
+              <ExternalLink />Open on ElevenLabs
+            </MenuItem>
+          </Menu>
         </span>
       </div>
       {problem === null ? null : <div className="px-2 pb-2 text-xs text-danger">{problem}</div>}
-      {added && state === "added" && !voice.inMyVoices ? (
-        <div className="flex items-center gap-2 px-2 pb-2.5 text-xs text-fg-2">
-          Added to your voices.
-          {styles.length === 0 ? null : (
-            <Select<string>
-              label={`Use ${name} for a style`}
-              value=""
-              options={[{ value: "", label: "Use for style…" }, ...styles.map((s) => ({ value: s.id, label: s.name }))]}
-              onChange={(id) => {
-                const style = styles.find((s) => s.id === id)
-                if (style === undefined) return
-                void save({ payload: { id: style.id, config: { ...style.config, voice: { ...style.config.voice, voiceId: voice.voiceId } } }, reactivityKeys: ["presets"] })
-                  .catch((e: unknown) => setProblem(refusal(e)[0] ?? null))
-              }}
-            />
-          )}
-        </div>
-      ) : null}
-      {more ? (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 px-2 pb-2.5 text-xs text-fg-2">
-          {[voice.gender, voice.age?.replace("_", " "), voice.accent, voice.category].filter((v) => v !== null && v !== undefined).join(" · ")}
-          <Detail>{`voice ${voice.voiceId}`}</Detail>
-          <a className="underline" href={`https://elevenlabs.io/app/voice-library?voiceId=${voice.voiceId}`} target="_blank" rel="noreferrer">Open on ElevenLabs</a>
-        </div>
-      ) : null}
     </div>
   )
 }

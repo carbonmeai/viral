@@ -151,7 +151,7 @@ export function StyleEditor({ preset, frame, usedBy }: { readonly preset: Preset
 
           <SettingsGroup title="Voice">
             <StyleVoice voiceId={draft.voice.voiceId} onChange={(voiceId) => voice({ voiceId })} />
-            <SettingRow label="Pace" sub="Words per second after speeding up the take. Adam needs about 3.2.">
+            <SettingRow label="Pace" sub="Words per second after speeding up the take. About 3.2 suits most narrators.">
               <RangeField label="Words per second" value={draft.voice.wordsPerSecond} min={2} max={5} step={0.1} format={(v) => `${v.toFixed(1)}/s`} onChange={(wordsPerSecond) => voice({ wordsPerSecond })} />
             </SettingRow>
           </SettingsGroup>
