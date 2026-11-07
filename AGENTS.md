@@ -18,11 +18,15 @@ apps/server/src/
   media/               GET /media/<path>: read-only files from the Viral home for the app (never viral.db,
                        symlinks checked, byte ranges for seeking) + GET /healthz
   home/                ~/.viral paths ($VIRAL_HOME overrides; tests use a temp dir)
-  persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one)
-  sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short from them;
+  persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one). Migrations
+                       run with foreign keys off, so one can rebuild a table the SQLite way; it checks the rows and
+                       keys itself before it commits (0002-multi-video.ts upgrades libraries in place)
+  sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short that uses them;
                        source-stages.ts defines the video-level stages (source, transcribe, contact-sheet).
-                       Links download at 1080p, else 720p, never higher; the size is kept in source-video
-  artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/
+                       Links download at 1080p, else 720p, never higher; the size is kept in source-video. A video a
+                       short or video set uses can't be deleted (SourceInUse, "used by N shorts")
+  artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/ (owners: a source, a
+                       video set (~/.viral/sets/<id>/), a project, a reference)
   transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
                        (transcripts.ts reads a source's transcript for planning stages; quote-match.ts snaps
                        an agent's quoted line to the transcript's exact word timings)
@@ -79,7 +83,13 @@ apps/server/src/
                        models"). Elsewhere the server fetches them in the background once the required tools are
                        ready (VIRAL_PREFETCH_MODELS=off skips), with progress in Settings › Tools
                        (PrefetchBackgroundRemoval)
-  projects/            shorts: row + ~/.viral/projects/<id>/, numbered per source (01-, 02-…). A short's optional
+  projects/            shorts: row + ~/.viral/projects/<id>/, numbered across the library (07-…; older shorts keep
+                       their per-video numbers). A short draws from 1–10 videos (project_sources, V1 first;
+                       sourcesOf(project)); several need a brief. A clip's optional `source` is its video's index
+                       (absent = V1, so single-video plans are written as before). source-context.ts is what the
+                       checks see per video (words, length, excluded ranges); ProjectSources loads a short's videos.
+                       Agents, the workspace and the renderers use V1 only until multi-video lands (assemble stops a
+                       plan with a clip from another video). A short's optional
                        brief (what it should achieve; CreateProject/CreateProjectFromProposal, SetProjectBrief) goes
                        first in the script, shots, sections, thumbnail and metadata prompts (creator-brief.ts)
   presets/             style profiles; one default, seeded on first start. Edits (UpdatePreset) and renames
