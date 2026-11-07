@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { GatePayload } from "./gates.ts"
 import { ProjectId, ProjectNotFound } from "./projects.ts"
-import { SourceId, SourceNotFound } from "./sources.ts"
+import { SourceId, SourceNotFound, SourceSetId, VideoSetNotFound } from "./sources.ts"
 
 export const RunId = Schema.String.pipe(Schema.brand("RunId"))
 export type RunId = typeof RunId.Type
@@ -19,6 +19,8 @@ export const StageName = Schema.Literals([
   "contact-sheet",
   "ads",
   "story",
+  // video set run (after each video's source run, up to ads)
+  "set-story",
   // short run
   "script",
   "sections",
@@ -31,9 +33,11 @@ export const StageName = Schema.Literals([
 ])
 export type StageName = typeof StageName.Type
 
-// A source run works on the long video; a project run makes one short.
+// A source run works on the long video; a set run reads each of a video set's videos, then proposes shorts
+// across them; a project run makes one short.
 export const RunOwner = Schema.Union([
   Schema.TaggedStruct("Source", { id: SourceId }),
+  Schema.TaggedStruct("Set", { id: SourceSetId }),
   Schema.TaggedStruct("Project", { id: ProjectId })
 ])
 export type RunOwner = typeof RunOwner.Type
@@ -169,6 +173,9 @@ export class RequestNotPending extends Schema.TaggedError<RequestNotPending>()("
 
 export class RunsRpcs extends RpcGroup.make(
   Rpc.make("StartSourceRun", { payload: { sourceId: SourceId }, success: Run, error: SourceNotFound }),
+  // Reads each of the set's videos that isn't read yet (its own source run, up to the ads), then proposes shorts
+  // across them.
+  Rpc.make("StartSetRun", { payload: { setId: SourceSetId }, success: Run, error: VideoSetNotFound }),
   Rpc.make("StartProjectRun", {
     // `from` re-runs that stage and every one after it, as new artifact versions
     payload: { projectId: ProjectId, from: Schema.NullOr(StageName) },

@@ -5,6 +5,7 @@ import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
 // The skills in the app's skill pack (skills/<name>/SKILL.md, laid out as a Claude Code plugin).
 export const SkillName = Schema.Literals([
   "story-arc",
+  "cross-video-story",
   "narrated-shots",
   "approach-question-recap",
   "approach-claim-interleaved",

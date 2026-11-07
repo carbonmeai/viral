@@ -1,5 +1,5 @@
 import type { RunOwner, RunUpdate } from "@viral/contracts"
-import { Effect, Layer, ManagedRuntime, Option, Stream } from "effect"
+import { Effect, Layer, ManagedRuntime, Option, Schedule, Stream } from "effect"
 import assert from "node:assert/strict"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -7,9 +7,10 @@ import { join } from "node:path"
 import { after, before, test } from "node:test"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { Sources } from "../sources/sources.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
 import { RunManager } from "./run-manager.ts"
 import { RunStore } from "./run-store.ts"
-import { type StageContext, type StageDefinition, StageRegistry } from "./stages.ts"
+import { type Prerequisite, type StageContext, type StageDefinition, StageRegistry } from "./stages.ts"
 
 let home: string
 before(() => {
@@ -24,6 +25,8 @@ const calls = { source: 0, transcribe: [] as Array<string | null> }
 const sessions: Array<string | null> = []
 // the third, review stage is only in the runs of the test that needs it
 const withReview = { on: false }
+// a video set's run: what it needs first, and its one stage
+const setNeeds: { current: ReadonlyArray<Prerequisite> } = { current: [] }
 
 const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
   const artifacts = yield* Artifacts
@@ -64,13 +67,25 @@ const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
       yield* artifacts.record(slot, { data: { ranges: [] }, path: null, stageRunId: ctx.stageRunId })
     })
   }
-  return StageRegistry.of({ stagesFor: () => Effect.succeed(withReview.on ? [...stages, review] : stages) })
+  const setStory: StageDefinition = {
+    name: "set-story",
+    artifact: "set-story",
+    gate: null,
+    run: (ctx) => Effect.gen(function*() {
+      const slot = yield* artifacts.allocate(ctx.owner, "set-story")
+      yield* artifacts.record(slot, { data: { proposals: [] }, path: null, stageRunId: ctx.stageRunId })
+    })
+  }
+  return StageRegistry.of({
+    stagesFor: (owner) => Effect.succeed(owner._tag === "Set" ? [setStory] : withReview.on ? [...stages, review] : stages),
+    prerequisites: (owner) => Effect.succeed(owner._tag === "Set" ? setNeeds.current : [])
+  })
 }))
 
 const appLayer = () =>
   RunManager.layer.pipe(
     Layer.provideMerge(fakeStages),
-    Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer))
+    Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, VideoSets.layer))
   )
 
 // One "server process": a long-lived runtime over the shared database.
@@ -299,5 +314,74 @@ test("a rejection can name an earlier stage to go back to", async () => {
   assert.equal(calls.source, sourcesBefore + 1, "the source stage ran again")
   assert.deepEqual((await stageStatuses(rt, run.id)).slice(2), ["ads:failed", "source:succeeded", "transcribe:succeeded", "ads:succeeded"])
   withReview.on = false
+  await rt.dispose()
+})
+
+const createSet = (rt: Runtime, videos: ReadonlyArray<RunOwner>) =>
+  rt.runPromise(Effect.gen(function*() {
+    const ids = videos.flatMap((v) => v._tag === "Source" ? [v.id] : [])
+    const set = yield* (yield* VideoSets).create({ sourceIds: ids, brief: "why" })
+    return { _tag: "Set", id: set.id } as RunOwner
+  }))
+const runsOf = (rt: Runtime, owner: RunOwner) => rt.runPromise(Effect.gen(function*() {
+  return yield* (yield* RunStore).listRuns(owner)
+}))
+// the first run of an owner, once another run has started it
+const firstRun = (rt: Runtime, owner: RunOwner) => rt.runPromise(Effect.gen(function*() {
+  const store = yield* RunStore
+  const runs = yield* store.listRuns(owner).pipe(
+    Effect.repeat({ schedule: Schedule.spaced("10 millis"), until: (runs) => runs.length > 0 })
+  )
+  return runs[0]!
+}))
+
+test("a set run joins a video's run already going, starts one for a video that needs it, then runs its own stages", async () => {
+  const rt = boot()
+  const [going, fresh] = [await createSource(rt), await createSource(rt)]
+  setNeeds.current = [going, fresh].map((owner, i) => ({ owner, through: "transcribe" as const, label: `V${i + 1}` }))
+  const set = await createSet(rt, [going, fresh])
+  const goingRun = await start(rt, going)
+  requestOf(await until(rt, goingRun.id, raised))
+  const setRun = await start(rt, set)
+
+  // both videos wait at their transcript gate: the one already going, and the run the set started
+  const freshRun = await firstRun(rt, fresh)
+  await respond(rt, requestOf(await until(rt, goingRun.id, raised)).id, { _tag: "Approve" })
+  await respond(rt, requestOf(await until(rt, freshRun.id, raised)).id, { _tag: "Approve" })
+  const done = await until(rt, setRun.id, finished)
+  const end = done.findLast(finished)
+  assert.ok(end?._tag === "Event" && end.event._tag === "RunFinished")
+  assert.equal(end.event.run.status, "completed", end.event.run.error ?? "")
+  assert.deepEqual(await stageStatuses(rt, setRun.id), ["set-story:succeeded"])
+  assert.equal((await runsOf(rt, going)).length, 1, "the run already going was joined, not repeated")
+  assert.equal((await runsOf(rt, fresh)).length, 1)
+
+  // read already: a second set run starts no video runs
+  const again = await start(rt, set)
+  await until(rt, again.id, finished)
+  assert.equal((await runsOf(rt, fresh)).length, 1)
+  setNeeds.current = []
+  await rt.dispose()
+})
+
+test("cancelling a set run cancels the video runs it started", async () => {
+  const rt = boot()
+  const video = await createSource(rt)
+  const other = await createSource(rt)
+  setNeeds.current = [{ owner: video, through: "transcribe", label: "V1" }]
+  const set = await createSet(rt, [video, other])
+  const setRun = await start(rt, set)
+  const child = await firstRun(rt, video)
+  requestOf(await until(rt, child.id, raised))
+  await rt.runPromise(Effect.gen(function*() {
+    return yield* (yield* RunManager).cancel(setRun.id)
+  }))
+  const childEnd = (await until(rt, child.id, finished)).findLast(finished)
+  assert.ok(childEnd?._tag === "Event" && childEnd.event._tag === "RunFinished")
+  assert.equal(childEnd.event.run.status, "cancelled")
+  const setEnd = (await until(rt, setRun.id, finished)).findLast(finished)
+  assert.ok(setEnd?._tag === "Event" && setEnd.event._tag === "RunFinished")
+  assert.equal(setEnd.event.run.status, "cancelled")
+  setNeeds.current = []
   await rt.dispose()
 })

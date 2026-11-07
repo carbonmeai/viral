@@ -16,6 +16,8 @@ export const listWaiting = Effect.fn("listWaiting")(function*() {
       const run = yield* store.getRun(request.runId)
       if (Option.isNone(run)) return Option.none<WaitingItem>()
       const owner = run.value.owner
+      // a set's run has no gates
+      if (owner._tag === "Set") return Option.none<WaitingItem>()
       const project = owner._tag === "Project" ? yield* projects.get(owner.id).pipe(Effect.option) : Option.none()
       // a short's gate is listed under its first video (V1)
       const sourceId = owner._tag === "Source" ? Option.some(owner.id) : Option.map(project, (p) => sourcesOf(p)[0])

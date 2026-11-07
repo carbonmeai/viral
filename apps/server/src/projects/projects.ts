@@ -13,10 +13,13 @@ import {
   ProjectNotFound,
   ProjectSourcesInvalid,
   ProposalNotFound,
+  SetProposalNotFound,
+  SetStory,
   SourceId,
   type SourceNotFound,
   SourceSetId,
-  StoryMap
+  StoryMap,
+  type VideoSetNotFound
 } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
@@ -29,6 +32,7 @@ import { DatabaseLive } from "../persistence/database.ts"
 import { Presets } from "../presets/presets.ts"
 import { Settings } from "../settings/settings.ts"
 import { Sources } from "../sources/sources.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
 import { projectSlug } from "./project-slug.ts"
 
 export interface CreateProjectInput {
@@ -40,6 +44,8 @@ export interface CreateProjectInput {
   readonly musicTrackId: MusicTrackId | null
   // what the short should achieve, in your words; null or blank = none. Required for several videos.
   readonly brief?: string | null
+  // the video set it came from, if any
+  readonly setId?: SourceSetId | null
 }
 
 // The videos a short draws from, V1 first. A clip's `source` index points into this list.
@@ -101,6 +107,9 @@ export class Projects extends Context.Service<Projects, {
   create(input: CreateProjectInput): Effect.Effect<Project, SourceNotFound | PresetNotFound | MusicTrackNotFound | ProjectSourcesInvalid>
   // A short from the source story's proposal number `proposal` (0-based): its approach and title.
   fromProposal(sourceId: SourceId, proposal: number, brief?: string | null): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
+  // A short from a video set's proposal number `proposal` (0-based): its approach and title, the videos it uses in
+  // set order, and the set's brief unless `brief` is given (editable later, like any short's).
+  fromSetProposal(setId: SourceSetId, proposal: number, brief?: string | null): Effect.Effect<Project, VideoSetNotFound | SetProposalNotFound>
   setBrief(id: ProjectId, brief: string | null): Effect.Effect<Project, ProjectNotFound>
   setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
   setPreset(id: ProjectId, presetId: PresetId | null): Effect.Effect<Project, ProjectNotFound | PresetNotFound>
@@ -122,6 +131,7 @@ export class Projects extends Context.Service<Projects, {
       const music = yield* MusicLibrary
       const artifacts = yield* Artifacts
       const settings = yield* Settings
+      const sets = yield* VideoSets
 
       // a project with its videos in order, as one row
       const withSources = sql`
@@ -173,11 +183,11 @@ export class Projects extends Context.Service<Projects, {
         yield* sql.withTransaction(Effect.gen(function*() {
           const { next } = yield* nextNumber()
           yield* sql`
-            INSERT INTO projects (id, number, slug, title, approach, format, preset_id, music_track_id, brief,
+            INSERT INTO projects (id, number, slug, title, approach, format, preset_id, music_track_id, brief, set_id,
                                   created_at, updated_at)
             VALUES (${id}, ${next}, ${projectSlug(next, input.title)}, ${input.title}, ${input.approach},
-                    ${APPROACHES[input.approach].format}, ${input.presetId}, ${input.musicTrackId}, ${brief}, ${now},
-                    ${now})
+                    ${APPROACHES[input.approach].format}, ${input.presetId}, ${input.musicTrackId}, ${brief},
+                    ${input.setId ?? null}, ${now}, ${now})
           `
           yield* Effect.forEach(input.sourceIds, (sourceId, position) =>
             sql`INSERT INTO project_sources (project_id, source_id, position) VALUES (${id}, ${sourceId}, ${position})`)
@@ -201,6 +211,28 @@ export class Projects extends Context.Service<Projects, {
           musicTrackId: null,
           brief: brief ?? null
         }).pipe(Effect.catchTag(["PresetNotFound", "MusicTrackNotFound", "ProjectSourcesInvalid"], Effect.die))
+      })
+
+      const fromSetProposal = Effect.fn("Projects.fromSetProposal")(function*(setId: SourceSetId, proposal: number, brief?: string | null) {
+        const set = yield* sets.get(setId)
+        const story = yield* artifacts.latest({ _tag: "Set", id: setId }, "set-story")
+        const chosen = Option.flatMap(story, (a) => Schema.decodeUnknownOption(SetStory)(a.data)).pipe(
+          Option.flatMapNullishOr((s) => s.proposals[proposal])
+        )
+        if (Option.isNone(chosen)) return yield* new SetProposalNotFound({ setId, proposal })
+        // the proposal's videos in set order; one it names that the set no longer has is left out
+        const used = [...new Set(chosen.value.sources)].sort((a, b) => a - b).flatMap((i) => set.sourceIds[i] ?? [])
+        const [first, ...rest] = used.length > 0 ? used : set.sourceIds
+        if (first === undefined) return yield* new SetProposalNotFound({ setId, proposal })
+        return yield* create({
+          sourceIds: [first, ...rest],
+          title: chosen.value.title,
+          approach: chosen.value.approach,
+          presetId: null,
+          musicTrackId: null,
+          brief: cleanBrief(brief) ?? set.brief,
+          setId
+        }).pipe(Effect.catchTag(["SourceNotFound", "PresetNotFound", "MusicTrackNotFound", "ProjectSourcesInvalid"], Effect.die))
       })
 
       const list = Effect.fn("Projects.list")(function*(sourceId: SourceId | null) {
@@ -248,10 +280,10 @@ export class Projects extends Context.Service<Projects, {
         return true
       }, Effect.orDie)
 
-      return Projects.of({ create, fromProposal, setBrief, setVoice, setPreset, setMusic, list, get, remove })
+      return Projects.of({ create, fromProposal, fromSetProposal, setBrief, setVoice, setPreset, setMusic, list, get, remove })
     })
   ).pipe(
-    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer, Settings.layer]),
+    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer, Settings.layer, VideoSets.layer]),
     Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto])
   )
 }

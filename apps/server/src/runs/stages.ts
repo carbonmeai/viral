@@ -44,9 +44,20 @@ export interface StageDefinition {
   approved?(ctx: StageContext): Effect.Effect<void, StageFailure>
 }
 
-// The stages of a run, in order: the source run's for a source, and the project's approach decides a short's.
+// A run another run needs finished first: a video set's run needs each of its videos read, which is that video's own
+// run up to and including `through`. `label` names it in problems ("V2 \"Title\"").
+export interface Prerequisite {
+  readonly owner: RunOwner
+  readonly through: StageName
+  readonly label: string
+}
+
+// The stages of a run, in order: the source run's for a source, the set story for a video set, and the project's
+// approach decides a short's.
 export class StageRegistry extends Context.Service<StageRegistry, {
   stagesFor(owner: RunOwner): Effect.Effect<ReadonlyArray<StageDefinition>, StageFailure>
+  // the runs that must finish before this one's stages (none when absent)
+  prerequisites?(owner: RunOwner): Effect.Effect<ReadonlyArray<Prerequisite>, StageFailure>
 }>()("@viral/server/runs/stages/StageRegistry") {}
 
 // Looks a stage up by name, for --from.

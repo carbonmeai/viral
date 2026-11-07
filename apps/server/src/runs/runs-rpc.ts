@@ -1,7 +1,8 @@
-import { ProjectNotFound, RunsRpcs, SourceNotFound } from "@viral/contracts"
+import { ProjectNotFound, RunsRpcs, SourceNotFound, VideoSetNotFound } from "@viral/contracts"
 import { Effect } from "effect"
 import { Projects } from "../projects/projects.ts"
 import { Sources } from "../sources/sources.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
 import { RunManager } from "./run-manager.ts"
 import { RunStore } from "./run-store.ts"
 import { listWaiting } from "./waiting.ts"
@@ -11,12 +12,18 @@ export const RunsRpcLive = RunsRpcs.toLayer(Effect.gen(function*() {
   const store = yield* RunStore
   const sources = yield* Sources
   const projects = yield* Projects
+  const sets = yield* VideoSets
   return RunsRpcs.of({
     // A run that can't start (no such stage, not built yet) is a defect for the caller to see in the log.
     StartSourceRun: ({ sourceId }) =>
       sources.get(sourceId).pipe(
         Effect.flatMap(() => runs.start({ _tag: "Source", id: sourceId }, null).pipe(Effect.orDie)),
         Effect.catchTag("SourceNotFound", () => Effect.fail(new SourceNotFound({ id: sourceId })))
+      ),
+    StartSetRun: ({ setId }) =>
+      sets.get(setId).pipe(
+        Effect.flatMap(() => runs.start({ _tag: "Set", id: setId }, null).pipe(Effect.orDie)),
+        Effect.catchTag("VideoSetNotFound", () => Effect.fail(new VideoSetNotFound({ id: setId })))
       ),
     StartProjectRun: ({ projectId, from }) =>
       projects.get(projectId).pipe(

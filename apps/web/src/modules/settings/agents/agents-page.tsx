@@ -29,6 +29,7 @@ import { evalLabel, evalLine, modelLabel, providerName } from "./agents-values.t
 const STAGES: ReadonlyArray<{ readonly stage: AgentStage; readonly label: string; readonly sub: string }> = [
   { stage: "ads", label: "Ads", sub: "Finds sponsor reads, ads and end screens to keep out of shorts." },
   { stage: "story", label: "Story", sub: "Maps the long video's story and proposes three shorts." },
+  { stage: "set-story", label: "Video set story", sub: "Looks across a set of videos and proposes three shorts that use them together." },
   { stage: "script", label: "Script", sub: "Writes the narration and picks the real lines." },
   { stage: "shots", label: "Shots", sub: "Looks at the video and picks the footage under each word." },
   { stage: "sections", label: "Sections", sub: "Picks the creator's best moments for a cut-down short." },

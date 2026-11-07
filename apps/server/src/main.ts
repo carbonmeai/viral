@@ -45,6 +45,9 @@ import { StorageReport } from "./storage/storage.ts"
 import { UsageReport } from "./usage/usage.ts"
 import { EvalRecords } from "./eval/eval-records.ts"
 import { DatabaseLive } from "./persistence/database.ts"
+import { VideoSetOverviews } from "./video-sets/video-set-overview.ts"
+import { VideoSets } from "./video-sets/video-sets.ts"
+import { VideoSetsRpcLive } from "./video-sets/video-sets-rpc.ts"
 
 // The port clients connect to; VIRAL_PORT moves it (the desktop app passes its own).
 const PORT = 3410
@@ -70,6 +73,8 @@ const DomainsLive = Layer.mergeAll(
   SourceOverviews.layer,
   ShortWorkspaces.layer,
   FramesAround.layer,
+  VideoSets.layer,
+  VideoSetOverviews.layer,
   NodeServices.layer
 )
 
@@ -93,6 +98,7 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     SettingsRpcLive,
     SourceOverviewRpcLive,
     ShortWorkspaceRpcLive,
+    VideoSetsRpcLive,
     MusicBedsRpcLive.pipe(Layer.provide(MusicBeds.layer))
   ]),
   Layer.provide(RunsLive),

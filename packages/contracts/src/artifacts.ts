@@ -33,16 +33,20 @@ export const ProjectArtifactKind = Schema.Literals([
 ])
 export type ProjectArtifactKind = typeof ProjectArtifactKind.Type
 
+// A video set's own work: the story and proposals across its videos.
+export const SetArtifactKind = Schema.Literals(["set-story"])
+export type SetArtifactKind = typeof SetArtifactKind.Type
+
 // A reference video's own download and its analysis.
 export const ReferenceArtifactKind = Schema.Literals(["reference-video", "reference-analysis"])
 export type ReferenceArtifactKind = typeof ReferenceArtifactKind.Type
 
-export const ArtifactKind = Schema.Union([SourceArtifactKind, ProjectArtifactKind, ReferenceArtifactKind])
+export const ArtifactKind = Schema.Union([SourceArtifactKind, SetArtifactKind, ProjectArtifactKind, ReferenceArtifactKind])
 export type ArtifactKind = typeof ArtifactKind.Type
 
 export const ArtifactOwner = Schema.Union([
   Schema.TaggedStruct("Source", { id: SourceId }),
-  // a video set's own work, across its videos (the set story, with M3)
+  // a video set's own work, across its videos (the set story)
   Schema.TaggedStruct("Set", { id: SourceSetId }),
   Schema.TaggedStruct("Project", { id: ProjectId }),
   Schema.TaggedStruct("Reference", { id: ReferenceVideoId })

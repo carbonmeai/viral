@@ -7,17 +7,20 @@ import { MUSIC_USAGE, musicCommand } from "./music-command.ts"
 import { PRESET_USAGE, presetCommand } from "./preset-command.ts"
 import { PROJECT_USAGE, projectCommand } from "./project-command.ts"
 import { RUN_USAGE, runCommand } from "./run-command.ts"
+import { SET_USAGE, setCommand } from "./set-command.ts"
 import { SOURCE_USAGE, sourceCommand } from "./source-command.ts"
 import { TOOLS_USAGE, toolsCommand } from "./tools-command.ts"
 import { VOICE_USAGE, voiceCommand } from "./voice-command.ts"
 
 // Dev client for the local Viral server (ws://127.0.0.1:3410/rpc).
-const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE, EVAL_USAGE].join("\n")
+const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, SET_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE, EVAL_USAGE].join("\n")
 
 const program = Effect.gen(function*() {
   switch (positionals[0]) {
     case "source":
       return yield* sourceCommand()
+    case "set":
+      return yield* setCommand()
     case "project":
       return yield* projectCommand()
     case "preset":
@@ -47,6 +50,10 @@ const program = Effect.gen(function*() {
     ProjectSourcesInvalid: (e) => Console.error(e.message),
     ProjectNotFound: (e) => Console.error(`no project ${e.id}`),
     VoiceError: (e) => Console.error(`ElevenLabs (${e.code}): ${e.message}`),
+    VideoSetNotFound: (e) => Console.error(`no video set ${e.id}`),
+    VideoSetInvalid: (e) => Console.error(e.message),
+    VideoSetInUse: (e) => Console.error(`can't delete video set ${e.id}: it's ${e.message}`),
+    SetProposalNotFound: (e) => Console.error(`video set ${e.setId} has no proposal ${e.proposal + 1}; see \`set story\``),
     ProposalNotFound: (e) => Console.error(`source ${e.sourceId} has no proposal ${e.proposal + 1}; see \`source story\``),
     PresetNotFound: (e) => Console.error(`no preset ${e.id}`),
     PresetIsDefault: (e) => Console.error(`preset ${e.id} is the default; make another one the default first`),

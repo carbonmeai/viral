@@ -13,10 +13,10 @@ import {
   type StageName,
   type StageRun
 } from "@viral/contracts"
-import { Context, Deferred, Effect, FiberMap, Layer, Option, PubSub, Ref, Stream } from "effect"
+import { Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, PubSub, Ref, Stream } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { RunStore } from "./run-store.ts"
-import { findStage, type StageContext, type StageDefinition, StageFailure, StageRegistry } from "./stages.ts"
+import { findStage, type Prerequisite, type StageContext, type StageDefinition, StageFailure, StageRegistry } from "./stages.ts"
 
 interface Published {
   readonly runId: RunId
@@ -28,7 +28,8 @@ const APPROVED = new Set(["succeeded", "reused"])
 // A rejection a stage sends back to an earlier one.
 type SentBack = { readonly stage: StageName; readonly note: string }
 
-// Runs stages in order for a source or a short. Each stage's approved artifact is reused; a gated stage
+// Runs stages in order for a source, a video set or a short. A run with prerequisites (a video set's) first has each
+// of its videos read by that video's own run, two at a time, joining one already going. Each stage's approved artifact is reused; a gated stage
 // waits for your answer (approve, reject with a note to re-run, or edit). Every run is a fiber, so
 // cancelling it stops the running stage's agent session or child processes. Stage-level events are stored
 // with a sequence number and published live, with progress, to subscribers.
@@ -178,7 +179,50 @@ export class RunManager extends Context.Service<RunManager, {
           }
       })
 
-      const execute = Effect.fn("RunManager.execute")(function*(run: Run) {
+      // A run's stages, or only those up to and including `through` (a video read for a set stops after its ads).
+      const stagesUpTo = Effect.fn("RunManager.stagesUpTo")(function*(owner: RunOwner, through: StageName | null) {
+        const stages = yield* registry.stagesFor(owner)
+        if (through === null) return stages
+        const end = Option.getOrElse(findStage(stages, through), () => stages.length - 1)
+        return stages.slice(0, end + 1)
+      })
+
+      const isApproved = (owner: RunOwner, stage: StageDefinition) =>
+        Effect.map(store.latestArtifact(owner, stage.artifact), (latest) =>
+          Option.isSome(latest) && (latest.value.stageRunStatus === null || APPROVED.has(latest.value.stageRunStatus)))
+
+      // Gets a prerequisite done: nothing when its stages' work is all approved; otherwise it joins that owner's run
+      // already going, or starts one (cancelled with the run that started it), and waits for it to finish.
+      const fulfil = Effect.fn("RunManager.fulfil")(function*(need: Prerequisite) {
+        const stages = yield* stagesUpTo(need.owner, need.through)
+        const done = yield* Effect.forEach(stages, (stage) => isApproved(need.owner, stage))
+        if (done.every(Boolean)) return
+        const going = (yield* store.listRuns(need.owner)).find((r) => r.status === "running" || r.status === "waiting")
+        const joined = going === undefined ? Option.none() : yield* FiberMap.get(fibers, going.id)
+        let runId: RunId
+        if (Option.isSome(joined)) {
+          runId = going!.id
+          yield* Fiber.await(joined.value)
+        } else {
+          const child = yield* store.createRun(need.owner, null)
+          runId = child.id
+          yield* publish(child.id, { _tag: "RunStarted", run: child })
+          const fiber = yield* FiberMap.run(fibers, child.id, execute(child, need.through))
+          yield* Fiber.await(fiber).pipe(
+            Effect.onInterrupt(() =>
+              Effect.sync(() => cancelling.add(child.id)).pipe(Effect.andThen(FiberMap.remove(fibers, child.id)))
+            )
+          )
+        }
+        const finished = yield* store.getRun(runId)
+        const ready = (yield* Effect.forEach(stages, (stage) => isApproved(need.owner, stage))).every(Boolean)
+        if (!ready) {
+          const why = Option.match(finished, { onNone: () => null, onSome: (r) => r.error })
+          return yield* new StageFailure({ stage: "videos", code: "video-not-read", message: `${need.label} couldn't be read${why === null ? "" : `: ${why}`}` })
+        }
+      })
+
+      const execute: (run: Run, through?: StageName | null) => Effect.Effect<void> = Effect.fn("RunManager.execute")(function*(run: Run, through: StageName | null = null) {
         const current = yield* Ref.make<StageRun | null>(null)
         const finish = Effect.fn("RunManager.finish")(function*(status: Run["status"], error: string | null) {
           const stageRun = yield* Ref.get(current)
@@ -195,7 +239,9 @@ export class RunManager extends Context.Service<RunManager, {
         })
 
         yield* Effect.gen(function*() {
-          const stages = yield* registry.stagesFor(run.owner)
+          const needs = registry.prerequisites === undefined ? [] : yield* registry.prerequisites(run.owner)
+          yield* Effect.forEach(needs, fulfil, { concurrency: 2, discard: true })
+          const stages = yield* stagesUpTo(run.owner, through)
           let forcedFrom = run.fromStage === null ? stages.length : Option.getOrElse(findStage(stages, run.fromStage), () => 0)
           const sessions = new Map<StageName, string>()
           const sentBack: { current: { readonly index: number; readonly note: string } | null } = { current: null }

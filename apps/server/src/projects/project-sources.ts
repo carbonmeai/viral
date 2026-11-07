@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { AdRanges, type Project, type Source, type SourceId, type SourceNotFound, type Transcript } from "@viral/contracts"
+import { type AdRange, AdRanges, type Project, type Source, type SourceId, type SourceNotFound, type Transcript } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { Sources } from "../sources/sources.ts"
@@ -16,12 +16,16 @@ export interface ProjectSource extends SourceContext {
   // the downloaded video's absolute path, once fetched
   readonly video: Option.Option<string>
   readonly transcript: Option.Option<Transcript>
+  // the excluded ranges with what they are (sponsor, ad, intro…)
+  readonly ads: ReadonlyArray<AdRange>
 }
 
 // Loads a short's videos, V1 first: each one's source, video file, transcript, length and excluded ranges. A
 // video with no transcript yet has no words; its length is the source's, else the transcript's, else 0.
 export class ProjectSources extends Context.Service<ProjectSources, {
   of(project: Project): Effect.Effect<readonly [ProjectSource, ...Array<ProjectSource>], SourceNotFound>
+  // the same for any videos in order (a video set's), V1 first
+  ofSources(ids: ReadonlyArray<SourceId>): Effect.Effect<ReadonlyArray<ProjectSource>, SourceNotFound>
 }>()("@viral/server/projects/project-sources/ProjectSources") {
   static readonly layer = Layer.effect(
     ProjectSources,
@@ -44,7 +48,8 @@ export class ProjectSources extends Context.Service<ProjectSources, {
           transcript,
           words: Option.match(transcript, { onNone: () => [], onSome: (t) => t.segments.flatMap((s) => s.words) }),
           seconds: source.durationS ?? Option.match(transcript, { onNone: () => 0, onSome: (t) => t.segments.at(-1)?.end ?? 0 }),
-          excluded: Option.match(ads, { onNone: () => [], onSome: (a) => a.ranges })
+          excluded: Option.match(ads, { onNone: () => [], onSome: (a) => a.ranges }),
+          ads: Option.match(ads, { onNone: () => [], onSome: (a) => a.ranges })
         } satisfies ProjectSource
       })
 
@@ -55,7 +60,9 @@ export class ProjectSources extends Context.Service<ProjectSources, {
         return [v1, ...others] as const
       })
 
-      return ProjectSources.of({ of })
+      const ofSources = (ids: ReadonlyArray<SourceId>) => Effect.forEach(ids, (id, i) => load(id, i))
+
+      return ProjectSources.of({ of, ofSources })
     })
   ).pipe(Layer.provide([Sources.layer, Artifacts.layer, Transcripts.layer, NodeServices.layer]))
 }

@@ -3,7 +3,7 @@ import { Rpc, RpcGroup } from "effect/rpc"
 import { ApproachName } from "./approaches.ts"
 import { MusicTrackId, MusicTrackNotFound } from "./music-library.ts"
 import { PresetId, PresetNotFound } from "./presets.ts"
-import { MAX_SHORT_SOURCES, SourceId, SourceNotFound, SourceSetId } from "./sources.ts"
+import { MAX_SHORT_SOURCES, SourceId, SourceNotFound, SourceSetId, VideoSetNotFound } from "./sources.ts"
 
 export const ProjectId = Schema.String.pipe(Schema.brand("ProjectId"))
 export type ProjectId = typeof ProjectId.Type
@@ -48,6 +48,11 @@ export class ProposalNotFound extends Schema.TaggedError<ProposalNotFound>()("Pr
   proposal: Schema.Int
 }) {}
 
+export class SetProposalNotFound extends Schema.TaggedError<SetProposalNotFound>()("SetProposalNotFound", {
+  setId: SourceSetId,
+  proposal: Schema.Int
+}) {}
+
 // The videos asked for don't make a short: none, more than 10, one twice, or several without a brief (it's how
 // the agents know why they belong together).
 export class ProjectSourcesInvalid extends Schema.TaggedError<ProjectSourcesInvalid>()("ProjectSourcesInvalid", {
@@ -77,6 +82,13 @@ export class ProjectsRpcs extends RpcGroup.make(
     payload: { sourceId: SourceId, proposal: Schema.Int, brief: Schema.optionalKey(Schema.NullOr(Schema.String)) },
     success: Project,
     error: Schema.Union([SourceNotFound, ProposalNotFound])
+  }),
+  // Creates a short from one of a video set's proposals: its approach and title, the videos it uses (in set
+  // order), and the set's brief unless you give another.
+  Rpc.make("CreateProjectFromSetProposal", {
+    payload: { setId: SourceSetId, proposal: Schema.Int, brief: Schema.optionalKey(Schema.NullOr(Schema.String)) },
+    success: Project,
+    error: Schema.Union([VideoSetNotFound, SetProposalNotFound])
   }),
   // Sets what the short should achieve (null or blank clears it). It steers the agents from their next run.
   Rpc.make("SetProjectBrief", {

@@ -57,6 +57,13 @@ export type SourceIndex = typeof SourceIndex.Type
 export const SourceSetId = Schema.String.pipe(Schema.brand("SourceSetId"))
 export type SourceSetId = typeof SourceSetId.Type
 
+// A video set takes 2 to 10 videos.
+export const MIN_SET_SOURCES = 2
+
+export class VideoSetNotFound extends Schema.TaggedError<VideoSetNotFound>()("VideoSetNotFound", {
+  id: SourceSetId
+}) {}
+
 export class SourcesRpcs extends RpcGroup.make(
   Rpc.make("CreateSource", {
     payload: { origin: SourceOrigin, rights: SourceRights, rightsNote: Schema.NullOr(Schema.String) },

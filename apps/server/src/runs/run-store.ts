@@ -13,6 +13,7 @@ import {
   type RunStatus,
   RunStatus as RunStatusSchema,
   SourceId,
+  SourceSetId,
   type StageName,
   StageName as StageNameSchema,
   type StageRun,
@@ -35,6 +36,7 @@ const Iso = Schema.DateTimeUtcFromString
 const RunRow = Schema.Struct({
   id: RunId,
   source_id: Schema.NullOr(SourceId),
+  set_id: Schema.NullOr(SourceSetId),
   project_id: Schema.NullOr(ProjectId),
   status: RunStatusSchema,
   from_stage: Schema.NullOr(StageNameSchema),
@@ -45,7 +47,11 @@ const RunRow = Schema.Struct({
 const toRun = (row: typeof RunRow.Type): Run => ({
   id: row.id,
   // the one-owner CHECK guarantees exactly one id is set
-  owner: row.source_id !== null ? { _tag: "Source", id: row.source_id } : { _tag: "Project", id: row.project_id! },
+  owner: row.source_id !== null
+    ? { _tag: "Source", id: row.source_id }
+    : row.set_id !== null
+    ? { _tag: "Set", id: row.set_id }
+    : { _tag: "Project", id: row.project_id! },
   status: row.status,
   fromStage: row.from_stage,
   error: row.error,
@@ -138,8 +144,12 @@ export interface StageCost {
 
 const ownerColumns = (owner: RunOwner) => ({
   sourceId: owner._tag === "Source" ? owner.id : null,
+  setId: owner._tag === "Set" ? owner.id : null,
   projectId: owner._tag === "Project" ? owner.id : null
 })
+
+// The runs and artifacts column that holds an owner's id.
+const ownerColumn = (owner: RunOwner) => owner._tag === "Source" ? "source_id" : owner._tag === "Set" ? "set_id" : "project_id"
 
 // Persistence for runs: the runs, stage_runs, requests and run_events tables. All SQL errors are defects:
 // the schema is ours and a failing write is a bug, not something a caller can handle.
@@ -198,16 +208,16 @@ export class RunStore extends Context.Service<RunStore, {
 
       const createRun = Effect.fn("RunStore.createRun")(function*(owner: RunOwner, fromStage: StageName | null) {
         const id = RunId.make(yield* random.uuidV7())
-        const { sourceId, projectId } = ownerColumns(owner)
+        const { sourceId, setId, projectId } = ownerColumns(owner)
         yield* sql`
-          INSERT INTO runs (id, source_id, project_id, status, from_stage, started_at)
-          VALUES (${id}, ${sourceId}, ${projectId}, 'running', ${fromStage}, ${yield* now})
+          INSERT INTO runs (id, source_id, set_id, project_id, status, from_stage, started_at)
+          VALUES (${id}, ${sourceId}, ${setId}, ${projectId}, 'running', ${fromStage}, ${yield* now})
         `
         return yield* mustGetRun(id)
       }, Effect.orDie)
 
       const listRuns = Effect.fn("RunStore.listRuns")(function*(owner: RunOwner) {
-        const column = owner._tag === "Source" ? "source_id" : "project_id"
+        const column = ownerColumn(owner)
         const rows = yield* SqlSchema.findAll({
           Request: Schema.String,
           Result: RunRow,
@@ -291,7 +301,7 @@ export class RunStore extends Context.Service<RunStore, {
         })(runId).pipe(Effect.map((rows) => rows.map(toStageRun)), Effect.orDie)
 
       const latestArtifact = (owner: RunOwner, kind: ArtifactKind) => {
-        const column = owner._tag === "Source" ? "source_id" : "project_id"
+        const column = ownerColumn(owner)
         return SqlSchema.findOneOption({
           Request: Schema.String,
           Result: Schema.Struct({ version: Schema.Int, stage_run_status: Schema.NullOr(StageRunStatusSchema) }),
@@ -308,7 +318,7 @@ export class RunStore extends Context.Service<RunStore, {
       }
 
       const linkLatestArtifact = (owner: RunOwner, kind: ArtifactKind, stageRunId: StageRunId) => {
-        const column = owner._tag === "Source" ? "source_id" : "project_id"
+        const column = ownerColumn(owner)
         return sql`
           UPDATE artifacts SET stage_run_id = ${stageRunId}
           WHERE id = (SELECT id FROM artifacts WHERE ${sql(column)} = ${owner.id} AND kind = ${kind} ORDER BY version DESC LIMIT 1)
