@@ -107,19 +107,18 @@ apps/server/src/
                        per-stage model, cost + session recording, resume; AgentSession.replay for tests.
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
                        A task can offer helper tools (`agentTool`) besides its propose_* tool.
-                       Providers: claude-cli-provider.ts (the Claude CLI, always the default) and
-                       ai-gateway-provider.ts (AI SDK + Vercel AI Gateway, ai/@ai-sdk/gateway pinned: same JSON
-                       Schema tool, whose output is decoded in the tool so a mismatch goes back to the model to fix
-                       in the same run; history stored in ~/.viral/agent-sessions/ for resume, gateway cost incl.
-                       BYOK market cost, Anthropic cache markers). The route is task.route (evals), else
+                       The providers live in packages/provider-* (below); AgentSession builds the system prompt
+                       from the skill pack and routes each task. The route is task.route (evals), else
                        resolveAgentRoute (contracts/settings.ts, shared with the web): the step's own choice, then
-                       the default (agents.default); shots, sections and thumbnail stay on the Claude CLI (images).
-                       Every cost is stamped with its provider and billing (billed | subscription: the CLI is a
-                       plan's value unless ANTHROPIC_API_KEY is set) on stage_runs
+                       the default (agents.default); shots, sections and thumbnail run only on VISION_PROVIDERS
+                       (the Claude CLI for now) and fall back to it. Every cost is stamped with its provider and
+                       billing (billed | subscription: the Claude CLI is a plan's value unless ANTHROPIC_API_KEY is
+                       set; Codex is always subscription, tokens only) on stage_runs
   eval/                the eval harness (`bun run cli eval`): runs ads, story, script and metadata on a fixed fixture
                        (~/.viral/fixtures/candy/eval, made by `eval export`) with no gates, through the production
                        tasks and checks, on any models, in a scratch library; records cost, time, first-try pass and
-                       fix rounds, stops at the budget, and writes report.json/report.md + a side-by-side eval.html
+                       fix rounds, stops priced runs at the budget and plan runs at --plan-runs per CLI, and writes
+                       report.json/report.md + a side-by-side eval.html
                        (--include puts earlier evals' runs on the same page). Each run's result and spend is also
                        recorded in your library's eval_runs (eval-records.ts; `eval record <dir>` for an old one),
                        for Settings › Usage (Evals) and Settings › Agents (how each model did)
@@ -170,6 +169,19 @@ apps/desktop/          the Electron shell: starts the server (node in dev; Elect
                        panel for a video or audio file, several files, or a folder), electron-updater.
                        vp pack bundles main/preload and the server (dist-server); electron-builder makes Viral.app
 packages/contracts/    wire schemas + RpcGroups, one file per domain
+packages/provider-core/ AgentTask/AgentRun/AgentError and toolEndpoint: the per-run MCP server (127.0.0.1, random
+                       bearer token) serving a task's output and helper tools to Codex and OpenCode
+packages/provider-claude-cli/ the Claude CLI via the Agent SDK (in-process tools, stop after the output tool)
+packages/provider-ai-gateway/ AI SDK + Vercel AI Gateway (ai/@ai-sdk/gateway pinned; history in
+                       ~/.viral/agent-sessions/ for resume; BYOK market cost; Anthropic cache markers)
+packages/provider-codex/ our own `codex app-server` JSON-RPC client: one app-server per run in a scratch folder,
+                       read-only sandbox, approvals never, shell/apps/plugins/skills off, the user's MCP servers
+                       switched off by name; model + effort from the account's catalog; thread/resume; turn
+                       interrupted once the output tool accepts. codexStatus for Settings. Tests use a fake app-server
+packages/provider-opencode/ `opencode serve` per run (free port, password) configured by OPENCODE_CONFIG_CONTENT
+                       (Viral agent, every permission denied but viral_* tools); SDK v2 sessions, abort after the
+                       output tool, USD cost; refuses OpenCode < 1.14.19 with how to update. Tests use a fake
+packages/provider-testing/ replayRun, the replay provider behind AgentSession.replay
 packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,
                        28/32px controls) and primitives on Base UI + cva (incl. Dialog, Textarea)
 repos/                 gitignored reference source checkouts — read-only
@@ -227,7 +239,7 @@ bun run cli tools install # download the missing tools (also happens on the app'
 bun run package:desktop # build the UI and Viral.app (apps/desktop/release/mac-arm64, unsigned)
 bun run cli           # dev client; prints every command
 bun run test          # node --test over apps and packages
-bun run cli eval all --models claude-cli,openai/gpt-6-luna --runs 2 --budget 5
+bun run cli eval all --models claude-cli,codex,gateway:openai/gpt-6-luna --runs 2 --budget 3 --plan-runs 8
                       # agent-stage eval vs the CLI baseline → ~/.viral/evals/<date>-<stages>/eval.html
                       # (spend recorded in your library; --include <earlier eval dirs> combines the pages)
 bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
