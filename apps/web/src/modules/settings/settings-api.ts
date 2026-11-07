@@ -6,8 +6,6 @@ export const accountsAtom = ViralClient.query("GetAccounts", undefined, { reacti
 export const cliModelsAtom = ViralClient.query("GetCliModels", undefined, { reactivityKeys: ["accounts"] })
 export const appSettingsAtom = ViralClient.query("GetSettings", undefined, { reactivityKeys: ["settings"] })
 export const storageAtom = ViralClient.query("GetStorage", undefined, { reactivityKeys: ["storage"] })
-export const voicesAtom = ViralClient.query("ListVoices", undefined, { reactivityKeys: ["voices"] })
-export const presetsAtom = ViralClient.query("ListPresets", undefined, { reactivityKeys: ["presets"] })
 export const modelEvalsAtom = ViralClient.query("GetModelEvals", undefined, { reactivityKeys: ["evals"] })
 export const usageAtom = Atom.family((days: number) => ViralClient.query("GetUsage", { days }, { reactivityKeys: ["usage"] }))
 
@@ -17,5 +15,4 @@ export const removeSecret = ViralClient.mutation("RemoveSecret")
 export const setDefaultAgent = ViralClient.mutation("SetDefaultAgent")
 export const setStageAgent = ViralClient.mutation("SetStageAgent")
 export const setTranscriber = ViralClient.mutation("SetTranscriber")
-export const setDefaultVoice = ViralClient.mutation("SetDefaultVoice")
 

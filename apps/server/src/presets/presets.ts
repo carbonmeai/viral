@@ -41,7 +41,7 @@ export class Presets extends Context.Service<Presets, {
   readonly getDefault: Effect.Effect<Preset>
   create(name: string, config: PresetConfig): Effect.Effect<Preset, PresetNameTaken>
   setDefault(id: PresetId): Effect.Effect<Preset, PresetNotFound>
-  // replaces a preset's settings, e.g. the default style's voice from Settings › Voice
+  // replaces a preset's settings, e.g. the default style's voice from Library › Voices (Set as default)
   updateConfig(id: PresetId, config: PresetConfig): Effect.Effect<Preset, PresetNotFound>
   // a style's settings from the Styles page: checked first, refused with every problem
   edit(id: PresetId, config: PresetConfig): Effect.Effect<Preset, PresetNotFound | PresetInvalid>

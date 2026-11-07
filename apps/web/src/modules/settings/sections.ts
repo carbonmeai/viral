@@ -3,7 +3,6 @@ export const SETTINGS_SECTIONS = [
   { id: "general", label: "General", group: "Personal", keywords: "appearance theme dark light simple detailed name" },
   { id: "accounts", label: "Accounts", group: "Personal", keywords: "claude elevenlabs xai grok api key keychain" },
   { id: "agents", label: "Agents", group: "Personal", keywords: "model opus sonnet haiku story script shots ads metadata" },
-  { id: "voice", label: "Voice", group: "Personal", keywords: "voiceover narrator words per second pace elevenlabs" },
   { id: "transcription", label: "Transcription", group: "Personal", keywords: "grok whisper transcript provider" },
   { id: "tools", label: "Tools", group: "App", keywords: "ffmpeg ffprobe uv yt-dlp version" },
   { id: "storage", label: "Storage", group: "App", keywords: "library folder finder disk space" },

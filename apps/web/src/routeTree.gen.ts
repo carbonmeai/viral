@@ -23,7 +23,6 @@ import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
 import { Route as SettingsToolsRouteImport } from './routes/settings.tools'
 import { Route as SettingsTranscriptionRouteImport } from './routes/settings.transcription'
 import { Route as SettingsUsageRouteImport } from './routes/settings.usage'
-import { Route as SettingsVoiceRouteImport } from './routes/settings.voice'
 import { Route as ShortsProjectIdRouteImport } from './routes/shorts.$projectId'
 import { Route as VideosSourceIdRouteImport } from './routes/videos.$sourceId'
 import { Route as VideosNewRouteImport } from './routes/videos.new'
@@ -98,11 +97,6 @@ const SettingsUsageRoute = SettingsUsageRouteImport.update({
   path: '/usage',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsVoiceRoute = SettingsVoiceRouteImport.update({
-  id: '/voice',
-  path: '/voice',
-  getParentRoute: () => SettingsRoute,
-} as any)
 const ShortsProjectIdRoute = ShortsProjectIdRouteImport.update({
   id: '/shorts/$projectId',
   path: '/shorts/$projectId',
@@ -133,7 +127,6 @@ export interface FileRoutesByFullPath {
   '/settings/tools': typeof SettingsToolsRoute
   '/settings/transcription': typeof SettingsTranscriptionRoute
   '/settings/usage': typeof SettingsUsageRoute
-  '/settings/voice': typeof SettingsVoiceRoute
   '/shorts/$projectId': typeof ShortsProjectIdRoute
   '/videos/$sourceId': typeof VideosSourceIdRoute
   '/videos/new': typeof VideosNewRoute
@@ -152,7 +145,6 @@ export interface FileRoutesByTo {
   '/settings/tools': typeof SettingsToolsRoute
   '/settings/transcription': typeof SettingsTranscriptionRoute
   '/settings/usage': typeof SettingsUsageRoute
-  '/settings/voice': typeof SettingsVoiceRoute
   '/shorts/$projectId': typeof ShortsProjectIdRoute
   '/videos/$sourceId': typeof VideosSourceIdRoute
   '/videos/new': typeof VideosNewRoute
@@ -173,7 +165,6 @@ export interface FileRoutesById {
   '/settings/tools': typeof SettingsToolsRoute
   '/settings/transcription': typeof SettingsTranscriptionRoute
   '/settings/usage': typeof SettingsUsageRoute
-  '/settings/voice': typeof SettingsVoiceRoute
   '/shorts/$projectId': typeof ShortsProjectIdRoute
   '/videos/$sourceId': typeof VideosSourceIdRoute
   '/videos/new': typeof VideosNewRoute
@@ -195,7 +186,6 @@ export interface FileRouteTypes {
     | '/settings/tools'
     | '/settings/transcription'
     | '/settings/usage'
-    | '/settings/voice'
     | '/shorts/$projectId'
     | '/videos/$sourceId'
     | '/videos/new'
@@ -214,7 +204,6 @@ export interface FileRouteTypes {
     | '/settings/tools'
     | '/settings/transcription'
     | '/settings/usage'
-    | '/settings/voice'
     | '/shorts/$projectId'
     | '/videos/$sourceId'
     | '/videos/new'
@@ -234,7 +223,6 @@ export interface FileRouteTypes {
     | '/settings/tools'
     | '/settings/transcription'
     | '/settings/usage'
-    | '/settings/voice'
     | '/shorts/$projectId'
     | '/videos/$sourceId'
     | '/videos/new'
@@ -353,13 +341,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsUsageRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/settings/voice': {
-      id: '/settings/voice'
-      path: '/voice'
-      fullPath: '/settings/voice'
-      preLoaderRoute: typeof SettingsVoiceRouteImport
-      parentRoute: typeof SettingsRoute
-    }
     '/shorts/$projectId': {
       id: '/shorts/$projectId'
       path: '/shorts/$projectId'
@@ -392,7 +373,6 @@ interface SettingsRouteChildren {
   SettingsToolsRoute: typeof SettingsToolsRoute
   SettingsTranscriptionRoute: typeof SettingsTranscriptionRoute
   SettingsUsageRoute: typeof SettingsUsageRoute
-  SettingsVoiceRoute: typeof SettingsVoiceRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
@@ -404,7 +384,6 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsToolsRoute: SettingsToolsRoute,
   SettingsTranscriptionRoute: SettingsTranscriptionRoute,
   SettingsUsageRoute: SettingsUsageRoute,
-  SettingsVoiceRoute: SettingsVoiceRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 

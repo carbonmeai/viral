@@ -6,7 +6,7 @@ import { Input } from "@viral/ui/primitives/input"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Select } from "@viral/ui/primitives/select"
 import { SettingRow, SettingsGroup } from "@viral/ui/primitives/setting-row"
-import { Skeleton } from "@viral/ui/primitives/skeleton"
+import { Skeleton, SkeletonRegion, SkeletonText } from "@viral/ui/primitives/skeleton"
 import { Status } from "@viral/ui/primitives/status"
 import { Switch } from "@viral/ui/primitives/switch"
 import { Option } from "effect"
@@ -18,6 +18,7 @@ import { Page } from "../../layout/page.tsx"
 import { Detail } from "../../system/detail.tsx"
 import { renamePreset, updatePreset, voicesAtom } from "../library-api.ts"
 import { refusal } from "../library-values.ts"
+import { CurrentVoice } from "../voices/voice-picker.tsx"
 import { ColourField, RangeField } from "./style-fields.tsx"
 import { StylePreview } from "./style-preview.tsx"
 
@@ -149,7 +150,7 @@ export function StyleEditor({ preset, frame, usedBy }: { readonly preset: Preset
           </SettingsGroup>
 
           <SettingsGroup title="Voice">
-            <VoiceRow voiceId={draft.voice.voiceId} onChange={(voiceId) => voice({ voiceId })} />
+            <StyleVoice voiceId={draft.voice.voiceId} onChange={(voiceId) => voice({ voiceId })} />
             <SettingRow label="Pace" sub="Words per second after speeding up the take. Adam needs about 3.2.">
               <RangeField label="Words per second" value={draft.voice.wordsPerSecond} min={2} max={5} step={0.1} format={(v) => `${v.toFixed(1)}/s`} onChange={(wordsPerSecond) => voice({ wordsPerSecond })} />
             </SettingRow>
@@ -195,23 +196,27 @@ export function StyleEditor({ preset, frame, usedBy }: { readonly preset: Preset
   )
 }
 
-// The narrator, picked from your ElevenLabs voices; a skeleton while the list loads.
-function VoiceRow({ voiceId, onChange }: { readonly voiceId: string; readonly onChange: (voiceId: string) => void }) {
+// The narrator, picked from your ElevenLabs voices with a free sample of each; a skeleton while the list loads.
+function StyleVoice({ voiceId, onChange }: { readonly voiceId: string; readonly onChange: (voiceId: string) => void }) {
   const voices = useAtomValue(voicesAtom)
   return Option.match(AsyncResult.value(voices), {
-    onNone: () => (
-      <SettingRow label="Voice" sub={AsyncResult.isFailure(voices) ? "Couldn’t list your ElevenLabs voices. Check the key in Settings › Accounts." : <Skeleton className="mt-1 h-3 w-40" />}>
-        {AsyncResult.isFailure(voices) ? <Status>{voiceId}</Status> : <Skeleton className="h-7 w-[200px] rounded-ctl" />}
-      </SettingRow>
-    ),
-    onSome: (list) => {
-      const current = list.find((v) => v.voiceId === voiceId)
-      const options = [...(current === undefined ? [{ value: voiceId, label: voiceId }] : []), ...list.map((v) => ({ value: v.voiceId, label: v.name.split(" - ")[0] ?? v.name }))]
-      return (
-        <SettingRow label="Voice" sub={current === undefined ? "Not one of your ElevenLabs voices" : Object.values(current.labels).slice(0, 3).join(", ")}>
-          <Select label="Voice" className="min-w-[200px]" value={voiceId} options={options} onChange={onChange} />
-        </SettingRow>
-      )
-    }
+    onNone: () =>
+      AsyncResult.isFailure(voices)
+        ? (
+          <SettingRow
+            label="Voice"
+            sub={<>Couldn’t list your ElevenLabs voices. Check the key in <Link to="/settings/accounts" className="underline">Settings › Accounts</Link>.</>}
+          >
+            <Status>{voiceId}</Status>
+          </SettingRow>
+        )
+        : (
+          <SkeletonRegion label="Loading your ElevenLabs voices" className="flex min-h-[60px] items-center gap-3 py-2.5">
+            <Skeleton className="size-9 rounded-full" />
+            <SkeletonText lines={2} className="w-56" />
+            <Skeleton className="ml-auto h-7 w-28 rounded-ctl" />
+          </SkeletonRegion>
+        ),
+    onSome: (list) => <CurrentVoice voices={list} voiceId={voiceId} onPick={onChange} />
   })
 }

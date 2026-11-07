@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { Input } from "@viral/ui/primitives/input"
-import { ArrowLeft, Box, Cpu, Gauge, HardDrive, KeyRound, Languages, Mic, Settings2 } from "lucide-react"
+import { ArrowLeft, Box, Cpu, Gauge, HardDrive, KeyRound, Languages, Settings2 } from "lucide-react"
 import { useState } from "react"
 import { filterSections, type SettingsSectionId } from "./sections.ts"
 
@@ -8,7 +8,6 @@ const ICONS: Record<SettingsSectionId, typeof Settings2> = {
   general: Settings2,
   accounts: KeyRound,
   agents: Cpu,
-  voice: Mic,
   transcription: Languages,
   tools: Box,
   storage: HardDrive,

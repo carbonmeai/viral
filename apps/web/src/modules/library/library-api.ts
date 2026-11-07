@@ -2,7 +2,7 @@ import type { ExploreVoicesQuery } from "@viral/contracts"
 import { Atom } from "effect/reactivity"
 import { ViralClient } from "../../api/client.ts"
 
-// Reads, each tagged so a save on the same topic refreshes it (Settings › Voice shares "presets" and "voices").
+// Reads, each tagged so a save on the same topic refreshes it.
 export const presetsAtom = ViralClient.query("ListPresets", undefined, { reactivityKeys: ["presets"] })
 export const tracksAtom = ViralClient.query("ListMusicTracks", undefined, { reactivityKeys: ["music"] })
 export const voicesAtom = ViralClient.query("ListVoices", undefined, { reactivityKeys: ["voices"] })
@@ -27,3 +27,5 @@ export const removeMusicTrack = ViralClient.mutation("RemoveMusicTrack")
 export const previewVoice = ViralClient.mutation("PreviewVoice")
 export const addLibraryVoice = ViralClient.mutation("AddLibraryVoice")
 export const removeVoice = ViralClient.mutation("RemoveVoice")
+// The default style's voice and pace (Library › Voices › Set as default).
+export const setDefaultVoice = ViralClient.mutation("SetDefaultVoice")

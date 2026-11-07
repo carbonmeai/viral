@@ -7,12 +7,12 @@ import { Select } from "@viral/ui/primitives/select"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { MessageSquareText, Trash2 } from "lucide-react"
+import { MessageSquareText, Star, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { serverUrl } from "../../../config/server-url.ts"
 import { homeFileUrl } from "../../../lib/media-url.ts"
 import { Detail } from "../../system/detail.tsx"
-import { previewVoice, removeVoice, updatePreset, voicesAtom } from "../library-api.ts"
+import { previewVoice, removeVoice, setDefaultVoice, updatePreset, voicesAtom } from "../library-api.ts"
 import { RowsSkeleton } from "../library-loading.tsx"
 import { refusal, stylesByVoice } from "../library-values.ts"
 import { SampleButton } from "./sample-button.tsx"
@@ -21,8 +21,9 @@ import { splitName } from "./voices-values.ts"
 
 const SAMPLE_LINE = "This guy made a candy that hits every single taste at the exact same time."
 
-// Library › Voices › My voices: the voices on your ElevenLabs account, the styles narrating with each, a free
-// sample, a line of your own spoken in it (that one costs its characters), and Remove for voices you added.
+// Library › Voices › My voices: the voices on your ElevenLabs account, the default voice (the default style's,
+// which every short uses unless its style or the short picks another) tagged and any other one a click from it, the
+// other styles narrating with each, a free sample, a line of your own spoken in it (that one costs its characters), and Remove for voices you added.
 export function MyVoicesTab({ styles }: { readonly styles: ReadonlyArray<Preset> }) {
   const voices = useAtomValue(voicesAtom)
   return Option.match(AsyncResult.value(voices), {
@@ -37,7 +38,7 @@ export function MyVoicesTab({ styles }: { readonly styles: ReadonlyArray<Preset>
     onSome: (list) => (
       <div className="flex flex-col">
         <div className="pb-1 text-[13px] text-fg-2">{list.length} voices</div>
-        {[...list].sort((a, b) => stylesByVoice(styles, b.voiceId).length - stylesByVoice(styles, a.voiceId).length).map((voice) => (
+        {byUse(list, styles).map((voice) => (
           <MyVoiceRow key={voice.voiceId} voice={voice} styles={styles} />
         ))}
       </div>
@@ -45,11 +46,22 @@ export function MyVoicesTab({ styles }: { readonly styles: ReadonlyArray<Preset>
   })
 }
 
+// The default style's voice first, then the voices narrating the most styles.
+const byUse = (voices: ReadonlyArray<Voice>, styles: ReadonlyArray<Preset>) => {
+  const defaultId = styles.find((s) => s.isDefault)?.config.voice.voiceId
+  const rank = (v: Voice) => (v.voiceId === defaultId ? 1000 : 0) + stylesByVoice(styles, v.voiceId).length
+  return [...voices].sort((a, b) => rank(b) - rank(a))
+}
+
 function MyVoiceRow({ voice, styles }: { readonly voice: Voice; readonly styles: ReadonlyArray<Preset> }) {
   const save = useAtomSet(updatePreset, { mode: "promise" })
+  const saveDefault = useAtomSet(setDefaultVoice, { mode: "promise" })
   const remove = useAtomSet(removeVoice, { mode: "promise" })
   const using = stylesByVoice(styles, voice.voiceId)
-  const others = styles.filter((s) => s.config.voice.voiceId !== voice.voiceId)
+  const defaultStyle = styles.find((s) => s.isDefault)
+  const isDefault = defaultStyle?.config.voice.voiceId === voice.voiceId
+  // the other styles this voice could narrate; the default style has its own action
+  const others = styles.filter((s) => !s.isDefault && s.config.voice.voiceId !== voice.voiceId)
   const [trying, setTrying] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
@@ -60,10 +72,27 @@ function MyVoiceRow({ voice, styles }: { readonly voice: Voice; readonly styles:
     <div className="border-b border-line last:border-b-0">
       <VoiceRow
         voice={voice}
-        badges={using.map((s) => <Status key={s.id} tone="ok">{s.name}{s.isDefault ? " · default" : ""}</Status>)}
+        badges={
+          <>
+            {isDefault ? <Status tone="ok">Default</Status> : null}
+            {using.filter((s) => !s.isDefault).map((s) => <Status key={s.id}>{s.name}</Status>)}
+          </>
+        }
         detail={<Detail>{` · ${voice.category ?? "voice"} · ${voice.voiceId}`}</Detail>}
         actions={
           <>
+            {defaultStyle === undefined || isDefault ? null : (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setProblem(null)
+                  void saveDefault({ payload: { voiceId: voice.voiceId, wordsPerSecond: defaultStyle.config.voice.wordsPerSecond }, reactivityKeys: ["presets"] })
+                    .catch((e: unknown) => setProblem(refusal(e)[0] ?? "Couldn’t set it as the default voice."))
+                }}
+              >
+                <Star />Set as default
+              </Button>
+            )}
             {others.length === 0 ? null : (
               <Select<string>
                 label={`Use ${split.name} for a style`}

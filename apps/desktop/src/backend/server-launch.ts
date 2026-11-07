@@ -46,7 +46,7 @@ export const serverLaunch = (input: LaunchInput): Launch =>
 // Waits between restarts after the server exits: 0.5s, 1s, 2s … up to 10s.
 export const restartDelayMs = (attempt: number) => Math.min(10_000, 500 * 2 ** Math.max(0, attempt))
 
-// ElevenLabs' free voice samples (Settings › Voice plays them); nothing else from outside is loaded.
+// ElevenLabs' free voice samples (Library › Voices and the style editor play them); nothing else from outside is loaded.
 const VOICE_SAMPLES = "https://storage.googleapis.com/eleven-public-prod/ https://*.elevenlabs.io"
 
 // The app's content security policy: its own files, the local server for data, frames, audio and video, and

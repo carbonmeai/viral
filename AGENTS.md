@@ -157,10 +157,12 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        text (choose a title, copy it all), the files, and a rights reminder. thumbnail/: the
                        thumbnail in a phone frame, its moments, and word edits checked with CheckThumbnailEdit.
                        The Sections step of a cut-down short has no view yet
-                       library/: Styles (cards with a CSS 9:16 preview of each style; the editor at ?edit=<id>),
-                       Music (songs with a decoded waveform and drop, kind and rights, add songs or a folder;
-                       "Used by" opens each short's editor) and Voices (free samples, a paid "Try a line", and
-                       "Use for style"). Loading is a skeleton of the page (library-loading.tsx), never a spinner
+                       library/: Styles (cards with a CSS 9:16 preview of each style; the editor at ?edit=<id>, whose
+                       Voice group holds the style's voice and pace), Music (songs with a decoded waveform and drop,
+                       kind and rights, add songs or a folder; "Used by" opens each short's editor) and Voices (free
+                       samples, a paid "Try a line", the default style's voice tagged Default, "Set as default"
+                       (SetDefaultVoice) and "Use for style" for the other styles). There is no Settings › Voice: the
+                       default voice lives in Library › Voices, pace in the style editor. Loading is a skeleton of the page (library-loading.tsx), never a spinner
   api/                 the RPC client (AtomRpc over one WebSocket) and the atom registry
   lib/  config/        small shared helpers (media URLs, formatting); where the server is
 apps/desktop/          the Electron shell: starts the server (node in dev; Electron's own Node packaged), opens the
