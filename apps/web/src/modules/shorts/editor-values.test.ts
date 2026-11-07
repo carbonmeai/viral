@@ -14,7 +14,7 @@ test("each step's state comes from its stages, and the editor opens where you're
     stage("shots", "waiting"),
     stage("assemble", "succeeded")
   ])
-  assert.deepEqual([...states.entries()], [["script", "done"], ["voice", "done"], ["shots", "waiting"], ["render", "next"], ["publish", "next"], ["thumbnail", "next"]])
+  assert.deepEqual([...states.entries()], [["script", "done"], ["voice", "done"], ["shots", "waiting"], ["music", "done"], ["render", "next"], ["publish", "next"], ["thumbnail", "next"]])
   assert.equal(openingStep(steps, states), "shots")
   assert.equal(openingStep(steps, stepStates(steps, [])), "script")
   assert.deepEqual(editorSteps("cut-down").map((s) => s.id), ["sections", "render", "publish", "thumbnail"])

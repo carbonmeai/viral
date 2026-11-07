@@ -1,8 +1,9 @@
 import type { ProjectFormat, RunRequest, Script, StageName, StageRun, TranscriptWord } from "@viral/contracts"
 
 // The editor's steps. A step can cover more than one stage: Render is assemble then render; Publish is metadata.
-export type EditorStepId = "script" | "sections" | "voice" | "shots" | "render" | "publish" | "thumbnail"
-export const EDITOR_STEP_IDS: ReadonlyArray<EditorStepId> = ["script", "sections", "voice", "shots", "render", "publish", "thumbnail"]
+// Music is the bed assemble fits (narrated shorts only; a cut-down short has no bed, so no Music step).
+export type EditorStepId = "script" | "sections" | "voice" | "shots" | "music" | "render" | "publish" | "thumbnail"
+export const EDITOR_STEP_IDS: ReadonlyArray<EditorStepId> = ["script", "sections", "voice", "shots", "music", "render", "publish", "thumbnail"]
 export interface EditorStep {
   readonly id: EditorStepId
   readonly name: string
@@ -13,6 +14,7 @@ const NARRATED: ReadonlyArray<EditorStep> = [
   { id: "script", name: "Script", stages: ["script"] },
   { id: "voice", name: "Voice", stages: ["voice"] },
   { id: "shots", name: "Shots", stages: ["shots"] },
+  { id: "music", name: "Music", stages: ["assemble"] },
   { id: "render", name: "Render", stages: ["assemble", "render"] },
   { id: "publish", name: "Publish", stages: ["metadata"] },
   { id: "thumbnail", name: "Thumbnail", stages: ["thumbnail"] }

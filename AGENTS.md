@@ -152,6 +152,12 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        framing, storyboard, a frame picker over ListFramesAround stills, framing/crop/speed); its
                        changes collect into one edit, checked with CheckShotsEdit before it answers the gate.
                        Edits to an approved short's shots aren't supported yet (only at the gate).
+                       music/: the Music step (narrated shorts only; it opens once assemble has run): the fitted bed
+                       (GetMusicBed) played with the voiceover, which pauses where real lines play, the bed's
+                       parts and the drop word marked; the inspector's song (tempo, rights, the part of the song
+                       that plays on its waveform), Change song over the library plus No music, and the drop word
+                       picked from the narration. Applying calls RefitMusic (stopping a run that's going) and
+                       follows the re-run from assemble; no song is a calm "Voice only", never a warning.
                        render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows, the
                        check sheet, "Send back" to Shots/Sections or Style via Reject.to). publish/: the post
                        text (choose a title, copy it all), the files, and a rights reminder. thumbnail/: the

@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { FrameAt, GateResponse, ProjectId, RunId, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
+import type { FrameAt, GateResponse, MusicTrack, MusicTrackId, ProjectId, RunId, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Button } from "@viral/ui/primitives/button"
 import { Status } from "@viral/ui/primitives/status"
@@ -11,7 +11,7 @@ import { desktop, serverUrl } from "../../config/server-url.ts"
 import { artifactFileUrl, artifactPathUrl, homeFileUrl } from "../../lib/media-url.ts"
 import { ServerState } from "../home/server-state.tsx"
 import { TitleBar } from "../layout/title-bar.tsx"
-import { voicesAtom } from "../library/library-api.ts"
+import { tracksAtom, voicesAtom } from "../library/library-api.ts"
 import { Detail } from "../system/detail.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
@@ -29,13 +29,28 @@ import {
 } from "./editor-values.ts"
 import type { GateControls } from "./gate.ts"
 import { LaterStep } from "./later-step.tsx"
+import { MusicInspector, type MusicTab } from "./music/music-inspector.tsx"
+import { MusicStage } from "./music/music-stage.tsx"
+import { bedBlocks, defaultDropWord } from "./music/music-values.ts"
 import { PublishInspector, type PublishTab } from "./publish/publish-inspector.tsx"
 import { postText } from "./publish/publish-values.ts"
 import { RenderInspector, type RenderTab } from "./render/render-inspector.tsx"
 import { ShortPlayer } from "./render/short-player.tsx"
 import { ScriptInspector, type ScriptTab } from "./script/script-inspector.tsx"
 import { ScriptStage } from "./script/script-stage.tsx"
-import { checkScriptEdit, checkSectionsEdit, checkShotsEdit, checkThumbnailEdit, respondToRequest, setProjectVoice, stillAt, workspaceAtom } from "./shorts-api.ts"
+import {
+  cancelRun,
+  checkScriptEdit,
+  checkSectionsEdit,
+  checkShotsEdit,
+  checkThumbnailEdit,
+  musicBedAtom,
+  refitMusic,
+  respondToRequest,
+  setProjectVoice,
+  stillAt,
+  workspaceAtom
+} from "./shorts-api.ts"
 import { CutTimeline } from "./sections/cut-timeline.tsx"
 import { SectionsInspector, type SectionsTab } from "./sections/sections-inspector.tsx"
 import { SectionsStage, type SectionsView } from "./sections/sections-stage.tsx"
@@ -153,6 +168,20 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [stills, setStills] = useState<ReadonlyMap<number, string>>(new Map())
   const checkSections = useAtomSet(checkSectionsEdit, { mode: "promise" })
   const fetchStill = useAtomSet(stillAt, { mode: "promise" })
+  // the Music step: the short's fitted bed, the library's songs, the inspector's tab, the song picker, and where
+  // the bed is playing
+  const bedResult = useAtomValue(musicBedAtom(ws.project.id))
+  const refreshBed = useAtomRefresh(musicBedAtom(ws.project.id))
+  const fitted = Option.getOrNull(AsyncResult.value(bedResult))
+  const tracks = Option.getOrElse(AsyncResult.value(useAtomValue(tracksAtom)), (): ReadonlyArray<MusicTrack> => [])
+  const [musicTab, setMusicTab] = useState<MusicTab>("song")
+  const [pickingSong, setPickingSong] = useState(false)
+  const [bedTime, setBedTime] = useState<number | null>(null)
+  const refit = useAtomSet(refitMusic, { mode: "promise" })
+  const cancel = useAtomSet(cancelRun, { mode: "promise" })
+  // a new bed is fitted whenever assemble finishes
+  const assembled = stages.filter((s) => s.stage === "assemble").map((s) => `${s.id}:${s.status}`).join(",")
+  useEffect(() => refreshBed(), [assembled, refreshBed])
 
   const request = waitingOn === open ? pending : null
   const answer = (response: GateResponse) => {
@@ -249,6 +278,26 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       .finally(() => setBusy(false))
   }
 
+  const liveRun = progress.run ?? ws.run
+  const runGoing = liveRun !== null && (liveRun.status === "running" || liveRun.status === "waiting")
+  // changes the song (null: no music) and/or the drop word, stopping a run that's going, then follows the re-run
+  const applyMusic = (trackId: MusicTrackId | null, dropWord: number | null | undefined) => {
+    setBusy(true)
+    setError(null)
+    const stop = runGoing && liveRun !== null ? cancel({ payload: { runId: liveRun.id } }) : Promise.resolve(true)
+    return stop
+      .then(() => refit({
+        payload: { projectId: ws.project.id, trackId, ...(dropWord === undefined ? {} : { dropWord }) },
+        reactivityKeys: [`short:${ws.project.id}`]
+      }))
+      .then(() => {
+        setPickingSong(false)
+        refresh()
+      })
+      .catch(() => setError("Couldn't change the music. Is the server running?"))
+      .finally(() => setBusy(false))
+  }
+
   const status = pending !== null && waitingOn !== null
     ? <Status tone="wait">Waiting on {steps.find((s) => s.id === waitingOn)?.name}</Status>
     : progress.run?.status === "running" || ws.run?.status === "running"
@@ -296,7 +345,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   ) : publishActions !== null && state !== "done" ? publishActions : state === "done" ? (
     <>
       {publishActions}
-      {open === "publish" ? null : <Status tone="ok">Approved</Status>}
+      {open === "publish" || open === "music" ? null : <Status tone="ok">Approved</Status>}
       {current !== open && states.get(current) !== "done" ? (
         <Button size="md" variant="primary" onClick={() => onStep(current)}>Go to {steps.find((s) => s.id === current)?.name}<ArrowRight /></Button>
       ) : null}
@@ -607,6 +656,50 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         />
       )
     }
+  } else if (open === "music") {
+    const track = tracks.find((t) => t.id === ws.project.musicTrackId) ?? null
+    const words = ws.voiceover?.words ?? []
+    const fitting = state === "running"
+    const bed = fitted?.bed ?? null
+    stage = (
+      <>
+        {stageBar(ws.project.musicTrackId === null ? "Voice only" : fitting ? "Fitting the song…" : bed === null ? "Not fitted" : `${bed.durationS.toFixed(1)}s of music under the voice`)}
+        <MusicStage
+          bed={bed}
+          bedUrl={fitted === null ? null : homeFileUrl(serverUrl, fitted.media)}
+          track={track}
+          fitting={fitting}
+          voiceUrl={voiceUrl}
+          words={words}
+          layout={layout}
+          hasSongs={tracks.length > 0}
+          onAddSong={() => {
+            setMusicTab("song")
+            setPickingSong(true)
+          }}
+          onTime={setBedTime}
+        />
+      </>
+    )
+    inspector = (
+      <MusicInspector
+        track={track}
+        bed={bed}
+        tracks={tracks}
+        trackUrl={(t) => homeFileUrl(serverUrl, `music/${t.path}`)}
+        words={words}
+        defaultWord={ws.script === null ? null : defaultDropWord(ws.script.script, words)}
+        picking={pickingSong}
+        onPicking={setPickingSong}
+        busy={busy}
+        error={error}
+        running={runGoing}
+        onApply={(trackId, dropWord) => void applyMusic(trackId, dropWord)}
+        stages={stages}
+        tab={musicTab}
+        onTab={setMusicTab}
+      />
+    )
   } else {
     stage = <LaterStep step={openStep} milestone="a later milestone" />
     inspector = null
@@ -660,10 +753,13 @@ function Editor({ ws, progress, step, onStep, refresh }: {
               ? shotBlocks.find((b) => b.k === shotK)?.start ?? null
               : (open === "render" || open === "publish") && playTime !== null
               ? playTime
+              : open === "music" && bedTime !== null
+              ? bedTime
               : null}
-            drop={ws.project.musicTrackId === null ? null : layout?.narration.at(-1)?.start ?? null}
+            drop={ws.project.musicTrackId === null ? null : fitted?.bed.dropAtS ?? layout?.narration.at(-1)?.start ?? null}
+            musicBlocks={ws.project.musicTrackId === null || fitted === null ? null : bedBlocks(fitted.bed)}
             captions={`${captions.enabled ? `${captions.mode === "chunk" ? `${captions.maxWords} words at a time` : "One word at a time"} · ${captions.case}` : "No captions (finish in an editor from the .srt)"}`}
-            music={ws.project.musicTrackId === null ? "No music · voice only" : "Music · its drop lands on the last narrated line"}
+            music={ws.project.musicTrackId === null ? "No music · voice only" : "Music · fitted when the short is laid out"}
             shots={ws.shotPlan !== null ? `${ws.shotPlan.plan.shots.length} shots` : "Shots are planned in step 3"}
             shotBlocks={shotBlocks === null ? null : {
               blocks: shotBlocks,

@@ -30,3 +30,10 @@ export const stillAt = ViralClient.mutation("ListFramesAround")
 export const setProjectVoice = ViralClient.mutation("SetProjectVoice")
 export const setProjectBrief = ViralClient.mutation("SetProjectBrief")
 export const startShortRun = ViralClient.mutation("StartProjectRun")
+
+// The short's fitted music bed (null: voice only). Refreshed by the editor when assemble fits a new one.
+export const musicBedAtom = Atom.family((projectId: ProjectId) =>
+  ViralClient.query("GetMusicBed", { projectId }, { reactivityKeys: [`short:${projectId}`] })
+)
+export const refitMusic = ViralClient.mutation("RefitMusic")
+export const cancelRun = ViralClient.mutation("CancelRun")

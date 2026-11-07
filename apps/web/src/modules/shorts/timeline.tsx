@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react"
 import { Captions, Image, Mic, Music, Quote } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "@viral/ui/cn"
-import { clockOf, type TimelineLayout } from "./editor-values.ts"
+import { clockOf, type TimelineLayout, type TimelineSegment } from "./editor-values.ts"
 import type { ShotBlock } from "./shots/shots-values.ts"
 
 // One track's colour tile, like Cap's soft icon tiles.
@@ -70,11 +70,13 @@ export interface TimelineProps {
   readonly shotBlocks?: TimelineShots | null
   // where the music drops, in the short's seconds, when it has music
   readonly drop?: number | null
+  // the fitted bed's parts (groove, build-up, drop), in the short's seconds, when it has one
+  readonly musicBlocks?: ReadonlyArray<TimelineSegment> | null
 }
 
 // The short on one timeline, read-only for now: the narration, the shots, the real lines (in the creator's own
 // voice), the captions and the music, in the short's own seconds.
-export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop }: TimelineProps) {
+export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop, musicBlocks }: TimelineProps) {
   if (layout === null) {
     return (
       <div className="grid grid-cols-[112px_minmax(700px,1fr)] items-center gap-y-1.5">
@@ -143,10 +145,15 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
 
         <TrackName icon={Music} color="var(--t-music)" name="Music" />
         <Lane>
-          <Block start={0} end={total} total={total} color="" dim label={music} />
+          {musicBlocks === null || musicBlocks === undefined || musicBlocks.length === 0
+            ? <Block start={0} end={total} total={total} color="" dim label={music} />
+            : musicBlocks.map((b, i) => <Block key={i} start={b.start} end={Math.min(b.end, total)} total={total} color="var(--t-music)" label={b.label} />)}
           {drop === null || drop === undefined ? null : (
             <span className="pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-[var(--t-music)]" style={{ left: `${(drop / total) * 100}%` }} title="The drop">
-              <span className="absolute top-0.5 left-1 text-[10.5px] font-medium text-[color-mix(in_srgb,var(--t-music)_70%,var(--fg))]">drop</span>
+              {/* a fitted bed's Drop block names it already */}
+              {musicBlocks === null || musicBlocks === undefined || musicBlocks.length === 0
+                ? <span className="absolute top-0.5 left-1 text-[10.5px] font-medium text-[color-mix(in_srgb,var(--t-music)_70%,var(--fg))]">drop</span>
+                : null}
             </span>
           )}
         </Lane>
