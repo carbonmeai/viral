@@ -99,6 +99,13 @@ test("a session error ends the run even though the prompt never answers", async 
   assert.match(String(exit.cause), /Free usage limit reached/)
 })
 
+test("a retry only you can fix (a free tier's limit) ends the run", async () => {
+  const { hooks } = recorder()
+  const { exit } = await run("retry", go({ calls: [], end: "retry" }, hooks, "zen/big"))
+  assert.ok(Exit.isFailure(exit))
+  assert.match(String(exit.cause), /Free limit reached: Subscribe to OpenCode Go/)
+})
+
 test("an outdated OpenCode is refused with how to update", async () => {
   const { hooks } = recorder()
   process.env["FAKE_OPENCODE_VERSION"] = "1.1.12"

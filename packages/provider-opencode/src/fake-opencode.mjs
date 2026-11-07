@@ -1,6 +1,6 @@
 // A stand-in for `opencode` in the provider's tests: `--version` and a scripted `serve` that answers the SDK's
 // session calls and streams its events. The user message is the script:
-// {"calls":[{"tool","args"}],"end":"wait"|"complete"|"error"}. The calls go to Viral's MCP endpoint from
+// {"calls":[{"tool","args"}],"end":"wait"|"complete"|"error"|"retry"}. The calls go to Viral's MCP endpoint from
 // OPENCODE_CONFIG_CONTENT, like OpenCode makes them. The launch and each tool result are appended to
 // $FAKE_OPENCODE_LOG as JSON lines.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -83,6 +83,10 @@ const prompt = async (sessionID, body, res) => {
     // like an out-of-credit provider: the error comes as an event and the prompt call never answers
     messages.push({ info: { ...last, error: { name: "APIError", data: { message: "Free usage limit reached", isRetryable: false } } }, parts: [] })
     emit("session.error", { sessionID, error: { name: "APIError", data: { message: "Free usage limit reached", isRetryable: false } } })
+  } else if (script.end === "retry") {
+    // OpenCode 1.19 out of free usage: it retries for good, reporting it only as the session's status
+    emit("session.status", { sessionID, status: { type: "retry", attempt: 1, message: "Free usage exceeded, subscribe to Go", next: 2,
+      action: { reason: "free_tier_limit", provider: "opencode", title: "Free limit reached", message: "Subscribe to OpenCode Go.", label: "Subscribe" } } })
   } else {
     messages.push({ info: last, parts: [] })
     json(res, { info: last, parts: [] })

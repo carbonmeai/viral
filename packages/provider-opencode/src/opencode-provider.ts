@@ -169,7 +169,7 @@ const errorMessage = (error: { readonly name: string; readonly data?: unknown })
   typeof error.data === "object" && error.data !== null && "message" in error.data ? String(error.data.message) : error.name
 
 // The server's events for the session: live progress (the agent's text once a part is finished, and each tool it
-// starts) and session errors, which fail `failed` (Viral's own abort isn't one).
+// starts) and session errors, which fail `failed` (Viral's own abort isn't one), as does a retry only you can fix.
 const followEvents = (server: OpencodeServer, sessionID: string, hooks: AgentHooks, failed: Deferred.Deferred<never, AgentError>) => {
   const announced = new Set<string>()
   const onPart = (part: Part) => {
@@ -194,6 +194,12 @@ const followEvents = (server: OpencodeServer, sessionID: string, hooks: AgentHoo
           if (event.type === "message.part.updated") return onPart(event.properties.part)
           if (event.type === "session.error" && event.properties.sessionID === sessionID && event.properties.error !== undefined && event.properties.error.name !== "MessageAbortedError") {
             return Deferred.fail(failed, new AgentError({ code: "ended", message: errorMessage(event.properties.error) })).pipe(Effect.asVoid)
+          }
+          // a retry that needs you to act (a free tier's limit, a sign-in) would retry forever: OpenCode 1.19 keeps
+          // the prompt open and only reports it as a session status
+          if (event.type === "session.status" && event.properties.sessionID === sessionID && event.properties.status.type === "retry" && event.properties.status.action !== undefined) {
+            const { action } = event.properties.status
+            return Deferred.fail(failed, new AgentError({ code: "ended", message: `${action.title}: ${action.message}` })).pipe(Effect.asVoid)
           }
           return Effect.void
         })
