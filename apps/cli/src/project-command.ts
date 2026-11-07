@@ -5,8 +5,9 @@ import { Client } from "./client.ts"
 import { follow } from "./run-command.ts"
 import { show } from "./show.ts"
 
-export const PROJECT_USAGE = `  project create <source-id> <title> [--approach question-recap|claim-interleaved|cut-down]
-                 [--preset <id>] [--music <track-id>]
+export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <title> [--approach question-recap|claim-interleaved|cut-down]
+                 [--preset <id>] [--music <track-id>] [--brief "<what it should achieve>"]
+                                          (several videos, V1 first, need a brief)
   project from-proposal <source-id> <n>   (proposal n from \`source story\`)
   project style <id> <preset-id|default>  (the short's style; see \`preset list\`)
   project music <id> <track-id|none>      (none = voice only)
@@ -33,9 +34,11 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
   switch (sub) {
     case "create": {
       if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)
+      const [v1 = "", ...others] = first.split(",").filter((id) => id !== "")
       const project = yield* client.CreateProject({
-        sourceId: SourceId.make(first),
+        sourceIds: [SourceId.make(v1), ...others.map((id) => SourceId.make(id))],
         title,
+        brief: option("--brief") ?? null,
         approach: yield* decodeApproach(option("--approach") ?? "question-recap"),
         presetId: orNull(option("--preset"), PresetId.make),
         musicTrackId: orNull(option("--music"), MusicTrackId.make)

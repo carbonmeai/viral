@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node"
 import {
   APPROACHES,
   ApproachName,
+  MAX_SHORT_SOURCES,
   MusicTrackId,
   type MusicTrackNotFound,
   PresetId,
@@ -10,9 +11,11 @@ import {
   ProjectFormat,
   ProjectId,
   ProjectNotFound,
+  ProjectSourcesInvalid,
   ProposalNotFound,
   SourceId,
   type SourceNotFound,
+  SourceSetId,
   StoryMap
 } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Schema } from "effect"
@@ -29,13 +32,26 @@ import { Sources } from "../sources/sources.ts"
 import { projectSlug } from "./project-slug.ts"
 
 export interface CreateProjectInput {
-  readonly sourceId: SourceId
+  // the short's videos, V1 first
+  readonly sourceIds: readonly [SourceId, ...Array<SourceId>]
   readonly title: string
   readonly approach: ApproachName
   readonly presetId: PresetId | null
   readonly musicTrackId: MusicTrackId | null
-  // what the short should achieve, in your words; null or blank = none
+  // what the short should achieve, in your words; null or blank = none. Required for several videos.
   readonly brief?: string | null
+}
+
+// The videos a short draws from, V1 first. A clip's `source` index points into this list.
+export const sourcesOf = (project: Project): readonly [SourceId, ...Array<SourceId>] => project.sourceIds
+
+// Why these videos don't make a short, or null when they do.
+export const sourcesProblem = (sourceIds: ReadonlyArray<SourceId>, brief: string | null): string | null => {
+  if (sourceIds.length === 0) return "a short needs a video"
+  if (sourceIds.length > MAX_SHORT_SOURCES) return `a short can use up to ${MAX_SHORT_SOURCES} videos, not ${sourceIds.length}`
+  if (new Set(sourceIds).size !== sourceIds.length) return "each video can be in a short once"
+  if (sourceIds.length > 1 && brief === null) return "a short from several videos needs a brief: what should it achieve?"
+  return null
 }
 
 // A brief is kept as written, minus surrounding space; a blank one is no brief.
@@ -46,7 +62,9 @@ export const cleanBrief = (brief: string | null | undefined) => {
 
 const ProjectRow = Schema.Struct({
   id: ProjectId,
-  source_id: SourceId,
+  // the short's videos in order, from project_sources (a JSON array)
+  source_ids: Schema.fromJsonString(Schema.NonEmptyArray(SourceId)),
+  set_id: Schema.NullOr(SourceSetId),
   number: Schema.Int,
   slug: Schema.String,
   title: Schema.String,
@@ -61,7 +79,8 @@ const ProjectRow = Schema.Struct({
 })
 const toProject = (row: typeof ProjectRow.Type): Project => ({
   id: row.id,
-  sourceId: row.source_id,
+  sourceIds: row.source_ids,
+  setId: row.set_id,
   number: row.number,
   slug: row.slug,
   title: row.title,
@@ -75,16 +94,18 @@ const toProject = (row: typeof ProjectRow.Type): Project => ({
   updatedAt: row.updated_at
 })
 
-// A short made from a source: a row plus ~/.viral/projects/<id>/ for its own artifacts. Shorts are
-// numbered per source (01-, 02-…).
+// A short made from one or more videos (project_sources, V1 first): a row plus ~/.viral/projects/<id>/ for its
+// own artifacts. Shorts are numbered across the library (07-…); the ones made before multi-video keep their
+// per-video numbers.
 export class Projects extends Context.Service<Projects, {
-  create(input: CreateProjectInput): Effect.Effect<Project, SourceNotFound | PresetNotFound | MusicTrackNotFound>
+  create(input: CreateProjectInput): Effect.Effect<Project, SourceNotFound | PresetNotFound | MusicTrackNotFound | ProjectSourcesInvalid>
   // A short from the source story's proposal number `proposal` (0-based): its approach and title.
   fromProposal(sourceId: SourceId, proposal: number, brief?: string | null): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
   setBrief(id: ProjectId, brief: string | null): Effect.Effect<Project, ProjectNotFound>
   setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
   setPreset(id: ProjectId, presetId: PresetId | null): Effect.Effect<Project, ProjectNotFound | PresetNotFound>
   setMusic(id: ProjectId, musicTrackId: MusicTrackId | null): Effect.Effect<Project, ProjectNotFound | MusicTrackNotFound>
+  // every short, or the shorts that use one video
   list(sourceId: SourceId | null): Effect.Effect<ReadonlyArray<Project>>
   get(id: ProjectId): Effect.Effect<Project, ProjectNotFound>
   remove(id: ProjectId): Effect.Effect<boolean>
@@ -102,25 +123,33 @@ export class Projects extends Context.Service<Projects, {
       const artifacts = yield* Artifacts
       const settings = yield* Settings
 
+      // a project with its videos in order, as one row
+      const withSources = sql`
+        SELECT p.*, (SELECT json_group_array(source_id) FROM (
+          SELECT source_id FROM project_sources ps WHERE ps.project_id = p.id ORDER BY position
+        )) AS source_ids
+        FROM projects p`
       const findAll = SqlSchema.findAll({
         Request: Schema.Void,
         Result: ProjectRow,
-        execute: () => sql`SELECT * FROM projects ORDER BY updated_at DESC`
+        execute: () => sql`${withSources} ORDER BY p.updated_at DESC`
       })
       const findBySource = SqlSchema.findAll({
         Request: SourceId,
         Result: ProjectRow,
-        execute: (sourceId) => sql`SELECT * FROM projects WHERE source_id = ${sourceId} ORDER BY number`
+        execute: (sourceId) =>
+          sql`${withSources} WHERE p.id IN (SELECT project_id FROM project_sources WHERE source_id = ${sourceId}) ORDER BY p.number`
       })
       const findById = SqlSchema.findOneOption({
         Request: ProjectId,
         Result: ProjectRow,
-        execute: (id) => sql`SELECT * FROM projects WHERE id = ${id}`
+        execute: (id) => sql`${withSources} WHERE p.id = ${id}`
       })
+      // numbered across the library, so a short from several videos has one number
       const nextNumber = SqlSchema.findOne({
-        Request: SourceId,
+        Request: Schema.Void,
         Result: Schema.Struct({ next: Schema.Int }),
-        execute: (sourceId) => sql`SELECT coalesce(max(number), 0) + 1 AS next FROM projects WHERE source_id = ${sourceId}`
+        execute: () => sql`SELECT coalesce(max(number), 0) + 1 AS next FROM projects`
       })
 
       const get = Effect.fn("Projects.get")(function*(id: ProjectId) {
@@ -130,8 +159,11 @@ export class Projects extends Context.Service<Projects, {
       })
 
       const create = Effect.fn("Projects.create")(function*(input: CreateProjectInput) {
+        const brief = cleanBrief(input.brief)
+        const problem = sourcesProblem(input.sourceIds, brief)
+        if (problem !== null) return yield* new ProjectSourcesInvalid({ message: problem })
         // Check references up front so callers get a typed error instead of a foreign-key failure.
-        yield* sources.get(input.sourceId)
+        yield* Effect.forEach(input.sourceIds, (id) => sources.get(id), { discard: true })
         if (input.presetId !== null) yield* presets.get(input.presetId)
         if (input.musicTrackId !== null) yield* music.get(input.musicTrackId)
 
@@ -139,14 +171,16 @@ export class Projects extends Context.Service<Projects, {
         const now = DateTime.formatIso(yield* DateTime.now)
         // Numbering and insert share a transaction so two shorts can't take the same number.
         yield* sql.withTransaction(Effect.gen(function*() {
-          const { next } = yield* nextNumber(input.sourceId)
+          const { next } = yield* nextNumber()
           yield* sql`
-            INSERT INTO projects (id, source_id, number, slug, title, approach, format, preset_id, music_track_id,
-                                  brief, created_at, updated_at)
-            VALUES (${id}, ${input.sourceId}, ${next}, ${projectSlug(next, input.title)}, ${input.title},
-                    ${input.approach}, ${APPROACHES[input.approach].format}, ${input.presetId}, ${input.musicTrackId},
-                    ${cleanBrief(input.brief)}, ${now}, ${now})
+            INSERT INTO projects (id, number, slug, title, approach, format, preset_id, music_track_id, brief,
+                                  created_at, updated_at)
+            VALUES (${id}, ${next}, ${projectSlug(next, input.title)}, ${input.title}, ${input.approach},
+                    ${APPROACHES[input.approach].format}, ${input.presetId}, ${input.musicTrackId}, ${brief}, ${now},
+                    ${now})
           `
+          yield* Effect.forEach(input.sourceIds, (sourceId, position) =>
+            sql`INSERT INTO project_sources (project_id, source_id, position) VALUES (${id}, ${sourceId}, ${position})`)
         })).pipe(Effect.orDie)
         yield* fs.makeDirectory(home.projectDir(id), { recursive: true }).pipe(Effect.orDie)
         return yield* get(id).pipe(Effect.orDie)
@@ -160,13 +194,13 @@ export class Projects extends Context.Service<Projects, {
         )
         if (Option.isNone(chosen)) return yield* new ProposalNotFound({ sourceId, proposal })
         return yield* create({
-          sourceId,
+          sourceIds: [sourceId],
           title: chosen.value.title,
           approach: chosen.value.approach,
           presetId: null,
           musicTrackId: null,
           brief: brief ?? null
-        }).pipe(Effect.catchTag(["PresetNotFound", "MusicTrackNotFound"], Effect.die))
+        }).pipe(Effect.catchTag(["PresetNotFound", "MusicTrackNotFound", "ProjectSourcesInvalid"], Effect.die))
       })
 
       const list = Effect.fn("Projects.list")(function*(sourceId: SourceId | null) {

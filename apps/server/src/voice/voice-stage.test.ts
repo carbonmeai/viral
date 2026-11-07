@@ -66,7 +66,7 @@ test("the voice stage speaks the narration in one take, paces it, and waits for 
     const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/x" }, rights: "owned", rightsNote: null })
     const projects = yield* Projects
     const project = yield* projects.create({
-      sourceId: source.id,
+      sourceIds: [source.id],
       title: "Every taste",
       approach: "claim-interleaved",
       presetId: null,

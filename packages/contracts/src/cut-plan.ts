@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { SourceIndex } from "./sources.ts"
 
 // The story beat a section of a cut-down short plays (story-arc skill).
 export const CutBeat = Schema.Literals(["hook", "rising_action", "conflict", "comeback", "payoff"])
@@ -9,6 +10,8 @@ export const CutSection = Schema.Struct({
   beat: CutBeat,
   start: Schema.Finite,
   end: Schema.Finite,
+  // which of the short's videos it's from (V1 = 0); leave it out when the short has one video
+  source: Schema.optionalKey(SourceIndex),
   // horizontal centre of the crop, 0–1, when the speaker sits off-centre
   cropX: Schema.optionalKey(Schema.Finite),
   // crop: the footage fills 9:16 · blur: the whole frame over a blurred fill (screen shares, wide shots)

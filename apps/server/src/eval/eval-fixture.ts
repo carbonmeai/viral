@@ -11,7 +11,7 @@ import {
 } from "@viral/contracts"
 import { Effect, FileSystem, Option, Path, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
-import { Projects } from "../projects/projects.ts"
+import { Projects, sourcesOf } from "../projects/projects.ts"
 import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
 
@@ -76,6 +76,7 @@ export const exportFixture = Effect.fn("exportFixture")(function*(input: {
 
   const source = yield* sources.get(input.sourceId).pipe(Effect.mapError((e) => fail(e.message)))
   const project = yield* projects.get(input.projectId).pipe(Effect.mapError((e) => fail(e.message)))
+  if (!sourcesOf(project).includes(input.sourceId)) return yield* fail("that short isn't made from that video")
   const transcript = yield* transcripts.forSource(input.sourceId).pipe(Effect.mapError(() => fail("the source has no transcript")))
   const adRanges = yield* data(sourceOwner, "ad-ranges", AdRanges)
   const story = yield* data(sourceOwner, "story-map", StoryMap)

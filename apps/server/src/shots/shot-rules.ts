@@ -1,5 +1,6 @@
 import type { Script, ShotInsert, ShotPlan, ShotProposal, TranscriptWord } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
+import { clipSource, type SourceContext, sourceField } from "../projects/source-context.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
@@ -56,7 +57,7 @@ export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>)
       narrated++
       return
     }
-    const clip = { start: beat.start, end: beat.end, quote: beat.quote }
+    const clip = { start: beat.start, end: beat.end, quote: beat.quote, ...sourceField(beat.source) }
     if (i > lastNarration || narrated < 0) {
       outro.push(clip)
       return
@@ -71,14 +72,14 @@ export interface ShotContext {
   readonly words: ReadonlyArray<TranscriptWord>
   // the voiceover's length; the last shot runs to it
   readonly voiceoverSeconds: number
-  readonly sourceSeconds: number
-  readonly excluded: ReadonlyArray<Range>
+  // the short's videos, V1 first: each shot plays from its own
+  readonly sources: ReadonlyArray<Pick<SourceContext, "seconds" | "excluded">>
   readonly inserts: ReadonlyArray<ShotInsert>
 }
 
 const fmt = (t: number) => t.toFixed(1)
 
-// Checks a proposed shot list against the voiceover and the source, and fills in each anchor's word text.
+// Checks a proposed shot list against the voiceover and the short's videos, and fills in each anchor's word text.
 export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pick<ShotDraft, "shots" | "markers" | "highlights">> => {
   const problems: Array<string> = []
   const { words } = ctx
@@ -103,11 +104,14 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
     const speed = shot.speed ?? 1
     if (speed < SPEED[0] || speed > SPEED[1]) problems.push(`${name}: speed ${speed} is outside ${SPEED[0]}–${SPEED[1]}`)
     if (shot.cropX !== undefined && (shot.cropX < 0 || shot.cropX > 1)) problems.push(`${name}: cropX must be 0–1`)
+    const video = clipSource(ctx.sources, shot.source, name)
+    if (video.problem !== null) return problems.push(video.problem)
+    const { seconds, excluded } = video.source
     const srcEnd = shot.src + Math.max(0, length) * speed
-    if (shot.src < 0 || srcEnd > ctx.sourceSeconds) {
-      problems.push(`${name} plays ${fmt(shot.src)}–${fmt(srcEnd)}s, outside the video (0–${fmt(ctx.sourceSeconds)}s)`)
+    if (shot.src < 0 || srcEnd > seconds) {
+      problems.push(`${name} plays ${fmt(shot.src)}–${fmt(srcEnd)}s, outside the video (0–${fmt(seconds)}s)`)
     }
-    const ad = ctx.excluded.find((r) => shot.src < r.end && srcEnd > r.start)
+    const ad = excluded.find((r) => shot.src < r.end && srcEnd > r.start)
     if (ad !== undefined) {
       problems.push(`${name} plays ${fmt(shot.src)}–${fmt(srcEnd)}s, inside an excluded range (${fmt(ad.start)}–${fmt(ad.end)}s)`)
     }
@@ -139,7 +143,7 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
 
   return {
     value: {
-      shots: proposal.shots.map((s) => ({ ...s, wordText: wordAt(s.word) })),
+      shots: proposal.shots.map(({ source, ...s }) => ({ ...s, ...sourceField(source), wordText: wordAt(s.word) })),
       markers: proposal.markers,
       highlights: highlights.map((h) => typeof h === "string" ? normalize(h) : { word: normalize(h.word), color: h.color })
     },

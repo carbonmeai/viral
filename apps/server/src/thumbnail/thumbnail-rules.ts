@@ -1,8 +1,10 @@
 import type { BackdropColor, FrameCrop, ThumbConfig, ThumbnailColor, ThumbnailProposal } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
+import { clipSource, sourceField } from "../projects/source-context.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
+// One of the videos a thumbnail can draw from.
 export interface ThumbnailContext {
   // the source video's frame size, to turn fractional crops into the renderer's pixels
   readonly width: number
@@ -58,16 +60,22 @@ const LAYOUT = {
 const fmt = (t: number) => t.toFixed(1)
 const countWords = (text: string) => text.split(/\s+/).filter((w) => w !== "").length
 
-// Checks a proposed thumbnail against the video: real moments outside the ads, crops inside the frame and in
-// proportion with their slot, and 2–4 words that fit.
-export const checkThumbnail = (proposal: ThumbnailProposal, ctx: ThumbnailContext): Checked<ThumbnailProposal> => {
+// Checks a proposed thumbnail against the videos it can draw from (V1 first; each layer's `source` picks one):
+// real moments outside the ads, crops inside the frame and in proportion with their slot, and 2–4 words that fit.
+export const checkThumbnail = (proposal: ThumbnailProposal, sources: ReadonlyArray<ThumbnailContext>): Checked<ThumbnailProposal> => {
   const problems: Array<string> = []
-  const moment = (name: string, src: number) => {
+  // the layer's video, or null (with a problem) when there's no such video
+  const videoOf = (name: string, source: number | undefined) => {
+    const video = clipSource(sources, source, name)
+    if (video.problem !== null) problems.push(video.problem)
+    return video.source
+  }
+  const moment = (name: string, src: number, ctx: ThumbnailContext) => {
     if (!(src >= 0 && src < ctx.sourceSeconds)) problems.push(`${name} at ${fmt(src)}s is outside the video (0–${fmt(ctx.sourceSeconds)}s)`)
     const ad = ctx.excluded.find((r) => src >= r.start && src <= r.end)
     if (ad !== undefined) problems.push(`${name} at ${fmt(src)}s is inside an excluded range (${fmt(ad.start)}–${fmt(ad.end)}s)`)
   }
-  const crop = (name: string, [left, top, right, bottom]: FrameCrop, aspect: readonly [number, number]) => {
+  const crop = (name: string, [left, top, right, bottom]: FrameCrop, aspect: readonly [number, number], ctx: ThumbnailContext) => {
     if (!(left >= 0 && top >= 0 && right <= 1 && bottom <= 1 && left < right && top < bottom)) {
       return problems.push(`${name} crop [${[left, top, right, bottom].join(", ")}] must be fractions of the frame, left < right, top < bottom`)
     }
@@ -81,16 +89,25 @@ export const checkThumbnail = (proposal: ThumbnailProposal, ctx: ThumbnailContex
   }
 
   const bold = proposal.layout !== "classic"
-  if (!bold) moment("the background", proposal.background.src)
-  moment("the hero", proposal.hero.src)
-  crop("the hero", proposal.hero.crop, bold ? BOLD_HERO_ASPECT : HERO_ASPECT)
+  if (!bold) {
+    const background = videoOf("the background", proposal.background.source)
+    if (background !== null) moment("the background", proposal.background.src, background)
+  }
+  const hero = videoOf("the hero", proposal.hero.source)
+  if (hero !== null) {
+    moment("the hero", proposal.hero.src, hero)
+    crop("the hero", proposal.hero.crop, bold ? BOLD_HERO_ASPECT : HERO_ASPECT, hero)
+  }
   const circle = proposal.hero.circle
   if (circle !== null && !(circle.x >= 0 && circle.x <= 1 && circle.y >= 0 && circle.y <= 1 && circle.r >= 0.1 && circle.r <= 0.5)) {
     problems.push("the circle's x and y are fractions of the hero image (0–1), and r is 0.1–0.5")
   }
   if (proposal.face !== null) {
-    moment("the face", proposal.face.src)
-    crop("the face", proposal.face.crop, bold ? BOLD_FACE_ASPECT : FACE_ASPECT)
+    const face = videoOf("the face", proposal.face.source)
+    if (face !== null) {
+      moment("the face", proposal.face.src, face)
+      crop("the face", proposal.face.crop, bold ? BOLD_FACE_ASPECT : FACE_ASPECT, face)
+    }
   } else if (bold) {
     problems.push("a bold thumbnail needs the video's strongest reaction face; use layout \"classic\" if it has none")
   }
@@ -106,7 +123,21 @@ export const checkThumbnail = (proposal: ThumbnailProposal, ctx: ThumbnailContex
     if (line.text === "") problems.push("a line of text is empty")
     else if (line.text.length > LINE_CHARS) problems.push(`"${line.text}" is ${line.text.length} characters; keep a line to ${LINE_CHARS} so it stays huge`)
   }
-  return { value: { ...proposal, lines, ...(proposal.emoji === undefined ? {} : { emoji: emoji === "" ? null : emoji }) }, problems }
+  // V1 is stored as before, without a source
+  const { source: backgroundSource, ...background } = proposal.background
+  const { source: heroSource, ...heroLayer } = proposal.hero
+  const faceLayer = proposal.face === null ? null : (({ source, ...face }) => ({ ...face, ...sourceField(source) }))(proposal.face)
+  return {
+    value: {
+      ...proposal,
+      background: { ...background, ...sourceField(backgroundSource) },
+      hero: { ...heroLayer, ...sourceField(heroSource) },
+      face: faceLayer,
+      lines,
+      ...(proposal.emoji === undefined ? {} : { emoji: emoji === "" ? null : emoji })
+    },
+    problems
+  }
 }
 
 const box = (crop: FrameCrop, width: number, height: number): readonly [number, number, number, number] => [

@@ -1,4 +1,5 @@
-import type { ApproachName, Script, ScriptBeat, TranscriptWord } from "@viral/contracts"
+import type { ApproachName, Script, ScriptBeat } from "@viral/contracts"
+import { clipSource, type SourceContext, sourceField } from "../projects/source-context.ts"
 import { locateQuote } from "../transcribe/quote-match.ts"
 
 export interface ScriptLimits {
@@ -27,17 +28,22 @@ const countWords = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w
 export const narrationWords = (script: Script) =>
   script.beats.reduce((n, beat) => n + (beat._tag === "Narration" ? countWords(beat.text) : 0), 0)
 
-// Checks a script against its approach and the transcript, and snaps every real line to the transcript's
-// exact word timings. Returns the snapped script and a list of problems, empty when the script is good.
+// Checks a script against its approach and the short's videos (V1 first), and snaps every real line to its own
+// video's exact word timings. Returns the snapped script and a list of problems, empty when the script is good.
 export const checkScript = (
   script: Script,
   limits: ScriptLimits,
-  words: ReadonlyArray<TranscriptWord>,
-  ads: ReadonlyArray<AdRange>
+  sources: ReadonlyArray<Pick<SourceContext, "words" | "excluded">>
 ): { readonly script: Script; readonly problems: ReadonlyArray<string> } => {
   const problems: Array<string> = []
   const beats: Array<ScriptBeat> = script.beats.map((beat, i) => {
     if (beat._tag === "Narration") return beat
+    const video = clipSource(sources, beat.source, `beat ${i + 1}`)
+    if (video.problem !== null) {
+      problems.push(video.problem)
+      return beat
+    }
+    const { words, excluded: ads } = video.source
     const span = locateQuote(words, beat.quote, beat.start)
     if (span === null) {
       problems.push(`beat ${i + 1}: "${beat.quote}" isn't in the transcript near ${beat.start.toFixed(1)}s; quote the words exactly as spoken`)
@@ -51,7 +57,7 @@ export const checkScript = (
     if (ad !== undefined) {
       problems.push(`beat ${i + 1}: "${beat.quote}" is inside an ad or sponsor read (${ad.start.toFixed(0)}–${ad.end.toFixed(0)}s)`)
     }
-    return { _tag: "Real", quote: span.words, start: span.start, end: span.end }
+    return { _tag: "Real", quote: span.words, start: span.start, end: span.end, ...sourceField(beat.source) }
   })
 
   if (beats[0]?._tag !== "Narration") problems.push("the script must open with a narrated line (the hook)")

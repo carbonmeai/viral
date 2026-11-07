@@ -6,7 +6,7 @@ import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Presets } from "../presets/presets.ts"
-import { Projects } from "../projects/projects.ts"
+import { Projects, sourcesOf } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
 import { checkMetadata, postNotes } from "./metadata-rules.ts"
@@ -39,7 +39,8 @@ export class MetadataStage extends Context.Service<MetadataStage, {
 
       const run = Effect.fn("MetadataStage.run")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        // V1's details; the credits and summaries across videos come with multi-video shorts
+        const source = yield* sources.get(sourcesOf(project)[0]).pipe(Effect.mapError(() => fail("not-found", "no such source")))
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
@@ -50,7 +51,7 @@ export class MetadataStage extends Context.Service<MetadataStage, {
             ))
         const render = yield* latest("render", RenderedShort)
         const story = Option.flatMap(
-          yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "story-map"),
+          yield* artifacts.latest({ _tag: "Source", id: source.id }, "story-map"),
           (a) => Schema.decodeUnknownOption(StoryMap)(a.data)
         )
 

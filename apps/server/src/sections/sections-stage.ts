@@ -1,6 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
 import {
-  AdRanges,
   type Artifact,
   type ArtifactOwner,
   CutPlan,
@@ -17,12 +16,13 @@ import { Artifacts } from "../artifacts/artifacts.ts"
 import { ContactSheets, ContactSheetSet } from "../contact-sheet/contact-sheets.ts"
 import { detailSheetTool } from "../contact-sheet/detail-sheet-tool.ts"
 import { ViralHome } from "../home/viral-home.ts"
+import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects } from "../projects/projects.ts"
+import type { SourceContext } from "../projects/source-context.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
-import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
-import { checkSections, type CutDraft, type SectionContext } from "./section-rules.ts"
+import { checkSections, type CutDraft } from "./section-rules.ts"
 import { buildSectionsBrief, SECTIONS_PROMPT } from "./sections-prompt.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "sections", code, message })
@@ -67,7 +67,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
     SectionsStage,
     Effect.gen(function*() {
       const projects = yield* Projects
-      const sources = yield* Sources
+      const projectSources = yield* ProjectSources
       const artifacts = yield* Artifacts
       const transcripts = yield* Transcripts
       const contactSheets = yield* ContactSheets
@@ -84,17 +84,16 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       const context = Effect.fn("SectionsStage.context")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
         if (project.format !== "cut-down") return yield* fail("wrong-approach", `${project.approach} shorts aren't cut down`)
-        const sourceOwner = { _tag: "Source", id: project.sourceId } as const
-        const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
-        const video = yield* Effect.fromOption(Option.flatMapNullishOr(yield* artifacts.latest(sourceOwner, "source-video"), artifacts.resolve)).pipe(
+        const sources = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        // the agent cuts from V1 for now; several videos come to the sections with multi-video cut-down shorts
+        const [v1] = sources
+        const video = yield* Effect.fromOption(v1.video).pipe(
           Effect.mapError(() => fail("not-ready", "the source video hasn't been fetched"))
         )
-        const transcript = yield* transcripts.forSource(project.sourceId).pipe(Effect.mapError(() => fail("not-ready", "the source has no transcript")))
-        const words = transcript.segments.flatMap((s) => s.words)
-        const excluded = Option.match(yield* latestData(sourceOwner, "ad-ranges", AdRanges), { onNone: () => [], onSome: (a) => a.ranges })
-        const sourceSeconds = source.durationS ?? transcript.segments.at(-1)?.end ?? 0
-        const sectionContext: SectionContext = { words, sourceSeconds, excluded }
-        return { project, source, sourceOwner, video, transcript, sectionContext }
+        if (sources.some((s) => Option.isNone(s.transcript))) return yield* fail("not-ready", "the source has no transcript")
+        const transcript = Option.getOrThrow(v1.transcript)
+        const sectionContext: SourceContext = v1
+        return { project, source: v1.source, sourceOwner: v1.owner, video, transcript, sources, sectionContext }
       })
 
       // Draws a plan's frames (frames/section-NN.jpg) and their storyboard into `dir`; null when it couldn't.
@@ -115,14 +114,14 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       })
 
       // The agent's self-check: the plan's problems, or each section's first frame drawn so it can see them.
-      const previewTool = (video: string, sectionContext: SectionContext, root: string, attempt: number) => {
+      const previewTool = (video: string, sources: ReadonlyArray<SourceContext>, root: string, attempt: number) => {
         let drawn = 0
         return agentTool({
           name: "preview_sections",
           description: "Check a cut-down plan and draw each section's first frame. Returns the problems to fix, or the storyboard and frame files to Read.",
           schema: SectionsProposal,
           run: Effect.fn("SectionsStage.preview")(function*(proposal: SectionsProposal) {
-            const checked = checkSections(proposal, sectionContext)
+            const checked = checkSections(proposal, sources)
             if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
             const dir = path.join(root, `attempt-${attempt}-${++drawn}`)
             yield* fs.makeDirectory(dir, { recursive: true })
@@ -181,7 +180,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
           angle: Option.match(proposal, { onNone: () => null, onSome: ({ title, hook, why }) => ({ title, hook, why }) }),
           story: Option.getOrNull(story),
           excluded: c.sectionContext.excluded,
-          sourceSeconds: c.sectionContext.sourceSeconds,
+          sourceSeconds: c.sectionContext.seconds,
           sheets,
           transcript: transcripts.timedText(c.transcript)
         })
@@ -192,13 +191,13 @@ export class SectionsStage extends Context.Service<SectionsStage, {
           brief,
           output: { tool: "propose_sections", description: "Submit the whole cut-down plan.", schema: SectionsProposal },
           tools: [
-            detailSheetTool(contactSheets, path, c.video, c.sectionContext.sourceSeconds, detailRoot),
-            previewTool(c.video, c.sectionContext, previewRoot, ctx.attempt)
+            detailSheetTool(contactSheets, path, c.video, c.sectionContext.seconds, detailRoot),
+            previewTool(c.video, c.sources, previewRoot, ctx.attempt)
           ],
           defaultModel: null,
           readDirs: [...Option.toArray(sheetsDir), detailRoot, previewRoot],
           maxTurns: 60
-        }, (proposed) => Effect.succeed(checkSections(proposed, c.sectionContext))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        }, (proposed) => Effect.succeed(checkSections(proposed, c.sources))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
         yield* record(ctx, c.video, draft)
       })
 
@@ -206,7 +205,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       const applyEdit = Effect.fn("SectionsStage.applyEdit")(function*(ctx: StageContext, edited: unknown) {
         const proposal = yield* Schema.decodeUnknownEffect(SectionsProposal)(edited).pipe(Effect.mapError(failWith("invalid-edit")))
         const c = yield* context(ctx)
-        const checked = checkSections(proposal, c.sectionContext)
+        const checked = checkSections(proposal, c.sources)
         if (checked.problems.length > 0) return yield* fail("invalid-edit", checked.problems.join("; "))
         yield* record(ctx, c.video, checked.value)
       })
@@ -227,7 +226,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
     })
   ).pipe(Layer.provide([
     Projects.layer,
-    Sources.layer,
+    ProjectSources.layer,
     Artifacts.layer,
     Transcripts.layer,
     ContactSheets.layer,

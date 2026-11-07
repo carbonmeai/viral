@@ -73,7 +73,7 @@ test("the shots stage places the real lines, fixes a rejected plan, and draws a 
     yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
     yield* artifacts.record(yield* artifacts.allocate(sourceOwner, "ad-ranges"), { data: { ranges: [{ start: 0, end: 3, kind: "sponsor", evidence: "x" }] }, path: null })
 
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Pain", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Pain", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     const owner = { _tag: "Project", id: project.id } as const
     yield* artifacts.record(yield* artifacts.allocate(owner, "script"), {
       data: {

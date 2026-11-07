@@ -43,6 +43,8 @@ const program = Effect.gen(function*() {
   // Domain errors print as one line instead of a stack trace.
   Effect.catchTags({
     SourceNotFound: (e) => Console.error(`no source ${e.id}`),
+    SourceInUse: (e) => Console.error(`can't delete source ${e.id}: it's ${e.message}`),
+    ProjectSourcesInvalid: (e) => Console.error(e.message),
     ProjectNotFound: (e) => Console.error(`no project ${e.id}`),
     VoiceError: (e) => Console.error(`ElevenLabs (${e.code}): ${e.message}`),
     ProposalNotFound: (e) => Console.error(`source ${e.sourceId} has no proposal ${e.proposal + 1}; see \`source story\``),

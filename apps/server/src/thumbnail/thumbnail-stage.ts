@@ -20,7 +20,7 @@ import { Artifacts } from "../artifacts/artifacts.ts"
 import { ContactSheets, ContactSheetSet } from "../contact-sheet/contact-sheets.ts"
 import { detailSheetTool } from "../contact-sheet/detail-sheet-tool.ts"
 import { ViralHome } from "../home/viral-home.ts"
-import { Projects } from "../projects/projects.ts"
+import { Projects, sourcesOf } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
 import { buildThumbnailBrief, THUMBNAIL_PROMPT } from "./thumbnail-prompt.ts"
@@ -69,8 +69,9 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
       // The video the thumbnail is drawn from, and what it's checked against.
       const context = Effect.fn("ThumbnailStage.context")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const sourceOwner = { _tag: "Source", id: project.sourceId } as const
-        const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        // drawn from V1 until thumbnails can mix videos
+        const sourceOwner = { _tag: "Source", id: sourcesOf(project)[0] } as const
+        const source = yield* sources.get(sourceOwner.id).pipe(Effect.mapError(() => fail("not-found", "no such source")))
         const video = yield* Effect.fromOption(Option.flatMapNullishOr(yield* artifacts.latest(sourceOwner, "source-video"), artifacts.resolve)).pipe(
           Effect.mapError(() => fail("not-ready", "the source video hasn't been fetched"))
         )
@@ -107,7 +108,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
           description: "Check a thumbnail and draw it. Returns the problems to fix, or the image file to Read.",
           schema: ThumbnailProposal,
           run: Effect.fn("ThumbnailStage.preview")(function*(proposal: ThumbnailProposal) {
-            const checked = checkThumbnail(proposal, thumbContext)
+            const checked = checkThumbnail(proposal, [thumbContext])
             if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
             const out = path.join(root, `attempt-${attempt}-${++drawn}.jpg`)
             const config = thumbConfig(checked.value, video, thumbContext)
@@ -168,7 +169,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
           defaultModel: null,
           readDirs: [...Option.toArray(sheetsDir), detailRoot, previewRoot],
           maxTurns: 40
-        }, (proposed) => Effect.succeed(checkThumbnail(proposed, c.thumbContext))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        }, (proposed) => Effect.succeed(checkThumbnail(proposed, [c.thumbContext]))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
         yield* record(ctx, proposal, thumbConfig(proposal, c.video, c.thumbContext))
       })
 

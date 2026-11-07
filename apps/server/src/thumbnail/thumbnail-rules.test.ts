@@ -14,7 +14,7 @@ const candy: ThumbnailProposal = {
 }
 
 test("the candy thumbnail passes and becomes the renderer's config in pixels", () => {
-  const { value, problems } = checkThumbnail(candy, ctx)
+  const { value, problems } = checkThumbnail(candy, [ctx])
   assert.deepEqual(problems, [])
   assert.deepEqual(value.lines.map((l) => l.text), ["7 TASTES", "1 CANDY"], "upper-cased")
   const config = thumbConfig(value, "/v/source.mp4", ctx)
@@ -32,7 +32,7 @@ test("reports moments in the ads, bad crops, and text that's too long or too sho
     hero: { src: 9999, crop: [0.5, 0, 0.6, 1], circle: { x: 2, y: 0.5, r: 0.8 } },
     face: { src: 100, crop: [0.8, 0, 0.2, 1] },
     lines: [{ text: "the most extreme candy ever made", color: "red" }]
-  }, ctx).problems.join("\n")
+  }, [ctx]).problems.join("\n")
   assert.match(text, /the background at 2200\.0s is inside an excluded range/)
   assert.match(text, /the hero at 9999\.0s is outside the video/)
   assert.match(text, /the hero crop is too small/)
@@ -44,7 +44,7 @@ test("reports moments in the ads, bad crops, and text that's too long or too sho
 })
 
 test("a thumbnail without a face or a circle leaves them out", () => {
-  const { value, problems } = checkThumbnail({ ...candy, face: null, hero: { ...candy.hero, circle: null } }, ctx)
+  const { value, problems } = checkThumbnail({ ...candy, face: null, hero: { ...candy.hero, circle: null } }, [ctx])
   assert.deepEqual(problems, [])
   const config = thumbConfig(value, "/v/source.mp4", ctx)
   assert.equal(config.inset, undefined)
@@ -60,7 +60,7 @@ const bold: ThumbnailProposal = {
 }
 
 test("a bold thumbnail becomes the bold layout: a gradient, cut-outs, the face on its side, an arrow", () => {
-  const { value, problems } = checkThumbnail(bold, ctx)
+  const { value, problems } = checkThumbnail(bold, [ctx])
   assert.deepEqual(problems, [])
   const config = thumbConfig(value, "/v/source.mp4", ctx)
   assert.equal(config.layout, "bold")
@@ -70,16 +70,26 @@ test("a bold thumbnail becomes the bold layout: a gradient, cut-outs, the face o
   assert.equal(config.arrow, true, "an arrow when there's no emoji")
   assert.equal(config.emoji, undefined)
 
-  const withEmoji = thumbConfig(checkThumbnail({ ...bold, emoji: "🤢", face: { ...bold.face!, side: "left" } }, ctx).value, "/v", ctx)
+  const withEmoji = thumbConfig(checkThumbnail({ ...bold, emoji: "🤢", face: { ...bold.face!, side: "left" } }, [ctx]).value, "/v", ctx)
   assert.deepEqual(withEmoji.emoji, { char: "🤢", x: 0.8, y: 0.78, size: 250 }, "on the side opposite the face")
   assert.equal(withEmoji.arrow, false)
 })
 
 test("bold needs a face and a real emoji, and allows five words", () => {
-  const text = checkThumbnail({ ...bold, face: null, emoji: "yuck", lines: [{ text: "worst candy ever", color: "white" }, { text: "made here?", color: "red" }] }, ctx)
+  const text = checkThumbnail({ ...bold, face: null, emoji: "yuck", lines: [{ text: "worst candy ever", color: "white" }, { text: "made here?", color: "red" }] }, [ctx])
     .problems.join("\n")
   assert.match(text, /needs the video's strongest reaction face/)
   assert.match(text, /"yuck" isn't a single emoji/)
   assert.doesNotMatch(text, /words; use/)
-  assert.match(checkThumbnail({ ...bold, lines: [{ text: "a b c", color: "white" }, { text: "d e f", color: "red" }] }, ctx).problems.join(), /6 words; use 2–5/)
+  assert.match(checkThumbnail({ ...bold, lines: [{ text: "a b c", color: "white" }, { text: "d e f", color: "red" }] }, [ctx]).problems.join(), /6 words; use 2–5/)
+})
+
+test("each layer is checked in its own video; V1 is stored without a source", () => {
+  const wide = { width: 1920, height: 1080, sourceSeconds: 60, excluded: [] }
+  const proposal = { ...candy, hero: { ...candy.hero, source: 0 }, face: { ...candy.face!, src: 30, source: 1 } }
+  const { value, problems } = checkThumbnail(proposal, [ctx, wide])
+  assert.ok(!problems.some((p) => p.includes("outside the video")), problems.join("\n"))
+  assert.ok(!("source" in value.hero))
+  assert.equal(value.face?.source, 1)
+  assert.match(checkThumbnail(proposal, [ctx]).problems.join("\n"), /the face: V2 isn't one of this short's videos \(V1\)/)
 })

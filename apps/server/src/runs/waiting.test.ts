@@ -23,7 +23,7 @@ test("waiting gates carry their video and short, so they can be listed globally 
     const store = yield* RunStore
     const candy = yield* sources.create({ origin: { _tag: "Url", url: "https://youtu.be/candy" }, rights: "owned", rightsNote: null })
     const other = yield* sources.create({ origin: { _tag: "Url", url: "https://youtu.be/other" }, rights: "owned", rightsNote: null })
-    const short = yield* (yield* Projects).create({ sourceId: candy.id, title: "Every taste", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const short = yield* (yield* Projects).create({ sourceIds: [candy.id], title: "Every taste", approach: "claim-interleaved", presetId: null, musicTrackId: null })
 
     // a short's gate on the candy video, and a source gate on the other video
     const shortRun = yield* store.createRun({ _tag: "Project", id: short.id }, null)

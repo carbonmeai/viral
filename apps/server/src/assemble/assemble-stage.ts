@@ -8,7 +8,8 @@ import { checkArrangement, planArrangement, wordStartsInShort } from "../music-b
 import { arrangementKey, dropWordKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { Presets } from "../presets/presets.ts"
-import { Projects } from "../projects/projects.ts"
+import { Projects, sourcesOf } from "../projects/projects.ts"
+import { sourceLabel } from "../projects/source-context.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Settings } from "../settings/settings.ts"
 import { narrationEnds } from "../shots/shot-rules.ts"
@@ -60,19 +61,29 @@ export class AssembleStage extends Context.Service<AssembleStage, {
             Effect.mapError(() => fail("not-ready", `no ${kind} yet`))
           ))
 
+      // The renderers play one video until multi-video shorts land; a clip from another stops the run here
+      // rather than playing the wrong footage.
+      const oneVideo = (clips: ReadonlyArray<{ readonly source?: number }>) => {
+        const other = clips.find((c) => (c.source ?? 0) !== 0)
+        return other === undefined
+          ? Effect.void
+          : Effect.fail(fail("multi-video", `a clip comes from ${sourceLabel(other.source!)}; shorts render from one video for now`))
+      }
+
       const credit = (source: { readonly rights: string; readonly channel: string | null }) =>
         source.rights !== "owned" && source.channel !== null ? `Video: ${source.channel}` : null
 
       const runNarrated = Effect.fn("AssembleStage.narrated")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const sourceOwner = { _tag: "Source", id: project.sourceId } as const
-        const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        const sourceOwner = { _tag: "Source", id: sourcesOf(project)[0] } as const
+        const source = yield* sources.get(sourceOwner.id).pipe(Effect.mapError(() => fail("not-found", "no such source")))
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
 
         const script = yield* dataOf(ctx.owner, "script", Script)
         const shots = yield* dataOf(ctx.owner, "shot-plan", ShotPlan)
+        yield* oneVideo([...shots.shots, ...shots.inserts, ...shots.outro])
         const voiceoverTranscript = yield* fileOf(ctx.owner, "voiceover-transcript")
         const words = yield* fs.readFileString(voiceoverTranscript).pipe(
           Effect.flatMap(Schema.decodeEffect(TranscriptJson)),
@@ -159,11 +170,13 @@ export class AssembleStage extends Context.Service<AssembleStage, {
       // A cut-down short has no voiceover or music: the sections and the style make the whole plan.
       const runCut = Effect.fn("AssembleStage.cut")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const sourceOwner = { _tag: "Source", id: project.sourceId } as const
-        const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        const sourceOwner = { _tag: "Source", id: sourcesOf(project)[0] } as const
+        const source = yield* sources.get(sourceOwner.id).pipe(Effect.mapError(() => fail("not-found", "no such source")))
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
+        const cutPlan = yield* dataOf(ctx.owner, "cut-plan", CutPlan)
+        yield* oneVideo(cutPlan.sections)
         const excluded = Option.match(
           Option.flatMap(yield* artifacts.latest(sourceOwner, "ad-ranges"), (a) => Schema.decodeUnknownOption(AdRanges)(a.data)),
           { onNone: () => [], onSome: (a) => a.ranges }
@@ -174,7 +187,7 @@ export class AssembleStage extends Context.Service<AssembleStage, {
           source: yield* fileOf(sourceOwner, "source-video"),
           sourceTranscript: yield* fileOf(sourceOwner, "transcript"),
           preset: preset.config,
-          plan: yield* dataOf(ctx.owner, "cut-plan", CutPlan),
+          plan: cutPlan,
           excluded,
           credit: credit(source)
         })

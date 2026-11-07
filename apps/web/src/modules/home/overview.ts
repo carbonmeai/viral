@@ -63,7 +63,8 @@ const load = Effect.gen(function*() {
         : null
       return {
         project,
-        sourceTitle: sources.find((s) => s.id === project.sourceId)?.title ?? null,
+        // a short is listed under its first video (V1)
+        sourceTitle: sources.find((s) => s.id === project.sourceIds[0])?.title ?? null,
         status: shortStatus(newest(runs), waiting.find((w) => w.projectId === project.id)),
         thumb,
         durationS: Option.getOrNull(Option.map(decoded(latest(artifacts, "render"), RenderedShort), (r) => r.durationS))
@@ -80,7 +81,7 @@ const load = Effect.gen(function*() {
       const fromSheet = Option.isSome(still) && Option.isSome(sheetArtifact)
         ? artifactFileUrl(serverUrl, owner, "contact-sheet", sheetArtifact.value.version, still.value.file)
         : null
-      const own = shorts.filter((s) => s.project.sourceId === source.id)
+      const own = shorts.filter((s) => s.project.sourceIds.includes(source.id))
       return {
         source,
         status: videoStatus(newest(runs), Option.isSome(latest(artifacts, "story-map"))),

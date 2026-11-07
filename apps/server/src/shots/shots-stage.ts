@@ -1,6 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
 import {
-  AdRanges,
   type Artifact,
   type ArtifactOwner,
   type GatePayload,
@@ -20,10 +19,10 @@ import { ContactSheets, ContactSheetSet } from "../contact-sheet/contact-sheets.
 import { detailSheetTool } from "../contact-sheet/detail-sheet-tool.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Presets } from "../presets/presets.ts"
+import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
-import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
 import { checkShots, narrationEnds, placeReals, type ShotContext, type ShotDraft } from "./shot-rules.ts"
 import { buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
@@ -82,7 +81,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
     ShotsStage,
     Effect.gen(function*() {
       const projects = yield* Projects
-      const sources = yield* Sources
+      const projectSources = yield* ProjectSources
       const presets = yield* Presets
       const artifacts = yield* Artifacts
       const transcripts = yield* Transcripts
@@ -99,9 +98,11 @@ export class ShotsStage extends Context.Service<ShotsStage, {
       // Everything the plan is made from and checked against.
       const context = Effect.fn("ShotsStage.context")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const sourceOwner = { _tag: "Source", id: project.sourceId } as const
-        const source = yield* sources.get(project.sourceId).pipe(Effect.mapError(() => fail("not-found", "no such source")))
-        const video = yield* Effect.fromOption(Option.flatMapNullishOr(yield* artifacts.latest(sourceOwner, "source-video"), artifacts.resolve)).pipe(
+        const sources = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        // the agent plans from V1 for now; several videos come to the shots with multi-video narrated shorts
+        const [v1] = sources
+        const source = v1.source
+        const video = yield* Effect.fromOption(v1.video).pipe(
           Effect.mapError(() => fail("not-ready", "the source video hasn't been fetched"))
         )
         const script = yield* Effect.fromOption(yield* latestData(ctx.owner, "script", Script)).pipe(
@@ -118,14 +119,14 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           Effect.mapError(failWith("not-ready"))
         )
         const words = voTranscript.segments.flatMap((s) => s.words)
-        const excluded = Option.match(yield* latestData(sourceOwner, "ad-ranges", AdRanges), { onNone: () => [], onSome: (a) => a.ranges })
-        const sourceSeconds = source.durationS ?? (yield* transcripts.forSource(project.sourceId).pipe(
-          Effect.map((t) => t.segments.at(-1)?.end ?? 0),
-          Effect.mapError(() => fail("not-ready", "the source has no transcript"))
-        ))
+        if (sources.some((s) => s.source.durationS === null && Option.isNone(s.transcript))) {
+          return yield* fail("not-ready", "the source has no transcript")
+        }
+        const excluded = v1.excluded
+        const sourceSeconds = v1.seconds
         const reals = placeReals(script, words)
-        const shotContext: ShotContext = { words, voiceoverSeconds: voiceover.durationS, sourceSeconds, excluded, inserts: reals.inserts }
-        return { project, source, video, script, words, excluded, sourceSeconds, reals, shotContext }
+        const shotContext: ShotContext = { words, voiceoverSeconds: voiceover.durationS, sources, inserts: reals.inserts }
+        return { project, source, sourceOwner: v1.owner, video, script, words, excluded, sourceSeconds, reals, shotContext }
       })
 
       // Draws the plan's frames and storyboard, and records it.
@@ -198,12 +199,12 @@ export class ShotsStage extends Context.Service<ShotsStage, {
 
       const run = Effect.fn("ShotsStage.run")(function*(ctx: StageContext) {
         const c = yield* context(ctx)
-        const sourceOwner = { _tag: "Source", id: c.project.sourceId } as const
+        const sourceOwner = c.sourceOwner
         const preset = c.project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(c.project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
         const story = yield* latestData(sourceOwner, "story-map", StoryMap)
-        const transcript = yield* transcripts.forSource(c.project.sourceId).pipe(Effect.mapError(() => fail("not-ready", "no transcript")))
+        const transcript = yield* transcripts.forSource(sourceOwner.id).pipe(Effect.mapError(() => fail("not-ready", "no transcript")))
 
         const sheetsArtifact = yield* artifacts.latest(sourceOwner, "contact-sheet")
         const sheetsDir = Option.flatMapNullishOr(sheetsArtifact, artifacts.resolve)
@@ -275,7 +276,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
     })
   ).pipe(Layer.provide([
     Projects.layer,
-    Sources.layer,
+    ProjectSources.layer,
     Presets.layer,
     Artifacts.layer,
     Transcripts.layer,

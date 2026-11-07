@@ -1,9 +1,9 @@
 import { NodeServices } from "@effect/platform-node"
-import type { ProjectId, ReferenceVideoId, SourceId } from "@viral/contracts"
+import type { ProjectId, ReferenceVideoId, SourceId, SourceSetId } from "@viral/contracts"
 import { Config, Context, Effect, FileSystem, Layer, Path } from "effect"
 
 // Where Viral keeps user data: ~/.viral by default, or $VIRAL_HOME (tests point it at a temp dir).
-//   viral.db · sources/<id>/ · projects/<id>/ · references/<id>/ · music/ · sounds/ · renders/ · voice-previews/
+//   viral.db · sources/<id>/ · sets/<id>/ · projects/<id>/ · references/<id>/ · music/ · sounds/ · renders/ · voice-previews/
 export class ViralHome extends Context.Service<ViralHome, {
   readonly root: string
   readonly database: string
@@ -12,6 +12,7 @@ export class ViralHome extends Context.Service<ViralHome, {
   readonly renders: string
   readonly voicePreviews: string
   sourceDir(id: SourceId): string
+  setDir(id: SourceSetId): string
   projectDir(id: ProjectId): string
   referenceDir(id: ReferenceVideoId): string
 }>()("@viral/server/home/viral-home/ViralHome") {
@@ -43,6 +44,8 @@ export class ViralHome extends Context.Service<ViralHome, {
         renders: dirs.renders,
         voicePreviews: dirs.voicePreviews,
         sourceDir: (id) => path.join(dirs.sources, id),
+        // made when a set first records an artifact
+        setDir: (id) => path.join(root, "sets", id),
         projectDir: (id) => path.join(dirs.projects, id),
         referenceDir: (id) => path.join(dirs.references, id)
       })

@@ -27,7 +27,7 @@ test("real lines become inserts after their narration, or outro clips at the end
   assert.deepEqual(outro, [{ quote: "This is so nasty.", start: 2036, end: 2040 }])
 })
 
-const ctx = { words, voiceoverSeconds: 13, sourceSeconds: 2300, excluded: [{ start: 0, end: 3 }], ...placeReals(script, words) }
+const ctx = { words, voiceoverSeconds: 13, sources: [{ seconds: 2300, excluded: [{ start: 0, end: 3 }] }], ...placeReals(script, words) }
 
 test("a good shot list passes and gets its anchors' words", () => {
   const proposal: ShotProposal = {
@@ -66,4 +66,23 @@ test("highlights keep their colour and must be words of the voiceover", () => {
   const { value, problems } = checkShots(proposal, ctx)
   assert.deepEqual(value.highlights, ["spicy", { word: "cold", color: "cyan" }, { word: "glue", color: "green" }])
   assert.deepEqual(problems, ['highlight "glue" isn\'t a word of the voiceover'])
+})
+
+test("each shot plays from its own video, and a real line keeps its video", () => {
+  const two = { ...ctx, sources: [{ seconds: 2300, excluded: [] }, { seconds: 60, excluded: [{ start: 10, end: 20 }] }] }
+  const proposal: ShotProposal = {
+    shots: [0, 2, 4, 7, 9, 11].map((word, i) => ({ word, src: 30 + i, note: "n", ...(i === 1 ? { source: 1 } : i === 2 ? { source: 0 } : {}) })),
+    markers: []
+  }
+  const { value, problems } = checkShots(proposal, two)
+  assert.deepEqual(problems, [])
+  assert.equal(value.shots[1]!.source, 1)
+  assert.ok(!("source" in value.shots[2]!), "V1 is stored as before, without a source")
+
+  const wrong = checkShots({ ...proposal, shots: proposal.shots.map((s, i) => i === 3 ? { ...s, src: 12, source: 1 } : i === 4 ? { ...s, source: 4 } : s) }, two)
+  assert.match(wrong.problems.join("\n"), /shot 4 \(word 7 "It"\) plays 12\.0–14\.0s, inside an excluded range \(10\.0–20\.0s\)/)
+  assert.match(wrong.problems.join("\n"), /shot 5 \(word 9 "So"\): V5 isn't one of this short's videos \(V1–V2\)/)
+
+  const reals = placeReals({ headline: null, beats: [{ _tag: "Narration", text: "This guy." }, { _tag: "Real", quote: "x", start: 1, end: 2, source: 1 }] }, words)
+  assert.deepEqual(reals.outro, [{ start: 1, end: 2, quote: "x", source: 1 }])
 })

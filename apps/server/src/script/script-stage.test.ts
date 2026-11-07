@@ -70,7 +70,7 @@ test("the script stage fixes rejected scripts, snaps real lines, and waits for a
     writeFileSync(join(slot.dir, "transcript.json"), JSON.stringify(TRANSCRIPT))
     yield* artifacts.record(slot, { data: null, path: join(slot.relDir, "transcript.json") })
     return yield* (yield* Projects).create({
-      sourceId: source.id,
+      sourceIds: [source.id],
       title: "Every taste",
       approach: "claim-interleaved",
       presetId: null,

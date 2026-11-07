@@ -69,7 +69,7 @@ test("the thumbnail stage fixes a rejected draft, takes an edit, and publishes t
       data: { ranges: [{ start: 0, end: 3, kind: "sponsor", evidence: "x" }] },
       path: null
     })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Candy", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Candy", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     // every earlier step of the short is done
     for (const kind of ["script", "voiceover", "voiceover-transcript", "shot-plan", "narrated-plan", "render", "metadata"] as const) {
       yield* artifacts.record(yield* artifacts.allocate({ _tag: "Project", id: project.id }, kind), { data: null, path: "done" })

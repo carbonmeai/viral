@@ -73,7 +73,7 @@ export const evalStages = (fixture: EvalFixture, fixtureDir: string, path: Path.
       scriptTask(short.approach, { title: source.title, channel: source.channel, transcript, excluded, angle: short.angle }),
       (p) => {
         if (limits === undefined) return { value: p, problems: [`${short.approach} shorts have no narrated script`] }
-        const checked = checkScript(p, limits, words, excluded)
+        const checked = checkScript(p, limits, [{ words, excluded }])
         return { value: checked.script, problems: checked.problems }
       }
     ),

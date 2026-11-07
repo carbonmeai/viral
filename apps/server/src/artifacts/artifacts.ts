@@ -7,7 +7,8 @@ import {
   type ArtifactOwner,
   ProjectId,
   ReferenceVideoId,
-  SourceId
+  SourceId,
+  SourceSetId
 } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
@@ -40,6 +41,7 @@ const DataJson = Schema.fromJsonString(Schema.Unknown)
 const ArtifactRow = Schema.Struct({
   id: ArtifactId,
   source_id: Schema.NullOr(SourceId),
+  set_id: Schema.NullOr(SourceSetId),
   project_id: Schema.NullOr(ProjectId),
   reference_id: Schema.NullOr(ReferenceVideoId),
   kind: ArtifactKind,
@@ -48,13 +50,17 @@ const ArtifactRow = Schema.Struct({
   path: Schema.NullOr(Schema.String),
   created_at: Schema.DateTimeUtcFromString
 })
-// The one-owner CHECK guarantees exactly one of the three ids is set.
+// The one-owner CHECK guarantees exactly one of the four ids is set.
 const ownerOf = (row: typeof ArtifactRow.Type): ArtifactOwner =>
   row.source_id !== null
     ? { _tag: "Source", id: row.source_id }
+    : row.set_id !== null
+    ? { _tag: "Set", id: row.set_id }
     : row.project_id !== null
     ? { _tag: "Project", id: row.project_id }
     : { _tag: "Reference", id: row.reference_id! }
+
+const OWNER_COLUMNS = { Source: "source_id", Set: "set_id", Project: "project_id", Reference: "reference_id" } as const
 
 const toArtifact = (row: typeof ArtifactRow.Type): Artifact => ({
   id: row.id,
@@ -67,8 +73,8 @@ const toArtifact = (row: typeof ArtifactRow.Type): Artifact => ({
 })
 
 // Stage outputs, versioned and never overwritten: regenerating adds version N+1 in its own folder, and
-// the current artifact of a kind is the highest version. Owned by a source (video-level work) or a
-// project (one short), or a reference video (its analysis).
+// the current artifact of a kind is the highest version. Owned by a source (video-level work), a video set
+// (work across its videos), a project (one short), or a reference video (its analysis).
 export class Artifacts extends Context.Service<Artifacts, {
   // Reserves the next version and creates its folder.
   allocate(owner: ArtifactOwner, kind: Kind): Effect.Effect<ArtifactSlot>
@@ -91,14 +97,15 @@ export class Artifacts extends Context.Service<Artifacts, {
         switch (owner._tag) {
           case "Source":
             return home.sourceDir(owner.id)
+          case "Set":
+            return home.setDir(owner.id)
           case "Project":
             return home.projectDir(owner.id)
           case "Reference":
             return home.referenceDir(owner.id)
         }
       }
-      const ownerColumn = (owner: ArtifactOwner) =>
-        owner._tag === "Source" ? "source_id" : owner._tag === "Project" ? "project_id" : "reference_id"
+      const ownerColumn = (owner: ArtifactOwner) => OWNER_COLUMNS[owner._tag]
 
       const findLatest = SqlSchema.findOneOption({
         Request: Schema.Struct({ column: Schema.String, id: Schema.String, kind: Schema.String }),
@@ -135,12 +142,13 @@ export class Artifacts extends Context.Service<Artifacts, {
             ? null
             : yield* Schema.encodeEffect(DataJson)(output.data)
           const sourceId = slot.owner._tag === "Source" ? slot.owner.id : null
+          const setId = slot.owner._tag === "Set" ? slot.owner.id : null
           const projectId = slot.owner._tag === "Project" ? slot.owner.id : null
           const referenceId = slot.owner._tag === "Reference" ? slot.owner.id : null
           yield* sql`
-            INSERT INTO artifacts (id, source_id, project_id, reference_id, stage_run_id, kind, version, data, path,
-                                   created_at)
-            VALUES (${id}, ${sourceId}, ${projectId}, ${referenceId}, ${output.stageRunId ?? null}, ${slot.kind},
+            INSERT INTO artifacts (id, source_id, set_id, project_id, reference_id, stage_run_id, kind, version, data,
+                                   path, created_at)
+            VALUES (${id}, ${sourceId}, ${setId}, ${projectId}, ${referenceId}, ${output.stageRunId ?? null}, ${slot.kind},
                     ${slot.version}, ${data}, ${output.path}, ${now})
           `
           const row = yield* findLatest({ column: ownerColumn(slot.owner), id: slot.owner.id, kind: slot.kind })

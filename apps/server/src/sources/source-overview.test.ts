@@ -55,7 +55,7 @@ test("a video's overview gathers its run, story, ads, frames, transcript and sho
       segments: [{ start: 1, end: 2, text: "It worked.", words: [w("It", 1), w("worked.", 1.3)] }]
     }))
     yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
-    yield* (yield* Projects).create({ sourceId: source.id, title: "Every taste", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    yield* (yield* Projects).create({ sourceIds: [source.id], title: "Every taste", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     return { sourceId: source.id, empty }
   }))
 

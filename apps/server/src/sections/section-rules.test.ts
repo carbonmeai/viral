@@ -5,7 +5,7 @@ import { checkSections, snapSection } from "./section-rules.ts"
 
 // a word every half second from 0 to 100s: "w0 w1 …"
 const words = Array.from({ length: 200 }, (_, i) => ({ w: `w${i}`, s: i * 0.5, e: i * 0.5 + 0.4 }))
-const ctx = { words, sourceSeconds: 100, excluded: [{ start: 90, end: 100 }] }
+const ctx = [{ words, seconds: 100, excluded: [{ start: 90, end: 100 }] }]
 
 test("a section snaps to the nearest whole words, with air that stops at the neighbours", () => {
   // 10.2 covers half of w20 (10.0–10.4), so w20 stays; 12.1 covers only a quarter of w24 (12.0–12.4), so it goes
@@ -59,4 +59,23 @@ test("reports a missing hook, short or empty sections, overlaps, ads, length and
   assert.match(text, /section 5 .* has no speech/)
   assert.match(text, /the short is .*s; keep it 20–60s/)
   assert.match(text, /hook text is 9 words/)
+})
+
+test("sections come from their own video, and only the same video's moments can overlap", () => {
+  const other = [{ w: "Second", s: 1, e: 1.6 }, { w: "video", s: 1.6, e: 2.2 }, { w: "talking", s: 2.2, e: 3 }]
+  const two = [...ctx, { words: other, seconds: 30, excluded: [] }]
+  const proposal = {
+    hookText: null,
+    sections: [
+      { beat: "hook" as const, start: 1, end: 3, note: "a" },
+      { beat: "payoff" as const, start: 1, end: 3, source: 1, note: "b" },
+      { beat: "payoff" as const, start: 1, end: 3, source: 2, note: "c" }
+    ]
+  }
+  const { value, problems } = checkSections(proposal, two)
+  assert.equal(value.sections[1]!.source, 1)
+  assert.equal(value.sections[1]!.text, "Second video talking")
+  assert.ok(!("source" in value.sections[0]!))
+  assert.ok(!problems.some((p) => p.includes("overlap")), "the same seconds in two videos aren't the same moment")
+  assert.ok(problems.includes("section 3 (payoff 1.0–3.0s): V3 isn't one of this short's videos (V1–V2)"))
 })

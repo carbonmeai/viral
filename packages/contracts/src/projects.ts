@@ -3,7 +3,7 @@ import { Rpc, RpcGroup } from "effect/rpc"
 import { ApproachName } from "./approaches.ts"
 import { MusicTrackId, MusicTrackNotFound } from "./music-library.ts"
 import { PresetId, PresetNotFound } from "./presets.ts"
-import { SourceId, SourceNotFound } from "./sources.ts"
+import { MAX_SHORT_SOURCES, SourceId, SourceNotFound, SourceSetId } from "./sources.ts"
 
 export const ProjectId = Schema.String.pipe(Schema.brand("ProjectId"))
 export type ProjectId = typeof ProjectId.Type
@@ -13,11 +13,18 @@ export type ProjectId = typeof ProjectId.Type
 export const ProjectFormat = Schema.Literals(["narrated", "cut-down"])
 export type ProjectFormat = typeof ProjectFormat.Type
 
-// One short made from a source.
+// The videos a short draws from, in order (V1 first): one for most shorts, up to 10.
+export const ProjectSourceIds = Schema.NonEmptyArray(SourceId).check(Schema.isMaxLength(MAX_SHORT_SOURCES))
+
+// One short made from one or more videos.
 export const Project = Schema.Struct({
   id: ProjectId,
-  sourceId: SourceId,
-  // 1, 2, 3… within the source; gives the slug its "01-" prefix
+  // its videos, V1 first; a clip's `source` index points into this list
+  sourceIds: ProjectSourceIds,
+  // the video set it came from, if any
+  setId: Schema.NullOr(SourceSetId),
+  // 1, 2, 3… across the library (shorts made before multi-video kept their per-video numbers); gives the slug
+  // its "07-" prefix
   number: Schema.Int,
   slug: Schema.String,
   title: Schema.String,
@@ -41,14 +48,21 @@ export class ProposalNotFound extends Schema.TaggedError<ProposalNotFound>()("Pr
   proposal: Schema.Int
 }) {}
 
+// The videos asked for don't make a short: none, more than 10, one twice, or several without a brief (it's how
+// the agents know why they belong together).
+export class ProjectSourcesInvalid extends Schema.TaggedError<ProjectSourcesInvalid>()("ProjectSourcesInvalid", {
+  message: Schema.String
+}) {}
+
 export class ProjectNotFound extends Schema.TaggedError<ProjectNotFound>()("ProjectNotFound", {
   id: ProjectId
 }) {}
 
 export class ProjectsRpcs extends RpcGroup.make(
+  // A short from your videos, V1 first; a brief is required when there are several.
   Rpc.make("CreateProject", {
     payload: {
-      sourceId: SourceId,
+      sourceIds: Schema.NonEmptyArray(SourceId),
       title: Schema.String,
       approach: ApproachName,
       presetId: Schema.NullOr(PresetId),
@@ -56,7 +70,7 @@ export class ProjectsRpcs extends RpcGroup.make(
       brief: Schema.optionalKey(Schema.NullOr(Schema.String))
     },
     success: Project,
-    error: Schema.Union([SourceNotFound, PresetNotFound, MusicTrackNotFound])
+    error: Schema.Union([SourceNotFound, PresetNotFound, MusicTrackNotFound, ProjectSourcesInvalid])
   }),
   // Creates a short from one of the story stage's proposals: its approach, with the proposal's title.
   Rpc.make("CreateProjectFromProposal", {
@@ -88,6 +102,7 @@ export class ProjectsRpcs extends RpcGroup.make(
     success: Project,
     error: ProjectNotFound
   }),
+  // Every short, or the shorts that use one video.
   Rpc.make("ListProjects", { payload: { sourceId: Schema.NullOr(SourceId) }, success: Schema.Array(Project) }),
   Rpc.make("GetProject", { payload: { id: ProjectId }, success: Project, error: ProjectNotFound }),
   // Deletes the short and its folder; false when the project is unknown.

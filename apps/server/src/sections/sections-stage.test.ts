@@ -73,7 +73,7 @@ test("the sections stage fixes a rejected plan, snaps it to words and draws a st
     }))
     yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
     yield* artifacts.record(yield* artifacts.allocate(owner, "ad-ranges"), { data: { ranges: [{ start: 0, end: 2, kind: "sponsor", evidence: "x" }] }, path: null })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Cut", approach: "cut-down", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Cut", approach: "cut-down", presetId: null, musicTrackId: null })
     return project.id
   }))
 

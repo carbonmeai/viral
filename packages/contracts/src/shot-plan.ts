@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { SourceIndex } from "./sources.ts"
 
 // What the shots agent proposes: b-roll anchored to voiceover words, and a few markers. Word indexes point
 // into the voiceover transcript's words, counted from 0.
@@ -7,6 +8,8 @@ export const PlannedShot = Schema.Struct({
   word: Schema.Int,
   // source seconds where the shot's footage starts
   src: Schema.Finite,
+  // which of the short's videos it's from (V1 = 0); leave it out when the short has one video
+  source: Schema.optionalKey(SourceIndex),
   // show the whole frame (on-screen graphics or text) instead of cropping it
   fit: Schema.optionalKey(Schema.Boolean),
   // horizontal centre of the crop, 0–1 (0.5 = centre), when the hero object sits off-centre
@@ -50,7 +53,9 @@ export type ShotProposal = typeof ShotProposal.Type
 export const RealClip = Schema.Struct({
   start: Schema.Finite,
   end: Schema.Finite,
-  quote: Schema.String
+  quote: Schema.String,
+  // which of the short's videos it's from (V1 = 0); leave it out when the short has one video
+  source: Schema.optionalKey(SourceIndex)
 })
 export const ShotInsert = Schema.Struct({ ...RealClip.fields, afterWord: Schema.Int, afterWordText: Schema.String })
 export type ShotInsert = typeof ShotInsert.Type

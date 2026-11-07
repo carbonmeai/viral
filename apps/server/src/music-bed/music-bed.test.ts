@@ -109,7 +109,7 @@ test("the bed loops whole groove bars so the drop lands on the word, as long as 
   const rt = runtime()
   const result = await rt.runPromise(Effect.gen(function*() {
     const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/x" }, rights: "owned", rightsNote: null })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Bed", approach: "question-recap", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Bed", approach: "question-recap", presetId: null, musicTrackId: null })
     const track = yield* (yield* MusicLibrary).add(song, "Drop song", "owned")
     const owner = { _tag: "Project", id: project.id } as const
     // a plan whose drop (word 9, at 4.5 s) comes later than one bar of build: the groove loops first
@@ -171,7 +171,7 @@ test("assemble fits the short's own bed, points the plan at it, and honours a dr
     const library = yield* MusicLibrary
     const track = yield* library.setBeat((yield* library.add(song, "Drop song", "owned")).id, 120, 8)
     const projects = yield* Projects
-    const project = yield* projects.create({ sourceId: source.id, title: "Bed", approach: "question-recap", presetId: null, musicTrackId: null })
+    const project = yield* projects.create({ sourceIds: [source.id], title: "Bed", approach: "question-recap", presetId: null, musicTrackId: null })
     yield* projects.setMusic(project.id, track.id)
     const owner = { _tag: "Project", id: project.id } as const
 
@@ -241,7 +241,7 @@ test("RefitMusic sets the song and the drop word, then re-runs the short from as
   const { started, withMusic, word, without, wordAfter } = await rt.runPromise(Effect.gen(function*() {
     const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/z" }, rights: "owned", rightsNote: null })
     const projects = yield* Projects
-    const project = yield* projects.create({ sourceId: source.id, title: "Refit", approach: "question-recap", presetId: null, musicTrackId: null })
+    const project = yield* projects.create({ sourceIds: [source.id], title: "Refit", approach: "question-recap", presetId: null, musicTrackId: null })
     const track = yield* (yield* MusicLibrary).add(song, "Drop song", "owned")
     const beds = yield* MusicBeds
     const settings = yield* Settings
@@ -320,7 +320,7 @@ test("an arrangement loops a block, joins another part of the song and lands a p
   const rt = runtime()
   const result = await rt.runPromise(Effect.gen(function*() {
     const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/arr" }, rights: "owned", rightsNote: null })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Arranged", approach: "question-recap", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Arranged", approach: "question-recap", presetId: null, musicTrackId: null })
     const track = yield* (yield* MusicLibrary).add(hits, "Hits", "owned")
     const owner = { _tag: "Project", id: project.id } as const
     const ctx = yield* stageContext(owner)
@@ -366,7 +366,7 @@ test("arrangements are checked in plain words, stored per short, previewed witho
     const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/arrange" }, rights: "owned", rightsNote: null })
     const track = yield* library.setBeat((yield* library.add(song, "Drop song", "owned")).id, 120, 8)
     const other = yield* library.setBeat((yield* library.add(song, "Other song", "owned")).id, 120, 8)
-    const project = yield* projects.create({ sourceId: source.id, title: "Arrange", approach: "question-recap", presetId: null, musicTrackId: null })
+    const project = yield* projects.create({ sourceIds: [source.id], title: "Arrange", approach: "question-recap", presetId: null, musicTrackId: null })
     yield* projects.setMusic(project.id, track.id)
     const owner = showOwner(project.id)
 
@@ -474,7 +474,7 @@ test("assemble fits your arrangement, and falls back to the automatic one when i
     const library = yield* MusicLibrary
     const track = yield* library.setBeat((yield* library.add(song, "Drop song", "owned")).id, 120, 8)
     const projects = yield* Projects
-    const project = yield* projects.create({ sourceId: source.id, title: "Asm", approach: "question-recap", presetId: null, musicTrackId: null })
+    const project = yield* projects.create({ sourceIds: [source.id], title: "Asm", approach: "question-recap", presetId: null, musicTrackId: null })
     yield* projects.setMusic(project.id, track.id)
     const owner = showOwner(project.id)
     for (const kind of ["source-video", "transcript"] as const) {

@@ -31,7 +31,7 @@ test("a short's workspace gathers its style, voice, run, waiting gate and what t
     const artifacts = yield* Artifacts
     const video = yield* artifacts.allocate({ _tag: "Source", id: source.id }, "source-video")
     yield* artifacts.record(video, { data: null, path: join(video.relDir, "source.mp4") })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Every taste", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Every taste", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     const workspaces = yield* ShortWorkspaces
     const fresh = yield* workspaces.get(project.id)
 
@@ -90,7 +90,7 @@ test("an edited script is checked against the approach and the transcript before
       segments: [{ start: 200, end: 201, text: "It worked.", words: [{ w: "It", s: 200, e: 200.3 }, { w: "worked.", s: 200.3, e: 200.9 }] }]
     }))
     yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Edit", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Edit", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     return yield* (yield* ShortWorkspaces).checkScript(project.id, script)
   }))
   assert.ok(problems.some((p) => /narration is 5 words/.test(p)), problems.join("; "))
@@ -110,7 +110,7 @@ test("an edited shot list is checked against the voiceover, the video and its ad
       data: { ranges: [{ start: 0, end: 3, kind: "sponsor", evidence: "x" }] },
       path: null
     })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Shots", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Shots", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     const workspaces = yield* ShortWorkspaces
     const owner = { _tag: "Project", id: project.id } as const
     const before = yield* workspaces.checkShots(project.id, { shots: [{ word: 0, src: 10, note: "n" }], markers: [] })
@@ -153,7 +153,7 @@ test("a published short shows its render, files and thumbnail as media paths, an
     execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=d=60:s=320x180:r=5", join(video.dir, "source.mp4")])
     yield* artifacts.record(video, { data: null, path: join(video.relDir, "source.mp4") })
     yield* artifacts.record(yield* artifacts.allocate(sourceOwner, "ad-ranges"), { data: { ranges: [{ start: 50, end: 60, kind: "sponsor", evidence: "x" }] }, path: null })
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Pain", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Pain", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     const owner = { _tag: "Project", id: project.id } as const
 
     // the render and the published files, as the render and metadata stages record them (absolute paths)
@@ -239,8 +239,8 @@ test("a cut-down short's workspace carries what its sections are cut from, and a
       path: null
     })
     const projects = yield* Projects
-    const cut = yield* projects.create({ sourceId: source.id, title: "Cut", approach: "cut-down", presetId: null, musicTrackId: null })
-    const story = yield* projects.create({ sourceId: source.id, title: "Story", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const cut = yield* projects.create({ sourceIds: [source.id], title: "Cut", approach: "cut-down", presetId: null, musicTrackId: null })
+    const story = yield* projects.create({ sourceIds: [source.id], title: "Story", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     const workspaces = yield* ShortWorkspaces
     const section = (beat: "hook" | "rising_action" | "payoff", start: number, end: number) => ({ beat, start, end, note: "n" })
     return {

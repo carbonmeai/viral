@@ -90,7 +90,7 @@ test("a short renders, a rejected render goes back to the shots, and the approve
     writeFileSync(join(tx.dir, "transcript.json"), JSON.stringify(transcriptOf([w("Ow,", 40), w("that", 40.4), w("hurts.", 40.8), w("Nasty.", 50), w("Bye.", 55)])))
     yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
 
-    const project = yield* (yield* Projects).create({ sourceId: source.id, title: "Pain", approach: "claim-interleaved", presetId: null, musicTrackId: null })
+    const project = yield* (yield* Projects).create({ sourceIds: [source.id], title: "Pain", approach: "claim-interleaved", presetId: null, musicTrackId: null })
     const owner = { _tag: "Project", id: project.id } as const
     yield* artifacts.record(yield* artifacts.allocate(owner, "script"), {
       data: {

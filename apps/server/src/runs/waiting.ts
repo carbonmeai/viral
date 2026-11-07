@@ -1,6 +1,6 @@
 import type { WaitingItem } from "@viral/contracts"
 import { Effect, Option } from "effect"
-import { Projects } from "../projects/projects.ts"
+import { Projects, sourcesOf } from "../projects/projects.ts"
 import { Sources } from "../sources/sources.ts"
 import { RunStore } from "./run-store.ts"
 
@@ -17,7 +17,8 @@ export const listWaiting = Effect.fn("listWaiting")(function*() {
       if (Option.isNone(run)) return Option.none<WaitingItem>()
       const owner = run.value.owner
       const project = owner._tag === "Project" ? yield* projects.get(owner.id).pipe(Effect.option) : Option.none()
-      const sourceId = owner._tag === "Source" ? Option.some(owner.id) : Option.map(project, (p) => p.sourceId)
+      // a short's gate is listed under its first video (V1)
+      const sourceId = owner._tag === "Source" ? Option.some(owner.id) : Option.map(project, (p) => sourcesOf(p)[0])
       if (Option.isNone(sourceId)) return Option.none<WaitingItem>()
       const id = sourceId.value
       const source = yield* sources.get(id).pipe(Effect.option)

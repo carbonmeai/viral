@@ -35,6 +35,28 @@ export class SourceNotFound extends Schema.TaggedError<SourceNotFound>()("Source
   id: SourceId
 }) {}
 
+// A video can't be deleted while shorts or video sets use it; delete those first. `message` says what uses it
+// ("used by 2 shorts").
+export class SourceInUse extends Schema.TaggedError<SourceInUse>()("SourceInUse", {
+  id: SourceId,
+  shorts: Schema.Int,
+  sets: Schema.Int,
+  message: Schema.String
+}) {}
+
+// A short draws from up to 10 videos, V1…V10.
+export const MAX_SHORT_SOURCES = 10
+
+// Which of a short's videos a clip comes from: its position in the short's videos (V1 = 0), not its id, so it
+// stays short for agents and stable within the short. Every clip field of this type is optional and means V1
+// when absent, so a single-video short's plans are written exactly as before.
+export const SourceIndex = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: MAX_SHORT_SOURCES - 1 }))
+export type SourceIndex = typeof SourceIndex.Type
+
+// A group of videos you want shorts from, with its own story and proposals across them.
+export const SourceSetId = Schema.String.pipe(Schema.brand("SourceSetId"))
+export type SourceSetId = typeof SourceSetId.Type
+
 export class SourcesRpcs extends RpcGroup.make(
   Rpc.make("CreateSource", {
     payload: { origin: SourceOrigin, rights: SourceRights, rightsNote: Schema.NullOr(Schema.String) },
@@ -54,6 +76,7 @@ export class SourcesRpcs extends RpcGroup.make(
     success: Source,
     error: SourceNotFound
   }),
-  // Deletes the source, every short made from it, and their folders; false when the source is unknown.
-  Rpc.make("DeleteSource", { payload: { id: SourceId }, success: Schema.Boolean })
+  // Deletes the source and its folder; false when the source is unknown. Refused while shorts or video sets use
+  // it ("used by 2 shorts").
+  Rpc.make("DeleteSource", { payload: { id: SourceId }, success: Schema.Boolean, error: SourceInUse })
 ) {}

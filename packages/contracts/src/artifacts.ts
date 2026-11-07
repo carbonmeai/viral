@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { ProjectId } from "./projects.ts"
 import { ReferenceVideoId } from "./references.ts"
-import { SourceId } from "./sources.ts"
+import { SourceId, SourceSetId } from "./sources.ts"
 
 export const ArtifactId = Schema.String.pipe(Schema.brand("ArtifactId"))
 export type ArtifactId = typeof ArtifactId.Type
@@ -42,6 +42,8 @@ export type ArtifactKind = typeof ArtifactKind.Type
 
 export const ArtifactOwner = Schema.Union([
   Schema.TaggedStruct("Source", { id: SourceId }),
+  // a video set's own work, across its videos (the set story, with M3)
+  Schema.TaggedStruct("Set", { id: SourceSetId }),
   Schema.TaggedStruct("Project", { id: ProjectId }),
   Schema.TaggedStruct("Reference", { id: ReferenceVideoId })
 ])

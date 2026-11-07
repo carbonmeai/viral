@@ -1,6 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
 import {
-  AdRanges,
   type ArtifactKind,
   CutPlan,
   type Project,
@@ -26,10 +25,9 @@ import { ThumbnailRenderer } from "../thumbnail/thumbnail-renderer.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { checkScript as checkScriptRules, SCRIPT_LIMITS } from "../script/script-rules.ts"
-import { checkSections as checkSectionsRules, SECTION_LIMITS, type SectionContext } from "../sections/section-rules.ts"
+import { checkSections as checkSectionsRules, SECTION_LIMITS } from "../sections/section-rules.ts"
 import { checkShots as checkShotsRules, placeReals } from "../shots/shot-rules.ts"
-import { Transcripts } from "../transcribe/transcripts.ts"
-import { Sources } from "../sources/sources.ts"
+import { type ProjectSource, ProjectSources } from "./project-sources.ts"
 import { Projects } from "./projects.ts"
 
 const TranscriptJson = Schema.fromJsonString(Transcript)
@@ -52,11 +50,10 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
     ShortWorkspaces,
     Effect.gen(function*() {
       const projects = yield* Projects
-      const sources = yield* Sources
+      const projectSources = yield* ProjectSources
       const presets = yield* Presets
       const artifacts = yield* Artifacts
       const store = yield* RunStore
-      const transcripts = yield* Transcripts
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
       const home = yield* ViralHome
@@ -87,27 +84,21 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         })
       })
 
-      const adRangesOf = (sourceId: Project["sourceId"]) =>
-        Effect.map(artifacts.latest({ _tag: "Source", id: sourceId }, "ad-ranges"), (a) =>
-          Option.match(Option.flatMap(a, (x) => Schema.decodeUnknownOption(AdRanges)(x.data)), { onNone: () => [], onSome: (r) => r.ranges }))
+      // The short's videos, V1 first, as the stages check against them.
+      const sourcesFor = (project: Project) => projectSources.of(project).pipe(Effect.orDie)
 
-      // What a cut-down short is cut from: the long video's words, its length and its ads, as the sections stage
-      // checks them. None when the video has no transcript yet.
-      const sectionContext = Effect.fn("ShortWorkspaces.sectionContext")(function*(project: Project) {
-        const transcript = yield* transcripts.forSource(project.sourceId).pipe(Effect.option)
-        if (Option.isNone(transcript)) return Option.none<SectionContext>()
-        const source = yield* sources.get(project.sourceId).pipe(Effect.orDie)
-        return Option.some({
-          words: transcript.value.segments.flatMap((s) => s.words),
-          sourceSeconds: source.durationS ?? transcript.value.segments.at(-1)?.end ?? 0,
-          excluded: yield* adRangesOf(project.sourceId)
-        } satisfies SectionContext)
-      })
+      // What a cut-down short is cut from: each video's words, length and ads, as the sections stage checks them.
+      // None while a video has no transcript yet.
+      const sectionSources = (sources: ReadonlyArray<ProjectSource>) =>
+        sources.some((s) => Option.isNone(s.transcript)) ? Option.none<ReadonlyArray<ProjectSource>>() : Option.some(sources)
 
       const get = Effect.fn("ShortWorkspaces.get")(function*(projectId: ProjectId) {
         const project = yield* projects.get(projectId)
         const owner = { _tag: "Project", id: projectId } as const
-        const source = yield* sources.get(project.sourceId).pipe(Effect.orDie)
+        const sources = yield* sourcesFor(project)
+        // the editor shows V1 for now; every video's details come with multi-video shorts
+        const [v1] = sources
+        const source = v1.source
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.catch(() => presets.getDefault))
@@ -156,8 +147,8 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
               thumbnail: fileIn(rendersFolder, thumbnailPublished ? publishedThumbnail : null)
             })
         })
-        const sourceVideo = yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "source-video")
-        const cut = project.format === "cut-down" ? yield* sectionContext(project) : Option.none<SectionContext>()
+        const sourceVideo = yield* artifacts.latest(v1.owner, "source-video")
+        const cut = project.format === "cut-down" && Option.isSome(sectionSources(sources)) ? Option.some(v1) : Option.none<ProjectSource>()
 
         return {
           project,
@@ -191,7 +182,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
           sourceVideo: Option.getOrNull(Option.flatMapNullishOr(sourceVideo, (a) => a.path)),
           cutSource: Option.getOrNull(Option.map(cut, (c) => ({
             words: c.words,
-            sourceSeconds: c.sourceSeconds,
+            sourceSeconds: c.seconds,
             excluded: c.excluded.map((r) => ({ start: r.start, end: r.end })),
             limits: { minSection: SECTION_LIMITS.minSection, total: [...SECTION_LIMITS.total], hookWords: SECTION_LIMITS.hookWords }
           })))
@@ -202,10 +193,9 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         const project = yield* projects.get(projectId)
         const limits = SCRIPT_LIMITS[project.approach]
         if (limits === undefined) return [`${project.approach} shorts don't have a narrated script`]
-        const transcript = yield* transcripts.forSource(project.sourceId).pipe(Effect.option)
-        if (Option.isNone(transcript)) return ["the video has no transcript to check the real lines against"]
-        const ads = yield* adRangesOf(project.sourceId)
-        return checkScriptRules(script, limits, transcript.value.segments.flatMap((s) => s.words), ads).problems
+        const sources = yield* sourcesFor(project)
+        if (sources.some((s) => Option.isNone(s.transcript))) return ["the video has no transcript to check the real lines against"]
+        return checkScriptRules(script, limits, sources).problems
       })
 
       // Checked against the voiceover as spoken, the video's length and ads, and where the script's real lines
@@ -218,17 +208,11 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         if (Option.isNone(script) || Option.isNone(voiceover)) return ["the short needs its script and voiceover before its shots"]
         const words = yield* voiceoverWords(owner)
         if (words.length === 0) return ["the voiceover has no word timings yet"]
-        const source = yield* sources.get(project.sourceId).pipe(Effect.orDie)
-        const sourceSeconds = source.durationS ?? (yield* transcripts.forSource(project.sourceId).pipe(
-          Effect.map((t) => t.segments.at(-1)?.end ?? 0),
-          Effect.orElseSucceed(() => 0)
-        ))
         const reals = placeReals(script.value, words)
         return checkShotsRules(proposal, {
           words,
           voiceoverSeconds: voiceover.value.durationS,
-          sourceSeconds,
-          excluded: yield* adRangesOf(project.sourceId),
+          sources: yield* sourcesFor(project),
           inserts: reals.inserts
         }).problems
       })
@@ -237,25 +221,25 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const checkSections = Effect.fn("ShortWorkspaces.checkSections")(function*(projectId: ProjectId, proposal: SectionsProposal) {
         const project = yield* projects.get(projectId)
         if (project.format !== "cut-down") return ["only cut-down shorts have sections"]
-        const ctx = yield* sectionContext(project)
-        if (Option.isNone(ctx)) return ["the video has no transcript to check the sections against"]
-        return checkSectionsRules(proposal, ctx.value).problems
+        const sources = sectionSources(yield* sourcesFor(project))
+        if (Option.isNone(sources)) return ["the video has no transcript to check the sections against"]
+        return checkSectionsRules(proposal, sources.value).problems
       })
 
       // Checked against the long video's frame size and length and its ads, exactly as the thumbnail gate checks
       // an edit.
       const checkThumbnail = Effect.fn("ShortWorkspaces.checkThumbnail")(function*(projectId: ProjectId, config: ThumbConfig) {
         const project = yield* projects.get(projectId)
-        const video = Option.flatMapNullishOr(yield* artifacts.latest({ _tag: "Source", id: project.sourceId }, "source-video"), artifacts.resolve)
-        if (Option.isNone(video)) return ["the video hasn't been fetched, so the thumbnail can't be checked"]
-        const probed = yield* thumbnails.probe(video.value).pipe(Effect.option)
+        // drawn from V1 until thumbnails can mix videos
+        const [v1] = yield* sourcesFor(project)
+        if (Option.isNone(v1.video)) return ["the video hasn't been fetched, so the thumbnail can't be checked"]
+        const probed = yield* thumbnails.probe(v1.video.value).pipe(Effect.option)
         if (Option.isNone(probed)) return ["the video's frames can't be read to check the thumbnail"]
-        const source = yield* sources.get(project.sourceId).pipe(Effect.orDie)
         return checkConfig(config, {
           width: probed.value.width,
           height: probed.value.height,
-          sourceSeconds: source.durationS ?? probed.value.durationS,
-          excluded: yield* adRangesOf(project.sourceId)
+          sourceSeconds: v1.source.durationS ?? probed.value.durationS,
+          excluded: v1.excluded
         })
       })
 
@@ -263,11 +247,10 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
     })
   ).pipe(Layer.provide([
     Projects.layer,
-    Sources.layer,
+    ProjectSources.layer,
     Presets.layer,
     Artifacts.layer,
     RunStore.layer,
-    Transcripts.layer,
     ThumbnailRenderer.layer,
     ViralHome.layer,
     NodeServices.layer

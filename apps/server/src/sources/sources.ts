@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { ProjectId, type Source, SourceId, SourceNotFound, SourceOrigin, SourceRights } from "@viral/contracts"
+import { type Source, SourceId, SourceInUse, SourceNotFound, SourceOrigin, SourceRights } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
@@ -57,7 +57,8 @@ export class Sources extends Context.Service<Sources, {
   setDetails(id: SourceId, title: string | null, channel: string | null): Effect.Effect<Source, SourceNotFound>
   // What fetching found; it fills in a title or channel only where none is set, so yours are kept
   recordMetadata(id: SourceId, metadata: SourceMetadata): Effect.Effect<void>
-  remove(id: SourceId): Effect.Effect<boolean>
+  // false when the source is unknown; refused while shorts or video sets use it
+  remove(id: SourceId): Effect.Effect<boolean, SourceInUse>
 }>()("@viral/server/sources/sources") {
   static readonly layer = Layer.effect(
     Sources,
@@ -129,15 +130,26 @@ export class Sources extends Context.Service<Sources, {
         `
       }, Effect.orDie)
 
-      // The database cascades to the source's shorts; their folders are removed here too.
+      // A video a short or a video set uses is never deleted from under it (the database refuses too): delete
+      // those first. The source's own runs and artifacts go with it, and so does its folder.
       const remove = Effect.fn("Sources.remove")(function*(id: SourceId) {
-        const projects = yield* sql<{ readonly id: string }>`SELECT id FROM projects WHERE source_id = ${id}`
-        const deleted = yield* sql`DELETE FROM sources WHERE id = ${id} RETURNING id`
+        const [used] = yield* sql<{ readonly shorts: number; readonly sets: number }>`
+          SELECT (SELECT count(*) FROM project_sources WHERE source_id = ${id}) AS shorts,
+                 (SELECT count(*) FROM source_set_members WHERE source_id = ${id}) AS sets`.pipe(Effect.orDie)
+        const shorts = Number(used?.shorts ?? 0)
+        const sets = Number(used?.sets ?? 0)
+        if (shorts > 0 || sets > 0) {
+          const uses = [
+            shorts > 0 ? `${shorts} ${shorts === 1 ? "short" : "shorts"}` : null,
+            sets > 0 ? `${sets} video ${sets === 1 ? "set" : "sets"}` : null
+          ].filter((x) => x !== null)
+          return yield* new SourceInUse({ id, shorts, sets, message: `used by ${uses.join(" and ")}` })
+        }
+        const deleted = yield* sql`DELETE FROM sources WHERE id = ${id} RETURNING id`.pipe(Effect.orDie)
         if (deleted.length === 0) return false
-        const dirs = [home.sourceDir(id), ...projects.map((p) => home.projectDir(ProjectId.make(p.id)))]
-        yield* Effect.forEach(dirs, (dir) => fs.remove(dir, { recursive: true, force: true }), { discard: true })
+        yield* fs.remove(home.sourceDir(id), { recursive: true, force: true }).pipe(Effect.orDie)
         return true
-      }, Effect.orDie)
+      })
 
       return Sources.of({ create, list, get, setRights, setDetails, recordMetadata, remove })
     })
