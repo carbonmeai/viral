@@ -34,6 +34,17 @@ apps/server/src/
   ads/                 the ads stage (Haiku): sponsor reads, ads, intros and end screens to keep out of shorts
   story/               the story stage: story beats with snapped quotes + 3 proposals (one per approach), each
                        of which `Projects.fromProposal` turns into a short
+  video-sets/          video sets: 2–10 videos (source_set_members, V1 first) with a required brief, named from the
+                       brief unless you name it; VideoSets (create, list, rename, delete only while no short came
+                       from it) and GetVideoSetOverview (each video's read state and latest run, the set run, the
+                       set story, the shorts from it)
+  set-story/           the set-story stage, a set run's last stage: an agent (cross-video-story skill) proposes 3
+                       shorts across the videos. It sees V1… labels and "[V2 724.3–726.1] text" lines: whole
+                       transcripts under ~160k characters, else a line every 30 s plus `search_transcript` and
+                       `read_transcript` (transcript-tools.ts). It answers with V numbers (1-based); checkSetStory
+                       snaps each quote in its own video, keeps each video's ads out, needs every proposal to use ≥2
+                       videos that each have a beat, and stores set positions (0-based `source`/`sources`).
+                       `Projects.fromSetProposal` makes a short from a proposal's videos (set order) and the set's brief
   assemble/            the assemble stage: shot plan + preset (+ music with a known drop) → the renderer's
                        narrated plan, or a cut-down short's sections + preset → the cut-down renderer's plan;
                        deterministic, so a short re-renders in another style without agent work
@@ -102,8 +113,11 @@ apps/server/src/
                        add and via AnalyseMusicTrack. A beat set by hand (beat_source manual) is never overwritten
   sound-library/       sound-effect samples by category, with variants, in ~/.viral/sounds/
   references/          viral videos kept to learn from; their analyses are reference-owned artifacts
-  runs/                runs a source or a short through its stages: reuse of approved work, gates (approve,
-                       reject with a note, edit), cancel, resume after restart, events + live progress
+  runs/                runs a source, a video set or a short through its stages: reuse of approved work, gates
+                       (approve, reject with a note, edit), cancel, resume after restart, events + live progress. A
+                       run's prerequisites (StageRegistry.prerequisites) run first: a set run reads each video that
+                       needs it with that video's own source run through ads (two at a time, joining one already
+                       going; cancelled with the set run), then runs set-story
   script/              the script stage: prompt (built on the chosen proposal's angle), per-approach rules, and
                        the script gate
   voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
@@ -162,7 +176,12 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        videos/: New source and a video's page (GetSourceOverview; the source run followed live
                        by folding SubscribeRun in run-progress.ts); frames come from contact-sheet stills, or from
                        sheet tiles on older sheets. "Make this short" asks for the optional brief first
-                       (make-short-dialog.tsx)
+                       (make-short-dialog.tsx). New has two tabs (?kind=several): One video, and Several videos
+                       (sets/new-set-form.tsx: pick from the library or add links/files, reorder, a required brief)
+                       sets/: a video set's page (/sets/<id>): Videos (each video's reading, live from its own run)
+                       and Proposals (V badges in each video's colour: set-values.ts videoColor, video-badge.tsx;
+                       "Make this short" starts from the set's brief). Sets are listed in the sidebar's Video sets.
+                       The editor of a short from several videos says its steps show V1 only (multi-video-note.tsx)
                        shorts/: a short's editor, one fixed frame for every step (editor-frame.tsx: step bar, stage,
                        inspector, timeline), from GetShortWorkspace and the run followed live. The title bar's Brief
                        button edits the brief (just save, or save and re-run from Script/Sections). Script and Voice
@@ -293,6 +312,10 @@ A short from start to finish with the dev client (the server running):
 bun run cli source add --file ~/videos/candy.mp4 --rights owned
 bun run cli source run <source-id>                 # transcribe → contact sheets → ads → story; prints 3 proposals
 bun run cli project from-proposal <source-id> <n>
+# or several videos: a set, its story across them, and a short from one of its proposals
+bun run cli set create <source-id>,<source-id> --brief "<why they belong together>"
+bun run cli set run <set-id> [--again]             # reads each video, then prints 3 proposals across them
+bun run cli set make <set-id> <n>
 bun run cli project style <project-id> <preset-id|default>   # see `preset list`
 bun run cli music add <file> --rights owned && bun run cli music beat <track-id> <bpm> <drop-s>
 bun run cli project music <project-id> <track-id|none>       # none = voice only

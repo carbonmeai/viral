@@ -16,6 +16,7 @@ import { Detail, useDetailed } from "../system/detail.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
 import { BriefButton } from "./brief-button.tsx"
+import { MultiVideoNote } from "./multi-video-note.tsx"
 import { EditorFrame } from "./editor-frame.tsx"
 import { EditorSkeleton } from "./editor-skeleton.tsx"
 import {
@@ -806,6 +807,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   return (
     <>
       <TitleBar title={titleOf(ws)}>
+        <MultiVideoNote count={ws.project.sourceIds.length} />
         <BriefButton project={ws.project} running={(progress.run ?? ws.run)?.status === "running" || (progress.run ?? ws.run)?.status === "waiting"} onSaved={refresh} />
         {status}
       </TitleBar>

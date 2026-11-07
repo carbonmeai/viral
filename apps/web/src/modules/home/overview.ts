@@ -7,6 +7,7 @@ import {
   type Run,
   ShotPlan,
   type Source,
+  type VideoSet,
   type WaitingItem
 } from "@viral/contracts"
 import { Effect, Option, Schema } from "effect"
@@ -31,9 +32,11 @@ export interface ShortSummary {
   readonly durationS: number | null
 }
 
-// What the shell and Home show: every video and short with its state and a thumbnail, and what's waiting.
+// What the shell and Home show: every video, video set and short with its state and a thumbnail, and what's
+// waiting.
 export interface Overview {
   readonly videos: ReadonlyArray<VideoSummary>
+  readonly sets: ReadonlyArray<VideoSet>
   readonly shorts: ReadonlyArray<ShortSummary>
   readonly waiting: ReadonlyArray<WaitingItem>
 }
@@ -47,8 +50,8 @@ const newest = (runs: ReadonlyArray<Run>): Run | undefined =>
 
 const load = Effect.gen(function*() {
   const client = yield* ViralClient
-  const [sources, projects, waiting] = yield* Effect.all(
-    [client("ListSources", undefined), client("ListProjects", { sourceId: null }), client("ListWaiting", undefined)],
+  const [sources, projects, waiting, sets] = yield* Effect.all(
+    [client("ListSources", undefined), client("ListProjects", { sourceId: null }), client("ListWaiting", undefined), client("ListVideoSets", undefined)],
     { concurrency: "unbounded" }
   )
 
@@ -90,7 +93,7 @@ const load = Effect.gen(function*() {
       } satisfies VideoSummary
     }), { concurrency: 4 })
 
-  return { videos, shorts, waiting } satisfies Overview
+  return { videos, sets, shorts, waiting } satisfies Overview
 })
 
 // Kept alive so the sidebar and Home share one copy; the shell refreshes it every few seconds.

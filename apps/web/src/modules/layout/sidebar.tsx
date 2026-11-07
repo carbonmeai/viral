@@ -6,7 +6,7 @@ import { cn } from "@viral/ui/cn"
 import { Tooltip } from "@viral/ui/primitives/tooltip"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { ChevronRight, Film, Home, Inbox, Mic, Music, Palette, Plus, Settings } from "lucide-react"
+import { ChevronRight, Film, Home, Inbox, Layers, Mic, Music, Palette, Plus, Settings } from "lucide-react"
 import { type ReactNode, useEffect, useRef } from "react"
 import { desktop } from "../../config/server-url.ts"
 import { useWindowControlsInset } from "./window-controls.ts"
@@ -78,7 +78,7 @@ export function Sidebar() {
               Waiting for you
               {waiting.length > 0 ? <Count className="ml-auto">{waiting.length}</Count> : null}
             </Link>
-            <Link to="/videos/new" {...nav}><Plus />New source</Link>
+            <Link to="/videos/new" {...nav}><Plus />New</Link>
           </Group>
 
           {data !== null && data.videos.length > 0 ? (
@@ -93,6 +93,18 @@ export function Sidebar() {
                   </Link>
                 )
               })}
+            </Group>
+          ) : null}
+
+          {data !== null && data.sets.length > 0 ? (
+            <Group label="Video sets">
+              {data.sets.map((set) => (
+                <Link key={set.id} to="/sets/$setId" params={{ setId: set.id }} {...nav}>
+                  <Layers />
+                  <span className="truncate">{set.title}</span>
+                  <span className="ml-auto text-xs text-fg-3">{set.sourceIds.length}</span>
+                </Link>
+              ))}
             </Group>
           ) : null}
 

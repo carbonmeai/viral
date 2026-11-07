@@ -15,6 +15,7 @@ import { Route as WaitingRouteImport } from './routes/waiting'
 import { Route as LibraryMusicRouteImport } from './routes/library.music'
 import { Route as LibraryStylesRouteImport } from './routes/library.styles'
 import { Route as LibraryVoicesRouteImport } from './routes/library.voices'
+import { Route as SetsSetIdRouteImport } from './routes/sets.$setId'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsAccountsRouteImport } from './routes/settings.accounts'
 import { Route as SettingsAgentsRouteImport } from './routes/settings.agents'
@@ -55,6 +56,11 @@ const LibraryStylesRoute = LibraryStylesRouteImport.update({
 const LibraryVoicesRoute = LibraryVoicesRouteImport.update({
   id: '/library/voices',
   path: '/library/voices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetsSetIdRoute = SetsSetIdRouteImport.update({
+  id: '/sets/$setId',
+  path: '/sets/$setId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
@@ -120,6 +126,7 @@ export interface FileRoutesByFullPath {
   '/library/music': typeof LibraryMusicRoute
   '/library/styles': typeof LibraryStylesRoute
   '/library/voices': typeof LibraryVoicesRoute
+  '/sets/$setId': typeof SetsSetIdRoute
   '/settings/accounts': typeof SettingsAccountsRoute
   '/settings/agents': typeof SettingsAgentsRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/library/music': typeof LibraryMusicRoute
   '/library/styles': typeof LibraryStylesRoute
   '/library/voices': typeof LibraryVoicesRoute
+  '/sets/$setId': typeof SetsSetIdRoute
   '/settings/accounts': typeof SettingsAccountsRoute
   '/settings/agents': typeof SettingsAgentsRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/library/music': typeof LibraryMusicRoute
   '/library/styles': typeof LibraryStylesRoute
   '/library/voices': typeof LibraryVoicesRoute
+  '/sets/$setId': typeof SetsSetIdRoute
   '/settings/accounts': typeof SettingsAccountsRoute
   '/settings/agents': typeof SettingsAgentsRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -179,6 +188,7 @@ export interface FileRouteTypes {
     | '/library/music'
     | '/library/styles'
     | '/library/voices'
+    | '/sets/$setId'
     | '/settings/accounts'
     | '/settings/agents'
     | '/settings/general'
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/library/music'
     | '/library/styles'
     | '/library/voices'
+    | '/sets/$setId'
     | '/settings/accounts'
     | '/settings/agents'
     | '/settings/general'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/library/music'
     | '/library/styles'
     | '/library/voices'
+    | '/sets/$setId'
     | '/settings/accounts'
     | '/settings/agents'
     | '/settings/general'
@@ -236,6 +248,7 @@ export interface RootRouteChildren {
   LibraryMusicRoute: typeof LibraryMusicRoute
   LibraryStylesRoute: typeof LibraryStylesRoute
   LibraryVoicesRoute: typeof LibraryVoicesRoute
+  SetsSetIdRoute: typeof SetsSetIdRoute
   ShortsProjectIdRoute: typeof ShortsProjectIdRoute
   VideosSourceIdRoute: typeof VideosSourceIdRoute
   VideosNewRoute: typeof VideosNewRoute
@@ -283,6 +296,13 @@ declare module '@tanstack/react-router' {
       path: '/library/voices'
       fullPath: '/library/voices'
       preLoaderRoute: typeof LibraryVoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sets/$setId': {
+      id: '/sets/$setId'
+      path: '/sets/$setId'
+      fullPath: '/sets/$setId'
+      preLoaderRoute: typeof SetsSetIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/': {
@@ -398,6 +418,7 @@ const rootRouteChildren: RootRouteChildren = {
   LibraryMusicRoute: LibraryMusicRoute,
   LibraryStylesRoute: LibraryStylesRoute,
   LibraryVoicesRoute: LibraryVoicesRoute,
+  SetsSetIdRoute: SetsSetIdRoute,
   ShortsProjectIdRoute: ShortsProjectIdRoute,
   VideosSourceIdRoute: VideosSourceIdRoute,
   VideosNewRoute: VideosNewRoute,

@@ -4,17 +4,42 @@ import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@viral/ui/primitives/button"
 import { Input } from "@viral/ui/primitives/input"
 import { Panel } from "@viral/ui/primitives/panel"
+import { Segmented } from "@viral/ui/primitives/segmented"
 import { Check, FolderOpen } from "lucide-react"
 import { useState } from "react"
 import { desktop } from "../../config/server-url.ts"
 import { Page } from "../layout/page.tsx"
+import { NewSetForm } from "../sets/new-set-form.tsx"
 import { Detail } from "../system/detail.tsx"
 import { createSource, startSourceRun } from "./videos-api.ts"
 import { isVideoLink, RIGHTS_CHOICES } from "./video-values.ts"
 
+export type NewKind = "one" | "several"
+
+// Something new to make shorts from: one video, or several videos as a set. The tab is in the URL (?kind=several).
+export function NewSourcePage({ kind, onKind }: { readonly kind: NewKind; readonly onKind: (kind: NewKind) => void }) {
+  return (
+    <Page
+      title="New"
+      description={kind === "one"
+        ? "Paste a link or choose a file. Viral transcribes it, maps the story and suggests three shorts."
+        : "Pick 2 to 10 videos and say what their shorts should achieve. Viral reads each one and suggests three shorts that use them together."}
+    >
+      <Segmented
+        label="How many videos"
+        className="mb-3"
+        value={kind}
+        onChange={onKind}
+        options={[{ value: "one", label: "One video" }, { value: "several", label: "Several videos" }]}
+      />
+      {kind === "one" ? <OneVideoForm /> : <NewSetForm />}
+    </Page>
+  )
+}
+
 // Adding a video: a link or a file, who owns the footage, then Start reads it (transcript, frames, ads,
 // story) and opens its page to follow along.
-export function NewSourcePage() {
+function OneVideoForm() {
   const navigate = useNavigate()
   const create = useAtomSet(createSource, { mode: "promise" })
   const startRun = useAtomSet(startSourceRun, { mode: "promise" })
@@ -42,7 +67,6 @@ export function NewSourcePage() {
   }
 
   return (
-    <Page title="New source" description="Paste a link or choose a file. Viral transcribes it, maps the story and suggests three shorts.">
       <div className="grid gap-2">
         <Panel title="Video">
           <div className="flex gap-2">
@@ -98,6 +122,5 @@ export function NewSourcePage() {
           </Panel>
         </Detail>
       </div>
-    </Page>
   )
 }
