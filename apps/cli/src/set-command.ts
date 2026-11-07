@@ -1,12 +1,12 @@
 import { SourceId, SourceSetId } from "@viral/contracts"
 import { Console, Effect } from "effect"
-import { option, positionals } from "./args.ts"
+import { flag, option, positionals } from "./args.ts"
 import { Client } from "./client.ts"
 import { follow } from "./run-command.ts"
 
 export const SET_USAGE = `  set create <source-id>,<source-id>[,…] --brief "<why they belong together>" [--title <name>]
                                           (2–10 videos, V1 first)
-  set run <id>                            (reads each video, then proposes shorts across them)
+  set run <id> [--again]                  (reads each video, then proposes shorts across them; --again proposes anew)
   set story <id> | list | rename <id> <name> | delete <id>
   set make <id> <n> [--brief "<another brief>"]
                                           (a short from proposal n, with the set's brief)`
@@ -46,7 +46,7 @@ export const setCommand = Effect.fn("setCommand")(function*() {
       return yield* Effect.forEach(yield* client.ListVideoSets(), (s) => Console.log(`${s.id}  ${s.sourceIds.length} videos  ${s.title}`), { discard: true })
     case "run": {
       const setId = SourceSetId.make(id ?? "")
-      const run = yield* client.StartSetRun({ setId })
+      const run = yield* client.StartSetRun({ setId, from: flag("--again") ? "set-story" : null })
       yield* follow(run.id)
       return yield* printSetStory(setId)
     }

@@ -46,6 +46,8 @@ test("a quote in the wrong video, an unknown video, a video's own ads and one-vi
     ],
     proposals: [proposal("cut-down", [1]), proposal("question-recap", [1, 5]), proposal("claim-interleaved", [1, 2])]
   }
+  const noV2 = { ...story, beats: story.beats.filter((b) => b.video === 1) }
+  assert.match(checkSetStory(noV2, [v1, v2]).problems.join("\n"), /proposal 3 \(claim-interleaved\) uses V2 but no beat is in it/)
   const text = checkSetStory(story, [v1, v2]).problems.join("\n")
   assert.match(text, /beat 1 \(reaction\): "never again" isn't in V1's transcript near 300.0s/)
   assert.match(text, /beat 2 \(goal\): there's no V3; the set's videos are V1–V2/)

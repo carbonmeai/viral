@@ -12,7 +12,8 @@ const toIndex = (video: number) => (video - 1) as SourceIndex
 
 // Checks a proposed set story against the set's videos (one context each, V1 first): every beat is in a video of
 // the set and inside it, its quotes are snapped to that video's own transcript and kept out of that video's ads,
-// and there are three proposals with different approaches from the catalog, each using at least two videos.
+// and there are three proposals with different approaches from the catalog, each using at least two videos that
+// each have a beat.
 export const checkSetStory = (proposed: ProposedSetStory, videos: ReadonlyArray<SourceContext>): Checked<SetStory> => {
   const problems: Array<string> = []
   const range = `V1–${sourceLabel(videos.length - 1)}`
@@ -65,6 +66,11 @@ export const checkSetStory = (proposed: ProposedSetStory, videos: ReadonlyArray<
     const used = [...new Set(p.videos.filter(known))].sort((a, b) => a - b)
     const needed = Math.min(MIN_PROPOSAL_VIDEOS, videos.length)
     if (used.length < needed) problems.push(`${name} uses ${used.length === 1 ? "one video" : "no videos"}; a short from this set uses at least ${needed}`)
+    // a video earns its place with a beat the short can use
+    const unmapped = used.filter((v) => !proposed.beats.some((b) => b.video === v))
+    if (unmapped.length > 0) {
+      problems.push(`${name} uses ${unmapped.map((v) => `V${v}`).join(", ")} but no beat is in ${unmapped.length === 1 ? "it" : "them"}; map ${unmapped.length === 1 ? "its" : "their"} beats with quotes, or leave ${unmapped.length === 1 ? "it" : "them"} out`)
+    }
     return { approach: p.approach, title: p.title, hook: p.hook, why: p.why, scores: p.scores, sources: used.map(toIndex) }
   })
 

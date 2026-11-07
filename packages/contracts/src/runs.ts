@@ -174,8 +174,12 @@ export class RequestNotPending extends Schema.TaggedError<RequestNotPending>()("
 export class RunsRpcs extends RpcGroup.make(
   Rpc.make("StartSourceRun", { payload: { sourceId: SourceId }, success: Run, error: SourceNotFound }),
   // Reads each of the set's videos that isn't read yet (its own source run, up to the ads), then proposes shorts
-  // across them.
-  Rpc.make("StartSetRun", { payload: { setId: SourceSetId }, success: Run, error: VideoSetNotFound }),
+  // across them. `from: "set-story"` proposes again even when the set already has proposals.
+  Rpc.make("StartSetRun", {
+    payload: { setId: SourceSetId, from: Schema.optionalKey(Schema.NullOr(StageName)) },
+    success: Run,
+    error: VideoSetNotFound
+  }),
   Rpc.make("StartProjectRun", {
     // `from` re-runs that stage and every one after it, as new artifact versions
     payload: { projectId: ProjectId, from: Schema.NullOr(StageName) },

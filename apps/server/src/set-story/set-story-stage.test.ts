@@ -113,12 +113,13 @@ test("a set run reads the videos that need it, proposes shorts across them, and 
   }))
   assert.equal(firstRuns.length, 1)
   assert.equal(firstRuns[0]!.status, "completed")
-  assert.deepEqual(firstStages.map((s) => [s.stage, s.status]), [
-    ["source", "reused"],
-    ["transcribe", "reused"],
-    ["contact-sheet", "reused"],
-    ["ads", "succeeded"]
-  ])
+  // stage runs made in the same millisecond have no order, so compare them as a set
+  assert.deepEqual(Object.fromEntries(firstStages.map((s) => [s.stage, s.status])), {
+    source: "reused",
+    transcribe: "reused",
+    "contact-sheet": "reused",
+    ads: "succeeded"
+  })
   assert.equal(secondRuns.length, 0)
   assert.equal(asked.filter((t) => t.stage === "story").length, 0, "no single-video story")
 
