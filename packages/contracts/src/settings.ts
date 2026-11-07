@@ -10,7 +10,7 @@ export const KeyName = Schema.Literals(["elevenlabs", "xai", "gateway"])
 export type KeyName = typeof KeyName.Type
 
 // Whether an account is usable and where its key comes from. A key's value never crosses the wire. A CLI can also
-// be installed but signed out, or too old for Viral (OpenCode before 1.14.19).
+// be installed but signed out, or too old for Viral (OpenCode before 2.2.6).
 export const Account = Schema.Struct({
   name: AccountName,
   status: Schema.Literals(["ready", "missing", "signed-out", "outdated"]),

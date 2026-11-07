@@ -1,12 +1,14 @@
-import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk/v2/client"
 import { Deferred, Effect, Option, Schema, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
+import { FetchHttpClient } from "effect/http"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { createServer } from "node:net"
 import { AgentError } from "@viral/provider-core"
+import { makeOpencodeApi, type OpencodeApi } from "./opencode-api.ts"
 
-// The oldest OpenCode whose server API Viral's client speaks (the same floor t3code uses).
-export const MIN_OPENCODE_VERSION = "1.14.19"
+// The oldest OpenCode whose server API Viral's client speaks: OpenCode 2's `/api` (1.x's API is gone in 2, and 2's
+// isn't in 1.x, so there's no supporting both).
+export const MIN_OPENCODE_VERSION = "2.2.6"
 
 const STARTUP_TIMEOUT = "20 seconds"
 const OUTPUT_TAIL = 2_000
@@ -27,7 +29,7 @@ export const atLeast = (version: string, min: string) => {
   return true
 }
 
-export const updateHint = "Update it with `opencode upgrade` (or the package manager you installed it with)."
+export const updateHint = "Update to OpenCode 2 with `opencode upgrade` (or the package manager you installed it with)."
 
 // `opencode serve --port=0` falls back to its fixed default port, so Viral picks a free one itself
 const freePort = Effect.callback<number, AgentError>((resume) => {
@@ -42,10 +44,10 @@ const freePort = Effect.callback<number, AgentError>((resume) => {
 
 export interface OpencodeServer {
   readonly url: string
-  readonly client: OpencodeClient
+  readonly api: OpencodeApi
 }
 
-// Starts `opencode serve` for the surrounding scope: on 127.0.0.1, a free port and a random password, with its
+// Starts `opencode serve` (its own server, not the background service) for the surrounding scope: on 127.0.0.1, a free port and a random password, with its
 // whole configuration from `config` (OPENCODE_CONFIG_CONTENT) and the Claude Code compatibility (CLAUDE.md, skills)
 // off. Closing the scope kills the process group.
 export const startOpencodeServer = Effect.fn("startOpencodeServer")(function*(options: {
@@ -99,12 +101,8 @@ export const startOpencodeServer = Effect.fn("startOpencodeServer")(function*(op
       orElse: () => Effect.fail(new AgentError({ code: "session", message: `OpenCode didn't start: ${output.trim()}` }))
     })
   )
-  const client = createOpencodeClient({
-    baseUrl: url,
-    directory: options.cwd,
-    headers: { Authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` }
-  })
-  return { url, client } satisfies OpencodeServer
+  const api = yield* makeOpencodeApi({ url, password }).pipe(Effect.provide(FetchHttpClient.layer))
+  return { url, api } satisfies OpencodeServer
 })
 
 // `opencode --version`, or none when it isn't installed

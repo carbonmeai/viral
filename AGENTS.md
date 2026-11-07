@@ -180,9 +180,12 @@ packages/provider-codex/ our own `codex app-server` JSON-RPC client: one app-ser
                        read-only sandbox, approvals never, shell/apps/plugins/skills off, the user's MCP servers
                        switched off by name; model + effort from the account's catalog; thread/resume; turn
                        interrupted once the output tool accepts. codexStatus for Settings. Tests use a fake app-server
-packages/provider-opencode/ `opencode serve` per run (free port, password) configured by OPENCODE_CONFIG_CONTENT
-                       (Viral agent, every permission denied but viral_* tools); SDK v2 sessions, abort after the
-                       output tool, USD cost; refuses OpenCode < 1.14.19 with how to update. Tests use a fake
+packages/provider-opencode/ OpenCode 2 only: `opencode serve` per run (free port, password) configured by
+                       OPENCODE_CONFIG_CONTENT (Viral agent; permission rules deny everything but viral_* tools); our
+                       own client for its /api (no v2 SDK: sessions, prompt, SSE events, interrupt once the step that
+                       sent the output ends), USD cost from the session's totals; refuses OpenCode < 2.2.6 with how to
+                       update. Status asks `--standalone` (not the background service): any stored credential (incl.
+                       the OpenCode Console, whose opencode/* models count) is signed in. Tests use a fake
 packages/provider-testing/ replayRun, the replay provider behind AgentSession.replay, and the live checks' task (*.live.ts)
 packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,
                        28/32px controls) and primitives on Base UI + cva (incl. Dialog, Textarea)

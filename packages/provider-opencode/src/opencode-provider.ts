@@ -1,7 +1,7 @@
-import type { Part } from "@opencode-ai/sdk/v2/client"
 import { Deferred, Effect, FileSystem, Option, Schema, Stream } from "effect"
 import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolEndpoint } from "@viral/provider-core"
-import { atLeast, MIN_OPENCODE_VERSION, type OpencodeServer, opencodeVersion, startOpencodeServer, updateHint } from "./opencode-server.ts"
+import type { OpencodeEvent, SessionInfo } from "./opencode-api.ts"
+import { atLeast, MIN_OPENCODE_VERSION, opencodeVersion, startOpencodeServer, updateHint } from "./opencode-server.ts"
 
 export interface OpencodeOptions {
   // the opencode binary (or a fake in tests): command and leading arguments
@@ -13,52 +13,46 @@ export interface OpencodeOptions {
 const AGENT = "viral"
 
 // The whole OpenCode configuration for one run. Every tool is denied except Viral's own (`viral_*`) and, for a
-// stage that reads images, reading inside its folders; no edits, shell, web, sub-agents or skills. The agent's
-// prompt is the stage's system prompt.
+// stage that reads images, reading inside its folders; no edits, shell, web, sub-agents or skills. Rules are
+// OpenCode 2's ordered permission rules (the last one that matches wins). The agent's prompt is the stage's system
+// prompt.
 export const runConfig = (options: {
   readonly system: string
   readonly endpoint: { readonly url: string; readonly token: string; readonly name: string }
   readonly readDirs: ReadonlyArray<string>
 }) => {
-  const inside = (action: "allow" | "deny") =>
-    options.readDirs.length === 0
-      ? "deny" as const
-      : { "*": "deny" as const, ...Object.fromEntries(options.readDirs.map((dir) => [`${dir}/**`, action])) }
-  const permission = {
-    "*": "deny",
-    read: inside("allow"),
-    external_directory: inside("allow"),
-    edit: "deny",
-    bash: "deny",
-    webfetch: "deny",
-    websearch: "deny",
-    task: "deny",
-    skill: "deny",
-    question: "deny",
-    [`${options.endpoint.name}_*`]: "allow"
-  }
+  const permissions = [
+    { action: "*", resource: "*", effect: "deny" },
+    ...options.readDirs.flatMap((dir) => [
+      { action: "read", resource: `${dir}/**`, effect: "allow" },
+      { action: "external_directory", resource: `${dir}/**`, effect: "allow" }
+    ]),
+    { action: `${options.endpoint.name}_*`, resource: "*", effect: "allow" }
+  ]
   return {
     $schema: "https://opencode.ai/config.json",
-    autoupdate: false,
+    update: "disable",
     share: "disabled",
-    snapshot: false,
-    plugin: [],
+    snapshots: false,
+    plugins: [],
     instructions: [],
     formatter: false,
     lsp: false,
+    websearch: false,
     default_agent: AGENT,
-    permission,
+    permissions,
     mcp: {
-      [options.endpoint.name]: {
-        type: "remote",
-        url: options.endpoint.url,
-        headers: { Authorization: `Bearer ${options.endpoint.token}` },
-        oauth: false,
-        enabled: true
+      servers: {
+        [options.endpoint.name]: {
+          type: "remote",
+          url: options.endpoint.url,
+          headers: { Authorization: `Bearer ${options.endpoint.token}` },
+          oauth: false
+        }
       }
     },
-    agent: {
-      [AGENT]: { mode: "primary", description: "Viral's agent stage", prompt: options.system, permission }
+    agents: {
+      [AGENT]: { mode: "primary", description: "Viral's agent stage", system: options.system, permissions }
     }
   }
 }
@@ -66,16 +60,23 @@ export const runConfig = (options: {
 // "provider/model" (OpenCode's ids), split at the first slash
 export const modelRef = (model: string) => {
   const slash = model.indexOf("/")
-  return slash <= 0 ? null : { providerID: model.slice(0, slash), modelID: model.slice(slash + 1) }
+  return slash <= 0 ? null : { providerID: model.slice(0, slash), id: model.slice(slash + 1) }
 }
 
-const promise = <A>(what: string, run: () => Promise<A>) =>
-  Effect.tryPromise({ try: run, catch: (cause) => new AgentError({ code: "session", message: `OpenCode ${what}: ${cause instanceof Error ? cause.message : String(cause)}` }) })
+// a provider retrying on a refusal only you can fix (a sign-in, credit) fails the run at once; any other retry after
+// a few attempts
+const GIVE_UP_STATUS = new Set([401, 402, 403])
+const MAX_RETRIES = 3
+// once the result is in, how long the step that sent it has to finish (so its cost is counted) before the turn is
+// interrupted, and how long the interrupted turn has to wind down
+const STEP_END = "10 seconds"
+const WIND_DOWN = "15 seconds"
 
-// Runs an agent job on the user's OpenCode, on whatever providers they've signed in to there (OpenCode Zen, their
-// own keys…). One `opencode serve` per run in an empty scratch folder, configured entirely by Viral; sessions live in
-// OpenCode's own store, so a rejected attempt resumes the same session. The session is aborted as soon as the
-// output tool accepts a result. OpenCode reports the dollar cost of each answer.
+// Runs an agent job on the user's OpenCode 2, on whatever providers they've signed in to there (the OpenCode
+// Console, their own keys…). One `opencode serve` per run in an empty scratch folder, configured entirely by Viral;
+// sessions live in OpenCode's own store, so a rejected attempt resumes the same session (moved into the new folder).
+// The turn is interrupted as soon as the output tool accepts a result and its step has ended. OpenCode keeps each
+// session's dollar cost, so a turn's cost is the difference.
 export const makeOpencodeProvider = Effect.fn("makeOpencodeProvider")(function*(options: OpencodeOptions = {}) {
   const fs = yield* FileSystem.FileSystem
   const command = options.command ?? ["opencode"]
@@ -106,53 +107,61 @@ export const makeOpencodeProvider = Effect.fn("makeOpencodeProvider")(function*(
     const scratch = yield* fs.makeTempDirectoryScoped({ prefix: "viral-opencode-" }).pipe(
       Effect.mapError((cause) => new AgentError({ code: "session", message: cause.message }))
     )
-    const server = yield* startOpencodeServer({
+    const { api } = yield* startOpencodeServer({
       command,
       cwd: scratch,
       config: runConfig({ system, endpoint, readDirs: task.readDirs ?? [] })
     })
-    const { client } = server
 
     const sessionID = task.resumeSession
       ? task.resumeSession
-      : (yield* promise("session", () => client.session.create({ title: `Viral · ${task.stage}` }, { throwOnError: true }))).data.id
+      : (yield* api.createSession({ title: `Viral · ${task.stage}`, agent: AGENT, model: ref, directory: scratch })).id
+    if (task.resumeSession) {
+      yield* api.moveSession(sessionID, scratch)
+      yield* api.switchAgent(sessionID, AGENT)
+      if (ref !== null) yield* api.switchModel(sessionID, ref)
+    }
     yield* hooks.recordSession(sessionID)
-    const before = new Set((yield* promise("messages", () => client.session.messages({ sessionID }, { throwOnError: true }))).data.map((m) => m.info.id))
+    // the session's totals before this turn: its cost is the difference
+    const before = yield* api.getSession(sessionID)
 
-    // a session error (out of credit, a bad key…) ends the run even if the prompt call never returns
-    const failed = yield* Deferred.make<never, AgentError>()
-    yield* followEvents(server, sessionID, hooks, failed).pipe(Effect.forkScoped)
-    // stop as soon as the result is in
-    yield* Deferred.await(endpoint.submitted).pipe(
-      Effect.andThen(promise("abort", () => client.session.abort({ sessionID }))),
+    // the turn ends with the execution (finished, interrupted or failed)
+    const ended = yield* Deferred.make<void, AgentError>()
+    const connected = yield* Deferred.make<void>()
+    const stepAfterResult = yield* Deferred.make<void>()
+    yield* followEvents(api.events, sessionID, hooks, { ended, connected, stepAfterResult, resultIn: Deferred.isDone(endpoint.submitted) }).pipe(Effect.forkScoped)
+    yield* Deferred.await(connected).pipe(
+      Effect.timeoutOrElse({
+        duration: "10 seconds",
+        orElse: () => Effect.fail(new AgentError({ code: "session", message: "OpenCode's event stream didn't open" }))
+      })
+    )
+    // stop as soon as the result is in: when the step that sent it has ended (an interrupted step reports no cost)
+    const stop = Deferred.await(endpoint.submitted).pipe(
       Effect.ignore,
-      Effect.forkScoped
+      Effect.andThen(Deferred.await(stepAfterResult).pipe(Effect.timeout(STEP_END), Effect.ignore)),
+      Effect.andThen(api.interrupt(sessionID).pipe(Effect.ignore)),
+      Effect.andThen(Deferred.await(ended).pipe(Effect.ignore, Effect.timeout(WIND_DOWN), Effect.ignore))
     )
 
-    const answer = yield* promise("prompt", () =>
-      client.session.prompt({
-        sessionID,
-        agent: AGENT,
-        ...(ref === null ? {} : { model: ref }),
-        parts: [{ type: "text", text: task.message }]
-      }, { throwOnError: true })
-    ).pipe(Effect.raceFirst(Deferred.await(failed)), Effect.result)
+    yield* api.prompt(sessionID, task.message)
+    const turn = yield* Deferred.await(ended).pipe(Effect.raceFirst(stop), Effect.result)
 
-    // every answer of this turn (a tool call is a step of its own) with its cost
-    const turn = (yield* promise("messages", () => client.session.messages({ sessionID }, { throwOnError: true }))).data
-      .flatMap((m) => m.info.role === "assistant" && !before.has(m.info.id) ? [m.info] : [])
+    const after = yield* api.getSession(sessionID)
+    const tokens = (s: SessionInfo) => ({
+      input: s.tokens.input + s.tokens.cache.read + s.tokens.cache.write,
+      output: s.tokens.output + s.tokens.reasoning
+    })
     yield* hooks.recordCost({
-      model: turn.at(-1) === undefined ? model : `${turn.at(-1)!.providerID}/${turn.at(-1)!.modelID}`,
-      inputTokens: turn.reduce((n, m) => n + m.tokens.input + m.tokens.cache.read + m.tokens.cache.write, 0),
-      outputTokens: turn.reduce((n, m) => n + m.tokens.output + m.tokens.reasoning, 0),
-      costUsd: turn.reduce((n, m) => n + m.cost, 0)
+      model: after.model === undefined ? model : `${after.model.providerID}/${after.model.id}`,
+      inputTokens: tokens(after).input - tokens(before).input,
+      outputTokens: tokens(after).output - tokens(before).output,
+      costUsd: after.cost - before.cost
     })
 
     const result = yield* Deferred.poll(endpoint.submitted)
     if (Option.isSome(result)) return yield* result.value
-    if (answer._tag === "Failure") return yield* answer.failure
-    const error = turn.find((m) => m.error !== undefined)?.error
-    if (error !== undefined) return yield* new AgentError({ code: "ended", message: errorMessage(error) })
+    if (turn._tag === "Failure") return yield* turn.failure
     const last = endpoint.lastOutput()
     if (Option.isNone(last)) {
       return yield* new AgentError({ code: "no-output", message: `the agent didn't call ${task.output.tool}` })
@@ -165,47 +174,54 @@ export const makeOpencodeProvider = Effect.fn("makeOpencodeProvider")(function*(
   return run
 })
 
-const errorMessage = (error: { readonly name: string; readonly data?: unknown }) =>
-  typeof error.data === "object" && error.data !== null && "message" in error.data ? String(error.data.message) : error.name
-
 // The server's events for the session: live progress (the agent's text once a part is finished, and each tool it
-// starts) and session errors, which fail `failed` (Viral's own abort isn't one), as does a retry only you can fix.
-const followEvents = (server: OpencodeServer, sessionID: string, hooks: AgentHooks, failed: Deferred.Deferred<never, AgentError>) => {
-  const announced = new Set<string>()
-  const onPart = (part: Part) => {
-    if (part.sessionID !== sessionID) return Effect.void
-    if (part.type === "text" && part.time?.end !== undefined && part.text.trim() !== "" && !announced.has(part.id)) {
-      announced.add(part.id)
-      return hooks.progress(null, part.text)
-    }
-    if (part.type === "tool" && !announced.has(part.callID)) {
-      announced.add(part.callID)
-      return hooks.progress(null, `→ ${part.tool.replace(/^viral_/, "")}`)
-    }
-    return Effect.void
+// starts), the first step to end after the result is in, and the end of the turn. A failed execution fails `ended`,
+// as does a retry only you can fix.
+const followEvents = (
+  events: Stream.Stream<OpencodeEvent, AgentError>,
+  sessionID: string,
+  hooks: AgentHooks,
+  signals: {
+    readonly ended: Deferred.Deferred<void, AgentError>
+    readonly connected: Deferred.Deferred<void>
+    readonly stepAfterResult: Deferred.Deferred<void>
+    readonly resultIn: Effect.Effect<boolean>
   }
-  // the SSE client reconnects forever unless aborted, so the subscription is tied to the run's scope
-  const controller = Effect.acquireRelease(Effect.sync(() => new AbortController()), (c) => Effect.sync(() => c.abort()))
-  return controller.pipe(
-    Effect.flatMap((c) => promise("events", () => server.client.event.subscribe({}, { signal: c.signal, sseMaxRetryAttempts: 1 }))),
-    Effect.flatMap((events) =>
-      Stream.fromAsyncIterable(events.stream, (cause) => new AgentError({ code: "session", message: String(cause) })).pipe(
-        Stream.runForEach((event) => {
-          if (event.type === "message.part.updated") return onPart(event.properties.part)
-          if (event.type === "session.error" && event.properties.sessionID === sessionID && event.properties.error !== undefined && event.properties.error.name !== "MessageAbortedError") {
-            return Deferred.fail(failed, new AgentError({ code: "ended", message: errorMessage(event.properties.error) })).pipe(Effect.asVoid)
-          }
-          // a retry that needs you to act (a free tier's limit, a sign-in) would retry forever: OpenCode 1.19 keeps
-          // the prompt open and only reports it as a session status
-          if (event.type === "session.status" && event.properties.sessionID === sessionID && event.properties.status.type === "retry" && event.properties.status.action !== undefined) {
-            const { action } = event.properties.status
-            return Deferred.fail(failed, new AgentError({ code: "ended", message: `${action.title}: ${action.message}` })).pipe(Effect.asVoid)
-          }
-          return Effect.void
-        })
-      )
-    ),
-    Effect.ignore,
-    Effect.scoped
+) => {
+  const { ended, connected, stepAfterResult, resultIn } = signals
+  const announced = new Set<string>()
+  const end = (error: AgentError | null) =>
+    (error === null ? Deferred.succeed(ended, undefined) : Deferred.fail(ended, error)).pipe(Effect.asVoid)
+  return events.pipe(
+    Stream.runForEach((event) => {
+      if (event.type === "server.connected") return Deferred.succeed(connected, undefined).pipe(Effect.asVoid)
+      if (event.data.sessionID !== sessionID) return Effect.void
+      switch (event.type) {
+        case "session.text.ended":
+          return event.data.text.trim() === "" ? Effect.void : hooks.progress(null, event.data.text)
+        case "session.tool.input.started":
+          if (announced.has(event.data.id)) return Effect.void
+          announced.add(event.data.id)
+          return hooks.progress(null, `→ ${event.data.name.replace(/^viral_/, "")}`)
+        case "session.step.ended":
+          return resultIn.pipe(
+            Effect.flatMap((done) => done ? Deferred.succeed(stepAfterResult, undefined) : Effect.succeed(false)),
+            Effect.asVoid
+          )
+        case "session.execution.succeeded":
+        case "session.execution.interrupted":
+          return end(null)
+        case "session.execution.failed":
+          return end(new AgentError({ code: "ended", message: event.data.error.message }))
+        case "session.retry.scheduled": {
+          const { attempt, error } = event.data
+          const hopeless = (error.status !== undefined && GIVE_UP_STATUS.has(error.status)) || attempt >= MAX_RETRIES
+          return hopeless ? end(new AgentError({ code: "ended", message: error.message })) : Effect.void
+        }
+      }
+    }),
+    // the stream breaking off ends the turn too, rather than leaving it waiting
+    Effect.catch((error) => end(error)),
+    Effect.andThen(end(new AgentError({ code: "session", message: "OpenCode's event stream ended" })))
   )
 }

@@ -9,7 +9,7 @@ import { after, before, test } from "node:test"
 import { type AgentCost, type AgentError, type AgentHooks, type AgentTask, agentTool } from "@viral/provider-core"
 import { makeOpencodeProvider, modelRef, runConfig } from "./opencode-provider.ts"
 import { atLeast } from "./opencode-server.ts"
-import { credentialCount, opencodeStatus } from "./opencode-status.ts"
+import { connectedIntegrations, opencodeStatus } from "./opencode-status.ts"
 
 let home: string
 before(() => {
@@ -57,82 +57,129 @@ const run = <A>(name: string, use: Effect.Effect<A, AgentError, NodeServices.Nod
 const go = <A>(script: unknown, hooks: AgentHooks, model: string | null, extra: Partial<AgentTask<typeof Answer>> = {}) =>
   Effect.flatMap(makeOpencodeProvider({ command: ["node", fake] }), (provider) => provider(task(script, extra), hooks, model, "SYSTEM")) as Effect.Effect<A, AgentError, NodeServices.NodeServices | SecureRandom.SecureRandom>
 
-test("runs the helper, takes the result and aborts the session", async () => {
+test("runs the helper, takes the result and interrupts the turn once its step has ended", async () => {
   const { hooks, costs, sessions, progress } = recorder()
   const script = { calls: [{ tool: "look_closer", args: { t: 3 } }, { tool: "propose_answer", args: { answer: 42 } }], end: "wait" }
   const { exit, log } = await run("ok", go(script, hooks, "zen/big"))
   assert.deepEqual(exit, Exit.succeed({ answer: 42 }))
   assert.deepEqual(sessions, ["ses_1"])
   assert.deepEqual(progress, ["Looking at it.", "→ look_closer", "→ propose_answer"])
-  // three answers (two tool steps and the aborted last one): tokens with the cache, dollars as OpenCode reports
+  // two steps, from the session's totals: tokens with the cache, dollars as OpenCode reports
   assert.equal(costs.length, 1)
   assert.equal(costs[0]!.model, "zen/big")
-  assert.equal(costs[0]!.inputTokens, 450)
-  assert.equal(costs[0]!.outputTokens, 75)
-  assert.ok(Math.abs(costs[0]!.costUsd - 0.006) < 1e-9)
+  assert.equal(costs[0]!.inputTokens, 300)
+  assert.equal(costs[0]!.outputTokens, 50)
+  assert.ok(Math.abs(costs[0]!.costUsd - 0.004) < 1e-9)
 
   const entries = log()
   assert.deepEqual(entries.filter((e) => "tool" in e).map((e) => e["result"]), ["nothing new at 3", "Received. Stop here."])
-  assert.ok(entries.some((e) => e["abort"] === "ses_1"))
-  assert.deepEqual(entries.find((e) => "prompt" in e)!["prompt"], { agent: "viral", model: { providerID: "zen", modelID: "big" } })
+  // the step that sent the result ends (and is paid for) before the interrupt
+  const at = (key: string, value?: unknown) => entries.findIndex((e) => key in e && (value === undefined || e[key] === value))
+  assert.ok(at("stepEnded", 1) >= 0 && at("stepEnded", 1) < at("interrupt", "ses_1"))
+  const create = entries.find((e) => "create" in e)!["create"] as Entry
+  assert.deepEqual([create["agent"], create["model"]], ["viral", { providerID: "zen", id: "big" }])
+  assert.deepEqual(entries.find((e) => "prompt" in e)!["prompt"], { text: JSON.stringify(script) })
   const launch = entries[0]!
+  assert.deepEqual((launch["argv"] as Array<string>).slice(0, 2), ["serve", "--hostname=127.0.0.1"])
   assert.deepEqual((launch["env"] as Entry)["claude"], "1")
-  const config = launch["config"] as { agent: { viral: { prompt: string } }; permission: Entry }
-  assert.equal(config.agent.viral.prompt, "SYSTEM")
-  assert.equal(config.permission["bash"], "deny")
-  assert.equal(config.permission["viral_*"], "allow")
+  const config = launch["config"] as { agents: { viral: { system: string; permissions: unknown } }; permissions: unknown; default_agent: string }
+  assert.equal(config.default_agent, "viral")
+  assert.equal(config.agents.viral.system, "SYSTEM")
+  assert.deepEqual(config.permissions, [
+    { action: "*", resource: "*", effect: "deny" },
+    { action: "viral_*", resource: "*", effect: "allow" }
+  ])
+  assert.deepEqual(config.agents.viral.permissions, config.permissions)
 })
 
-test("a resumed session counts only this turn", async () => {
+test("a resumed session moves into this run's folder and counts only this turn", async () => {
   const { hooks, costs, sessions } = recorder()
   const script = { calls: [{ tool: "propose_answer", args: { answer: 7 } }], end: "wait" }
-  const { exit } = await run("resume", go(script, hooks, null, { resumeSession: "ses_9" }))
+  const { exit, log } = await run("resume", go(script, hooks, "zen/big", { resumeSession: "ses_9" }))
   assert.deepEqual(exit, Exit.succeed({ answer: 7 }))
   assert.deepEqual(sessions, ["ses_9"])
-  assert.ok(costs[0]!.costUsd < 0.01)
+  assert.ok(Math.abs(costs[0]!.costUsd - 0.002) < 1e-9)
+  assert.equal(costs[0]!.inputTokens, 150)
+  const entries = log()
+  assert.ok(!entries.some((e) => "create" in e))
+  assert.match(String((entries.find((e) => "move" in e)!["move"] as Entry)["directory"]), /viral-opencode-/)
+  assert.deepEqual(entries.find((e) => "agent" in e)!["agent"], { agent: "viral" })
+  assert.deepEqual(entries.find((e) => "model" in e)!["model"], { model: { providerID: "zen", id: "big" } })
 })
 
-test("a session error ends the run even though the prompt never answers", async () => {
+test("a finished turn without the output tool is no-output", async () => {
+  const { hooks } = recorder()
+  const { exit } = await run("none", go({ calls: [{ tool: "look_closer", args: { t: 1 } }], end: "complete" }, hooks, null))
+  assert.ok(Exit.isFailure(exit))
+  assert.match(String(exit.cause), /didn't call propose_answer/)
+})
+
+test("a failed execution ends the run with OpenCode's message", async () => {
   const { hooks } = recorder()
   const { exit } = await run("error", go({ calls: [], end: "error" }, hooks, "zen/big"))
   assert.ok(Exit.isFailure(exit))
-  assert.match(String(exit.cause), /Free usage limit reached/)
+  assert.match(String(exit.cause), /Insufficient balance/)
 })
 
-test("a retry only you can fix (a free tier's limit) ends the run", async () => {
+test("a retry only you can fix (out of credit) ends the run", async () => {
   const { hooks } = recorder()
   const { exit } = await run("retry", go({ calls: [], end: "retry" }, hooks, "zen/big"))
   assert.ok(Exit.isFailure(exit))
-  assert.match(String(exit.cause), /Free limit reached: Subscribe to OpenCode Go/)
+  assert.match(String(exit.cause), /Your free usage is over/)
 })
 
-test("an outdated OpenCode is refused with how to update", async () => {
+test("OpenCode 1.x is refused with how to update", async () => {
   const { hooks } = recorder()
-  process.env["FAKE_OPENCODE_VERSION"] = "1.1.12"
+  process.env["FAKE_OPENCODE_VERSION"] = "1.19.5"
   const { exit } = await run("outdated", go({ calls: [], end: "complete" }, hooks, null))
   delete process.env["FAKE_OPENCODE_VERSION"]
   assert.ok(Exit.isFailure(exit))
-  assert.match(String(exit.cause), /OpenCode 1\.1\.12 is older than 1\.14\.19.*opencode upgrade/)
+  assert.match(String(exit.cause), /OpenCode 1\.19\.5 is older than 2\.2\.6.*OpenCode 2.*opencode upgrade/)
 })
 
 test("versions, model ids and the read permission", () => {
-  assert.ok(atLeast("1.14.19", "1.14.19"))
-  assert.ok(atLeast("1.19.5", "1.14.19"))
-  assert.ok(!atLeast("1.1.12", "1.14.19"))
-  assert.deepEqual(modelRef("openrouter/anthropic/claude-haiku"), { providerID: "openrouter", modelID: "anthropic/claude-haiku" })
+  assert.ok(atLeast("2.2.6", "2.2.6"))
+  assert.ok(atLeast("2.10.0", "2.2.6"))
+  assert.ok(!atLeast("1.19.5", "2.2.6"))
+  assert.deepEqual(modelRef("vercel/anthropic/claude-haiku"), { providerID: "vercel", id: "anthropic/claude-haiku" })
   assert.equal(modelRef("haiku"), null)
   const endpoint = { url: "http://127.0.0.1:1/mcp", token: "t", name: "viral" }
-  assert.equal(runConfig({ system: "", endpoint, readDirs: [] }).permission.read, "deny")
-  assert.deepEqual(runConfig({ system: "", endpoint, readDirs: ["/sheets"] }).permission.read, { "*": "deny", "/sheets/**": "allow" })
+  assert.ok(!runConfig({ system: "", endpoint, readDirs: [] }).permissions.some((rule) => rule.effect === "allow" && rule.action !== "viral_*"))
+  assert.deepEqual(runConfig({ system: "", endpoint, readDirs: ["/sheets"] }).permissions, [
+    { action: "*", resource: "*", effect: "deny" },
+    { action: "read", resource: "/sheets/**", effect: "allow" },
+    { action: "external_directory", resource: "/sheets/**", effect: "allow" },
+    { action: "viral_*", resource: "*", effect: "allow" }
+  ])
 })
 
-test("status: version, sign-in and models", async () => {
-  const status = await Effect.runPromise(opencodeStatus(["node", fake]).pipe(Effect.provide(NodeServices.layer)))
-  assert.deepEqual(status, { version: Option.some("1.14.19"), outdated: false, signedIn: true, models: ["opencode/big-pickle", "anthropic/claude-haiku-5.5"] })
-  process.env["FAKE_OPENCODE_VERSION"] = "1.1.12"
-  const old = await Effect.runPromise(opencodeStatus(["node", fake]).pipe(Effect.provide(NodeServices.layer)))
-  delete process.env["FAKE_OPENCODE_VERSION"]
-  assert.equal(old.outdated, true)
-  assert.equal(credentialCount("\u001b[0m└  0 credentials"), 0)
-  assert.equal(credentialCount("└  2 credentials"), 2)
+const status = (auth: string, version?: string) => {
+  process.env["FAKE_OPENCODE_AUTH"] = auth
+  if (version !== undefined) process.env["FAKE_OPENCODE_VERSION"] = version
+  return run(`status-${auth}`, opencodeStatus(["node", fake])).then(({ exit, log }) => {
+    delete process.env["FAKE_OPENCODE_AUTH"]
+    delete process.env["FAKE_OPENCODE_VERSION"]
+    assert.ok(Exit.isSuccess(exit))
+    return { status: exit.value, log }
+  })
+}
+
+test("status: a Console sign-in counts, and its opencode/* models with it", async () => {
+  const { status: console, log } = await status("console")
+  assert.deepEqual(console, { version: Option.some("2.2.6"), outdated: false, signedIn: true, models: ["opencode/claude-haiku-5-5", "opencode/big-pickle"] })
+  // asked of a private server, not the background service
+  assert.ok(log().every((e) => (e["argv"] as Array<string>).includes("--standalone")))
+})
+
+test("status: with nothing stored, Zen's free opencode/* models alone aren't signed in", async () => {
+  assert.equal((await status("none")).status.signedIn, false)
+  const key = (await status("key")).status
+  assert.equal(key.signedIn, true)
+  assert.ok(key.models.includes("vercel/anthropic/claude-haiku-5.5"))
+})
+
+test("status: OpenCode 1.x is outdated", async () => {
+  const { status: old } = await status("console", "1.19.5")
+  assert.deepEqual(old, { version: Option.some("1.19.5"), outdated: true, signedIn: false, models: [] })
+  assert.deepEqual(connectedIntegrations("not json"), [])
 })

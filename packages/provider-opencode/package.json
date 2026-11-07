@@ -4,7 +4,6 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
-    "@opencode-ai/sdk": "1.19.5",
     "@viral/provider-core": "workspace:*",
     "effect": "4.1.2"
   },
