@@ -16,7 +16,8 @@ import { previewVoice, removeVoice, updatePreset, voicesAtom } from "../library-
 import { RowsSkeleton } from "../library-loading.tsx"
 import { refusal, stylesByVoice } from "../library-values.ts"
 import { SampleButton } from "./sample-button.tsx"
-import { initials, splitName } from "./voices-values.ts"
+import { VoiceRow } from "./voice-row.tsx"
+import { splitName } from "./voices-values.ts"
 
 const SAMPLE_LINE = "This guy made a candy that hits every single taste at the exact same time."
 
@@ -53,44 +54,39 @@ function MyVoiceRow({ voice, styles }: { readonly voice: Voice; readonly styles:
   const [confirming, setConfirming] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const split = splitName(voice.name)
-  const traits = split.traits ?? Object.values(voice.labels).slice(0, 3).join(", ")
   const removable = voice.category !== "premade"
 
   return (
     <div className="border-b border-line last:border-b-0">
-      <div className="flex min-h-[60px] items-center gap-3 rounded-[10px] px-2 py-2.5 hover:bg-panel">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-ctl-active text-[12px] font-semibold text-fg-1">{initials(voice.name)}</span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex items-center gap-2">
-            <span className="truncate text-[14px] font-medium">{split.name}</span>
-            {using.map((s) => <Status key={s.id} tone="ok">{s.name}{s.isDefault ? " · default" : ""}</Status>)}
-          </span>
-          <span className="truncate text-[13px] text-fg-2">
-            {traits}
-            <Detail>{` · ${voice.category ?? "voice"} · ${voice.voiceId}`}</Detail>
-          </span>
-        </span>
-        {others.length === 0 ? null : (
-          <Select<string>
-            label={`Use ${split.name} for a style`}
-            className="min-w-[150px]"
-            value=""
-            options={[{ value: "", label: "Use for style…" }, ...others.map((s) => ({ value: s.id, label: s.name }))]}
-            onChange={(id) => {
-              const style = others.find((s) => s.id === id)
-              if (style === undefined) return
-              setProblem(null)
-              void save({ payload: { id: style.id, config: { ...style.config, voice: { ...style.config.voice, voiceId: voice.voiceId } } }, reactivityKeys: ["presets"] })
-                .catch((e: unknown) => setProblem(refusal(e)[0] ?? null))
-            }}
-          />
-        )}
-        <span className="flex items-center gap-0.5">
-          <IconButton label="Try a line" variant={trying ? "default" : "ghost"} onClick={() => setTrying(!trying)}><MessageSquareText /></IconButton>
-          <SampleButton url={voice.previewUrl} name={split.name} />
-          {removable ? <IconButton label={`Remove ${split.name}`} onClick={() => setConfirming(true)}><Trash2 /></IconButton> : null}
-        </span>
-      </div>
+      <VoiceRow
+        voice={voice}
+        badges={using.map((s) => <Status key={s.id} tone="ok">{s.name}{s.isDefault ? " · default" : ""}</Status>)}
+        detail={<Detail>{` · ${voice.category ?? "voice"} · ${voice.voiceId}`}</Detail>}
+        actions={
+          <>
+            {others.length === 0 ? null : (
+              <Select<string>
+                label={`Use ${split.name} for a style`}
+                className="min-w-[150px]"
+                value=""
+                options={[{ value: "", label: "Use for style…" }, ...others.map((s) => ({ value: s.id, label: s.name }))]}
+                onChange={(id) => {
+                  const style = others.find((s) => s.id === id)
+                  if (style === undefined) return
+                  setProblem(null)
+                  void save({ payload: { id: style.id, config: { ...style.config, voice: { ...style.config.voice, voiceId: voice.voiceId } } }, reactivityKeys: ["presets"] })
+                    .catch((e: unknown) => setProblem(refusal(e)[0] ?? null))
+                }}
+              />
+            )}
+            <span className="flex items-center gap-0.5">
+              <IconButton label="Try a line" variant={trying ? "default" : "ghost"} onClick={() => setTrying(!trying)}><MessageSquareText /></IconButton>
+              <SampleButton url={voice.previewUrl} name={split.name} />
+              {removable ? <IconButton label={`Remove ${split.name}`} onClick={() => setConfirming(true)}><Trash2 /></IconButton> : null}
+            </span>
+          </>
+        }
+      />
       {confirming ? (
         <div className="flex flex-wrap items-center gap-2 px-2 pb-2.5 text-xs text-fg-1">
           Remove {split.name} from your ElevenLabs account?{using.length === 0 ? "" : ` ${using.map((s) => s.name).join(", ")} narrate${using.length === 1 ? "s" : ""} with it.`}

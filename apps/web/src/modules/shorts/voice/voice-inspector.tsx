@@ -6,6 +6,7 @@ import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { Gauge, MessageSquare, Mic, Pause, Play } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { voiceLine } from "../../library/voices/voices-values.ts"
 import { voicesAtom } from "../../settings/settings-api.ts"
 import { Detail } from "../../system/detail.tsx"
 import { AskBox } from "../ask-box.tsx"
@@ -20,8 +21,6 @@ const TABS: ReadonlyArray<InspectorTab<VoiceTab>> = [
   { id: "pace", label: "Pace", icon: Gauge },
   { id: "ask", label: "Ask the voice stage", icon: MessageSquare }
 ]
-
-const describe = (voice: Voice) => Object.values(voice.labels).slice(0, 3).join(" · ") || voice.category || ""
 
 // The voice step's inspector: the take's numbers, your voices (samples are free), and a new take in another
 // voice, which costs about as many characters as this one.
@@ -91,7 +90,7 @@ export function VoiceInspector({ voiceover, voiceId, stages, gate, onNewVoice, t
                   >
                     <div className="grid min-w-0">
                       <span className="truncate text-sm">{voice.name.split(" - ")[0]}{voice.voiceId === voiceId ? <span className="ml-1.5 text-xs text-fg-3">this take</span> : null}</span>
-                      <span className="truncate text-xs text-fg-2">{describe(voice)}</span>
+                      <span className="truncate text-xs text-fg-2">{voiceLine(voice)}</span>
                     </div>
                     <IconButton label={`Play ${voice.name}'s sample`} disabled={voice.previewUrl === null} onClick={(e) => (e.stopPropagation(), playSample(voice))}>
                       {sampling === voice.voiceId ? <Pause /> : <Play />}
