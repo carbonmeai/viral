@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
+import { type ShotsBrief, buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
 
 test("the stage prompt names its tools", () => {
   assert.match(SHOTS_PROMPT, /`contact_sheet`/)
@@ -34,7 +34,7 @@ test("the brief numbers the voiceover words and shows where the real lines play"
 
 test("the creator's brief comes first when the short has one, and not at all when it doesn't", () => {
   const words = ["This", "guy.", "It", "hurt."].map((w, i) => ({ w, s: i, e: i + 0.5 }))
-  const input = {
+  const input: ShotsBrief = {
     title: "Candy",
     approach: "claim-interleaved",
     framing: "full",
@@ -52,6 +52,6 @@ test("the creator's brief comes first when the short has one, and not at all whe
   const withBrief = buildShotsBrief({ ...input, creatorBrief: "Focus on the friend's reactions." })
   assert.ok(withBrief.startsWith("The creator's brief for this short: Focus on the friend's reactions."))
   for (const none of [null, "   ", undefined]) {
-    assert.doesNotMatch(buildShotsBrief({ ...input, creatorBrief: none }), /creator's brief/)
+    assert.doesNotMatch(buildShotsBrief((none === undefined ? input : { ...input, creatorBrief: none })), /creator's brief/)
   }
 })

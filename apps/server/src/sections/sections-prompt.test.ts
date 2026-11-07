@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { buildSectionsBrief, SECTIONS_PROMPT } from "./sections-prompt.ts"
+import { type SectionsBrief, buildSectionsBrief, SECTIONS_PROMPT } from "./sections-prompt.ts"
 
 test("the stage prompt names its tools", () => {
   for (const tool of ["`contact_sheet`", "`preview_sections`", "`propose_sections`"]) assert.ok(SECTIONS_PROMPT.includes(tool), tool)
@@ -25,7 +25,7 @@ test("the brief carries the angle, the story beats, the excluded ranges and the 
 })
 
 test("the creator's brief comes first when the short has one, and not at all when it doesn't", () => {
-  const input = {
+  const input: SectionsBrief = {
     title: "Extreme candy",
     channel: "NileBlue",
     angle: { title: "The Candy That Broke His Brain", hook: "This candy short-circuits your brain", why: "his own lines work" },
@@ -38,6 +38,6 @@ test("the creator's brief comes first when the short has one, and not at all whe
   const withBrief = buildSectionsBrief({ ...input, creatorBrief: "Focus on the friend's reactions." })
   assert.ok(withBrief.startsWith("The creator's brief for this short: Focus on the friend's reactions."))
   for (const none of [null, "   ", undefined]) {
-    assert.doesNotMatch(buildSectionsBrief({ ...input, creatorBrief: none }), /creator's brief/)
+    assert.doesNotMatch(buildSectionsBrief((none === undefined ? input : { ...input, creatorBrief: none })), /creator's brief/)
   }
 })

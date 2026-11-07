@@ -39,6 +39,6 @@ test("the creator's brief comes first when the short has one, and not at all whe
   const withBrief = buildThumbnailBrief({ ...input, creatorBrief: "Focus on the friend's reactions." })
   assert.ok(withBrief.startsWith("The creator's brief for this short: Focus on the friend's reactions."))
   for (const none of [null, "   ", undefined]) {
-    assert.doesNotMatch(buildThumbnailBrief({ ...input, creatorBrief: none }), /creator's brief/)
+    assert.doesNotMatch(buildThumbnailBrief((none === undefined ? input : { ...input, creatorBrief: none })), /creator's brief/)
   }
 })

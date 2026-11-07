@@ -32,6 +32,6 @@ test("the creator's brief comes first when the short has one, and not at all whe
   const withBrief = buildScriptPrompt({ ...input, creatorBrief: "Focus on the friend's reactions." })
   assert.ok(withBrief.startsWith("The creator's brief for this short: Focus on the friend's reactions."))
   for (const none of [null, "   ", undefined]) {
-    assert.doesNotMatch(buildScriptPrompt({ ...input, creatorBrief: none }), /creator's brief/)
+    assert.doesNotMatch(buildScriptPrompt((none === undefined ? input : { ...input, creatorBrief: none })), /creator's brief/)
   }
 })

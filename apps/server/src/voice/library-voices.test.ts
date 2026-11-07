@@ -1,4 +1,4 @@
-import { ConfigProvider, Effect } from "effect"
+import { ConfigProvider, Effect, Layer } from "effect"
 import assert from "node:assert/strict"
 import { createServer, type IncomingMessage, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
@@ -71,8 +71,9 @@ after(() => void server.close())
 const run = <A, E>(use: (eleven: ElevenLabs["Service"]) => Effect.Effect<A, E>) =>
   // the key is read on each call, so the settings wrap the whole run, not just the client's construction
   Effect.runPromise(Effect.flatMap(ElevenLabs, use).pipe(
-    Effect.provide(ElevenLabs.layer),
-    Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ ELEVENLABS_API_KEY: "test-key", ELEVENLABS_API_URL: base })))
+    Effect.provide(ElevenLabs.layer.pipe(
+      Layer.provideMerge(ConfigProvider.layer(ConfigProvider.fromUnknown({ ELEVENLABS_API_KEY: "test-key", ELEVENLABS_API_URL: base })))
+    ))
   ))
 
 const query = { search: " deep ", language: "en", useCase: "narrative_story", gender: null, age: null, sort: "trending", page: 2 } as const
