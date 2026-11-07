@@ -78,3 +78,32 @@ test("the recap style: no headline, labels or credit; no music without a known d
   assert.equal(plan.music, undefined)
   assert.equal(plan.caption_case, "lower")
 })
+
+test("a short from two videos lists V2 in `sources`, its ads by index, and each clip's video; V1 clips stay as before", () => {
+  const two: ShotPlan = {
+    ...shots,
+    shots: [shots.shots[0]!, { ...shots.shots[1]!, source: 1 }],
+    inserts: [{ ...shots.inserts[0]!, source: 1 }]
+  }
+  const plan = assembleNarrated({
+    ...input(fullBleed),
+    shots: two,
+    others: [{ source: "/s2/source.mp4", sourceTranscript: "/s2/transcript.json", excluded: [{ start: 10, end: 20 }] }],
+    credit: "Video: NileBlue · Mark Rober"
+  })
+  Schema.decodeSync(NarratedPlan)(plan, { onExcessProperty: "error" })
+  assert.deepEqual(plan.sources, [{ path: "/s2/source.mp4", transcript: "/s2/transcript.json" }])
+  assert.deepEqual(plan.exclude, [[0, 3]], "V1's ranges stay in `exclude`")
+  assert.deepEqual(plan.exclude_by_source, { "1": [[10, 20]] })
+  assert.deepEqual(plan.shots[0], { src: 1542, word: 0, word_text: "This", note: "tray" }, "a V1 shot has no source")
+  assert.equal(plan.shots[1]?.source, 1)
+  assert.equal(plan.inserts?.[0]?.source, 1)
+  assert.equal(plan.outro?.[0]?.source, undefined)
+  assert.equal(plan.credit, "Video: NileBlue · Mark Rober")
+})
+
+test("a single-video plan has no sources or per-video ranges", () => {
+  const plan = assembleNarrated({ ...input(fullBleed), others: [] })
+  assert.equal("sources" in plan, false)
+  assert.equal("exclude_by_source" in plan, false)
+})

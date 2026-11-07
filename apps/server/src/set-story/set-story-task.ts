@@ -3,7 +3,7 @@ import { approachSkill } from "../agent-skills/skill-pack.ts"
 import type { AgentTool } from "../agent-session/agent-session.ts"
 import type { CheckedTask } from "../agent-session/run-checked.ts"
 import { PROPOSALS } from "../story/story-rules.ts"
-import { labelledLine } from "./transcript-tools.ts"
+import { fullText, INLINE_BUDGET, OUTLINE_EVERY, outline, videoLabel } from "../projects/videos-brief.ts"
 
 export const SET_STORY_PROMPT = `You look across several videos the creator put together and propose shorts that use them
 together, using the cross-video-story and story-arc skills and the approach skills below.
@@ -26,12 +26,6 @@ video, then seconds in that video. Times are always in that video's own seconds.
 Never use anything inside a video's excluded ranges. Never put a quote in the wrong video. Call \`propose_set_story\`
 once.`
 
-// Transcripts up to about this many characters in total go into the brief whole; above it, each video gets an
-// outline and the agent reads the rest with the tools.
-export const INLINE_BUDGET = 160_000
-// An outline keeps a line about this often (seconds).
-const OUTLINE_EVERY = 30
-
 export interface SetStoryVideo {
   readonly title: string | null
   readonly channel: string | null
@@ -51,34 +45,6 @@ export interface SetStoryInput {
   // folders the agent may read (each video's contact sheets)
   readonly readDirs: ReadonlyArray<string>
   readonly tools: ReadonlyArray<AgentTool>
-}
-
-// "38:16", "1:02:05"
-const clock = (seconds: number) => {
-  const total = Math.round(seconds)
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const s = String(total % 60).padStart(2, "0")
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`
-}
-
-// `V1 "Title" (channel, 38:16)`
-export const videoLabel = (number: number, video: Pick<SetStoryVideo, "title" | "channel" | "seconds">) => {
-  const about = [video.channel, video.seconds > 0 ? clock(video.seconds) : null].filter((p) => p !== null).join(", ")
-  return `V${number} "${video.title ?? "untitled"}"${about === "" ? "" : ` (${about})`}`
-}
-
-const fullText = (number: number, transcript: Transcript) => transcript.segments.map((s) => labelledLine(number, s)).join("\n")
-
-// About one line every half minute, each cut to a short preview.
-const outline = (number: number, transcript: Transcript) => {
-  let next = 0
-  return transcript.segments.flatMap((s) => {
-    if (s.start < next) return []
-    next = s.start + OUTLINE_EVERY
-    const text = s.text.trim()
-    return [labelledLine(number, { ...s, text: text.length > 110 ? `${text.slice(0, 110)}…` : text })]
-  }).join("\n")
 }
 
 // The set-story stage's agent task, shared by the stage and its tests.

@@ -6,7 +6,7 @@ import { type Checked, type CheckedTask, runChecked } from "../agent-session/run
 import { checkMetadata } from "../metadata/metadata-rules.ts"
 import { metadataTask } from "../metadata/metadata-task.ts"
 import type { StageContext } from "../runs/stages.ts"
-import { checkScript, SCRIPT_LIMITS } from "../script/script-rules.ts"
+import { checkScript, fromProposedScript, SCRIPT_LIMITS } from "../script/script-rules.ts"
 import { scriptTask } from "../script/script-task.ts"
 import { checkStory } from "../story/story-rules.ts"
 import { storyTask } from "../story/story-task.ts"
@@ -73,7 +73,7 @@ export const evalStages = (fixture: EvalFixture, fixtureDir: string, path: Path.
       scriptTask(short.approach, { title: source.title, channel: source.channel, transcript, excluded, angle: short.angle }),
       (p) => {
         if (limits === undefined) return { value: p, problems: [`${short.approach} shorts have no narrated script`] }
-        const checked = checkScript(p, limits, [{ words, excluded }])
+        const checked = checkScript(fromProposedScript(p), limits, [{ words, excluded }])
         return { value: checked.script, problems: checked.problems }
       }
     ),

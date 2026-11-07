@@ -7,8 +7,12 @@ import { Artifacts } from "../artifacts/artifacts.ts"
 import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects, sourcesOf } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
+import { transcriptTools } from "../set-story/transcript-tools.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
-import { checkScript, narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
+import { loadShortStory } from "../video-sets/short-story.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
+import { fitsInline } from "../projects/videos-brief.ts"
+import { checkScript, fromProposedScript, narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
 import { scriptTask } from "./script-task.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "script", code, message })
@@ -31,6 +35,7 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       const projectSources = yield* ProjectSources
       const artifacts = yield* Artifacts
       const transcripts = yield* Transcripts
+      const sets = yield* VideoSets
       const agent = yield* AgentSession
 
       // What the script is checked against: the approach's limits, and each video's transcript and ad ranges.
@@ -42,9 +47,11 @@ export class ScriptStage extends Context.Service<ScriptStage, {
         }
         const sources = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
         if (sources.some((s) => Option.isNone(s.transcript))) {
-          return yield* fail("not-ready", "the source has no transcript; run the source first")
+          const missing = sources.filter((s) => Option.isNone(s.transcript)).map((s) => `V${s.index + 1}`)
+          return yield* fail("not-ready", sources.length === 1
+            ? "the source has no transcript; run the source first"
+            : `${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} no transcript; read ${missing.length === 1 ? "it" : "them"} first`)
         }
-        // the agent writes from V1 for now; several videos come to the script with multi-video narrated shorts
         const [v1] = sources
         return { project, limits, sources, v1, transcript: Option.getOrThrow(v1.transcript) }
       })
@@ -65,16 +72,30 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       const run = Effect.fn("ScriptStage.run")(function*(ctx: StageContext) {
         const { project, limits, sources, v1, transcript } = yield* context(ctx)
         const source = v1.source
-        const angle = yield* chosenAngle(project)
-        const script = yield* runChecked(agent, ctx, scriptTask(project.approach, {
+        const several = sources.length > 1
+        // one video: its own story proposal; several: the set's proposal and beats, or each video's own beats
+        const story = several ? yield* loadShortStory(project, artifacts, sets) : null
+        const angle = story === null ? yield* chosenAngle(project) : story.angle
+        const videos = sources.map((s) => ({
+          title: s.source.title,
+          channel: s.source.channel,
+          seconds: s.seconds,
+          transcript: Option.getOrNull(s.transcript),
+          excluded: s.ads
+        }))
+        const task = scriptTask(project.approach, {
           creatorBrief: project.brief,
           title: source.title,
           channel: source.channel,
           transcript: transcripts.timedText(transcript),
           excluded: v1.excluded,
-          angle
-        }), (proposed) => Effect.sync(() => {
-          const checked = checkScript(proposed, limits, sources)
+          angle,
+          ...(several ? { videos, beats: story?.beats ?? [] } : {})
+        })
+        // long transcripts come as outlines, read further with the transcript tools
+        const tools = several && !fitsInline(videos) ? transcriptTools(videos, "short") : []
+        const script = yield* runChecked(agent, ctx, tools.length === 0 ? task : { ...task, tools, maxTurns: 24 }, (proposed) => Effect.sync(() => {
+          const checked = checkScript(fromProposedScript(proposed), limits, sources)
           return { value: checked.script, problems: checked.problems }
         })).pipe(Effect.mapError((error) => fail(error.code, error.message)))
         yield* record(ctx, script)
@@ -102,5 +123,5 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       }
       return ScriptStage.of({ stage })
     })
-  ).pipe(Layer.provide([Projects.layer, ProjectSources.layer, Artifacts.layer, Transcripts.layer, NodeServices.layer]))
+  ).pipe(Layer.provide([Projects.layer, ProjectSources.layer, Artifacts.layer, Transcripts.layer, VideoSets.layer, NodeServices.layer]))
 }

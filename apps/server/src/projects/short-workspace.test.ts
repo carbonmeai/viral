@@ -78,6 +78,34 @@ test("a short's workspace gathers its style, voice, run, waiting gate and what t
   await rt.dispose()
 })
 
+test("a short from two videos lists both, V1 first, with their files and lengths", async () => {
+  const rt = ManagedRuntime.make(Layer.mergeAll(ShortWorkspaces.layer, Sources.layer, Projects.layer, Artifacts.layer, RunStore.layer))
+  const { workspace, ids } = await rt.runPromise(Effect.gen(function*() {
+    const sources = yield* Sources
+    const artifacts = yield* Artifacts
+    const v1 = yield* sources.create({ origin: { _tag: "Url", url: "https://youtu.be/one" }, rights: "owned", rightsNote: null })
+    const v2 = yield* sources.create({ origin: { _tag: "Url", url: "https://youtu.be/two" }, rights: "licensed", rightsNote: null })
+    // only V2 has been fetched
+    const video = yield* artifacts.allocate({ _tag: "Source", id: v2.id }, "source-video")
+    yield* artifacts.record(video, { data: null, path: join(video.relDir, "source.mp4") })
+    const project = yield* (yield* Projects).create({
+      sourceIds: [v1.id, v2.id],
+      title: "Two",
+      approach: "claim-interleaved",
+      presetId: null,
+      musicTrackId: null,
+      brief: "Both videos."
+    })
+    return { workspace: yield* (yield* ShortWorkspaces).get(project.id), ids: [v1.id, v2.id] }
+  }))
+  assert.deepEqual(workspace.videos.map((v) => [v.position, v.source.id]), [[0, ids[0]], [1, ids[1]]])
+  assert.equal(workspace.videos[0]!.video, null, "V1 isn't fetched yet")
+  assert.match(workspace.videos[1]!.video ?? "", /source-video\/v1\/source\.mp4$/)
+  assert.equal(workspace.source.id, ids[0], "`source` stays V1")
+  assert.equal(workspace.sourceVideo, null, "`sourceVideo` stays V1's")
+  await rt.dispose()
+})
+
 test("an edited script is checked against the approach and the transcript before it's sent", async () => {
   const rt = ManagedRuntime.make(Layer.mergeAll(ShortWorkspaces.layer, Sources.layer, Projects.layer, Artifacts.layer))
   const problems = await rt.runPromise(Effect.gen(function*() {

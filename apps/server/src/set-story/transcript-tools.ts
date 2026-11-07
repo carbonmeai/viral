@@ -51,15 +51,16 @@ const SearchRequest = Schema.Struct({
 })
 const ReadRequest = Schema.Struct({ video: VideoNumber, from: Schema.Finite, to: Schema.Finite })
 
-// The set-story agent's two transcript tools: `search_transcript` finds lines across the set's videos, and
-// `read_transcript` reads up to five minutes of one video. Both answer with labelled lines.
-export const transcriptTools = (videos: ReadonlyArray<ToolVideo>) => {
+// An agent's two transcript tools over several videos (a set's, or a short's): `search_transcript` finds lines across
+// them, and `read_transcript` reads up to five minutes of one video. Both answer with labelled lines. `of` names
+// whose videos they are in the tools' words ("set", "short").
+export const transcriptTools = (videos: ReadonlyArray<ToolVideo>, of: "set" | "short" = "set") => {
   const range = `V1–V${videos.length}`
   return [
     agentTool({
       name: "search_transcript",
       description:
-        `Search the set's transcripts (${range}) for a word or phrase. Returns up to ${SEARCH_HITS} matching lines as "[V2 724.3–726.1] text", phrase matches first. Pass \`videos\` to search only some.`,
+        `Search the ${of}'s transcripts (${range}) for a word or phrase. Returns up to ${SEARCH_HITS} matching lines as "[V2 724.3–726.1] text", phrase matches first. Pass \`videos\` to search only some.`,
       schema: SearchRequest,
       run: ({ query, videos: only }) => {
         const hits = searchTranscripts(videos, query, only ?? null)
@@ -73,7 +74,7 @@ export const transcriptTools = (videos: ReadonlyArray<ToolVideo>) => {
       schema: ReadRequest,
       run: ({ video, from, to }) => {
         const target = videos[video - 1]
-        if (target === undefined) return Effect.succeed(`there's no V${video}; the set's videos are ${range}`)
+        if (target === undefined) return Effect.succeed(`there's no V${video}; the ${of}'s videos are ${range}`)
         if (!(to > from) || to - from > READ_SECONDS) return Effect.succeed(`ask for 1–${READ_SECONDS} seconds, from before to`)
         const lines = readTranscript(target, video, from, to)
         return Effect.succeed(lines.length === 0 ? `V${video} has no speech between ${fmt(from)} and ${fmt(to)}s` : lines.join("\n"))

@@ -62,6 +62,6 @@ test("checks each real line against its own video, and keeps V1's lines as they 
   assert.deepEqual(problems, [
     "beat 4: \"so nasty\" is inside an ad or sponsor read (40–60s)",
     "beat 5: V3 isn't one of this short's videos (V1–V2)",
-    "beat 6: \"so nasty\" isn't in the transcript near 50.0s; quote the words exactly as spoken"
+    "beat 6: \"so nasty\" isn't in V1's transcript near 50.0s; quote the words exactly as spoken"
   ])
 })

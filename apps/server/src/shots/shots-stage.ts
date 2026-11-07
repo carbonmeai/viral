@@ -4,6 +4,7 @@ import {
   type ArtifactOwner,
   type GatePayload,
   type ProjectId,
+  ProposedShots,
   Script,
   ShotPlan,
   ShotProposal,
@@ -24,7 +25,11 @@ import { Projects } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
-import { checkShots, narrationEnds, placeReals, type ShotContext, type ShotDraft } from "./shot-rules.ts"
+import { fitsInline } from "../projects/videos-brief.ts"
+import { transcriptTools } from "../set-story/transcript-tools.ts"
+import { loadShortStory } from "../video-sets/short-story.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
+import { checkShots, fromProposedShots, narrationEnds, placeReals, type ShotContext, type ShotDraft } from "./shot-rules.ts"
 import { buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "shots", code, message })
@@ -46,25 +51,37 @@ const StoryboardSpec = Schema.fromJsonString(Schema.Struct({
     t: Schema.Finite,
     label: Schema.String,
     kind: Schema.Literals(["shot", "real"]),
-    file: Schema.String
+    file: Schema.String,
+    // the tile's own video, in a short from several videos (else the storyboard's)
+    video: Schema.optionalKey(Schema.String)
   }))
 }))
 
 const frameFile = (kind: "shot" | "insert" | "outro", index: number) => `frames/${kind}-${String(index + 1).padStart(2, "0")}.jpg`
 
 // The storyboard's tiles in playing order: each shot's first frame, with the real clips where they play. Every
-// tile's frame is also saved on its own (`file`).
-const storyboardTiles = (plan: ShotDraft) => {
-  const tiles: Array<{ t: number; label: string; kind: "shot" | "real"; file: string }> = []
-  const real = (clip: { readonly start: number; readonly end: number; readonly quote: string }, file: string) =>
-    tiles.push({ t: (clip.start + clip.end) / 2, label: `REAL ${clip.quote}`, kind: "real", file })
+// tile's frame is also saved on its own (`file`). In a short from several videos (`videos`, V1 first) each tile
+// names its own video and its label starts with its V number.
+const storyboardTiles = (plan: ShotDraft, videos: ReadonlyArray<string>) => {
+  const several = videos.length > 1
+  const tiles: Array<{ t: number; label: string; kind: "shot" | "real"; file: string; video?: string }> = []
+  const from = (source: number | undefined) => several ? { video: videos[source ?? 0] ?? videos[0]! } : {}
+  const tag = (source: number | undefined) => several ? `V${(source ?? 0) + 1} ` : ""
+  const real = (clip: { readonly start: number; readonly end: number; readonly quote: string; readonly source?: number }, file: string) =>
+    tiles.push({ t: (clip.start + clip.end) / 2, label: `${tag(clip.source)}REAL ${clip.quote}`, kind: "real", file, ...from(clip.source) })
   let nextInsert = 0
   plan.shots.forEach((shot, k) => {
     while (plan.inserts[nextInsert] !== undefined && plan.inserts[nextInsert]!.afterWord < shot.word) {
       real(plan.inserts[nextInsert]!, frameFile("insert", nextInsert))
       nextInsert++
     }
-    tiles.push({ t: shot.src + 0.2, label: `${k + 1}  w${shot.word} ${shot.wordText}`, kind: "shot", file: frameFile("shot", k) })
+    tiles.push({
+      t: shot.src + 0.2,
+      label: `${k + 1}  ${tag(shot.source)}w${shot.word} ${shot.wordText}`,
+      kind: "shot",
+      file: frameFile("shot", k),
+      ...from(shot.source)
+    })
   })
   for (; nextInsert < plan.inserts.length; nextInsert++) real(plan.inserts[nextInsert]!, frameFile("insert", nextInsert))
   plan.outro.forEach((clip, k) => real(clip, frameFile("outro", k)))
@@ -85,6 +102,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
       const presets = yield* Presets
       const artifacts = yield* Artifacts
       const transcripts = yield* Transcripts
+      const sets = yield* VideoSets
       const contactSheets = yield* ContactSheets
       const scripts = yield* ScriptRunner
       const agent = yield* AgentSession
@@ -99,12 +117,15 @@ export class ShotsStage extends Context.Service<ShotsStage, {
       const context = Effect.fn("ShotsStage.context")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
         const sources = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
-        // the agent plans from V1 for now; several videos come to the shots with multi-video narrated shorts
         const [v1] = sources
         const source = v1.source
-        const video = yield* Effect.fromOption(v1.video).pipe(
-          Effect.mapError(() => fail("not-ready", "the source video hasn't been fetched"))
-        )
+        const unfetched = sources.filter((s) => Option.isNone(s.video)).map((s) => `V${s.index + 1}`)
+        if (unfetched.length > 0) {
+          return yield* fail("not-ready", sources.length === 1 ? "the source video hasn't been fetched" : `${unfetched.join(", ")} hasn't been fetched`)
+        }
+        // every video's file, V1 first
+        const videos = sources.map((s) => Option.getOrThrow(s.video))
+        const video = videos[0]!
         const script = yield* Effect.fromOption(yield* latestData(ctx.owner, "script", Script)).pipe(
           Effect.mapError(() => fail("not-ready", "the short has no script yet"))
         )
@@ -126,15 +147,16 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         const sourceSeconds = v1.seconds
         const reals = placeReals(script, words)
         const shotContext: ShotContext = { words, voiceoverSeconds: voiceover.durationS, sources, inserts: reals.inserts }
-        return { project, source, sourceOwner: v1.owner, video, script, words, excluded, sourceSeconds, reals, shotContext }
+        return { project, source, sources, sourceOwner: v1.owner, video, videos, script, words, excluded, sourceSeconds, reals, shotContext }
       })
 
       // Draws the plan's frames and storyboard, and records it.
       // Draws a plan's frames (frames/shot-NN.jpg…) and their storyboard into `dir`. Returns the storyboard's
       // file name, or null when it couldn't be drawn.
-      const draw = Effect.fn("ShotsStage.draw")(function*(video: string, plan: ShotDraft, dir: string) {
+      const draw = Effect.fn("ShotsStage.draw")(function*(videos: ReadonlyArray<string>, plan: ShotDraft, dir: string) {
         const spec = path.join(dir, "storyboard.json")
-        yield* Schema.encodeEffect(StoryboardSpec)({ cols: 6, tiles: storyboardTiles(plan) }).pipe(
+        const video = videos[0]!
+        yield* Schema.encodeEffect(StoryboardSpec)({ cols: 6, tiles: storyboardTiles(plan, videos) }).pipe(
           Effect.flatMap((json) => fs.writeFileString(spec, json)),
           Effect.mapError(failWith("write"))
         )
@@ -150,22 +172,22 @@ export class ShotsStage extends Context.Service<ShotsStage, {
 
       // The agent's self-check: the plan's problems, or its frames drawn so it can see each shot before
       // submitting. Every preview gets its own folder so earlier ones stay readable.
-      const previewTool = (video: string, shotContext: ShotContext, reals: Pick<ShotDraft, "inserts" | "outro">, root: string, attempt: number) => {
+      const previewTool = (videos: ReadonlyArray<string>, shotContext: ShotContext, reals: Pick<ShotDraft, "inserts" | "outro">, root: string, attempt: number) => {
         let drawn = 0
         return agentTool({
           name: "preview_shots",
           description: "Check a shot plan and draw each shot's first frame. Returns the problems to fix, or the storyboard and frame files to Read.",
-          schema: ShotProposal,
-          run: Effect.fn("ShotsStage.preview")(function*(proposal: ShotProposal) {
-              const checked = checkShots(proposal, shotContext)
+          schema: ProposedShots,
+          run: Effect.fn("ShotsStage.preview")(function*(proposed: ProposedShots) {
+              const checked = checkShots(fromProposedShots(proposed), shotContext)
               if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
               const dir = path.join(root, `attempt-${attempt}-${++drawn}`)
               yield* fs.makeDirectory(dir, { recursive: true })
               const plan: ShotDraft = { ...checked.value, ...reals }
-              const storyboard = yield* draw(video, plan, dir)
+              const storyboard = yield* draw(videos, plan, dir)
               if (storyboard === null) return "The plan passes the checks, but its frames couldn't be drawn; submit it."
               const frames = plan.shots.map((shot, k) =>
-                `- shot ${k + 1} (word ${shot.word} "${shot.wordText}", ${shot.src.toFixed(1)}s, ${shot.note}): ${path.join(dir, frameFile("shot", k))}`
+                `- shot ${k + 1} (word ${shot.word} "${shot.wordText}", ${videos.length > 1 ? `V${(shot.source ?? 0) + 1} ` : ""}${shot.src.toFixed(1)}s, ${shot.note}): ${path.join(dir, frameFile("shot", k))}`
               )
               return [
                 `The plan passes the checks. Storyboard (every shot in playing order, real clips framed red): ${path.join(dir, storyboard)}`,
@@ -176,10 +198,10 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         })
       }
 
-      const record = Effect.fn("ShotsStage.record")(function*(ctx: StageContext, video: string, plan: ShotDraft) {
+      const record = Effect.fn("ShotsStage.record")(function*(ctx: StageContext, videos: ReadonlyArray<string>, plan: ShotDraft) {
         const slot = yield* artifacts.allocate(ctx.owner, "shot-plan")
         // the storyboard is for your eyes; a plan without one is still a plan
-        const storyboard = yield* draw(video, plan, slot.dir)
+        const storyboard = yield* draw(videos, plan, slot.dir)
         // the storyboard and the frames are drawn together
         const drawn = storyboard !== null
         const shotPlan: ShotPlan = {
@@ -197,30 +219,45 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         })
       })
 
-      const run = Effect.fn("ShotsStage.run")(function*(ctx: StageContext) {
-        const c = yield* context(ctx)
-        const sourceOwner = c.sourceOwner
-        const preset = c.project.presetId === null
-          ? yield* presets.getDefault
-          : yield* presets.get(c.project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
-        const story = yield* latestData(sourceOwner, "story-map", StoryMap)
-        const transcript = yield* transcripts.forSource(sourceOwner.id).pipe(Effect.mapError(() => fail("not-ready", "no transcript")))
-
-        const sheetsArtifact = yield* artifacts.latest(sourceOwner, "contact-sheet")
+      // a video's overview contact sheets, as lines for the brief, and their folder for the agent to read
+      const overviewSheets = Effect.fn("ShotsStage.overviewSheets")(function*(owner: ArtifactOwner) {
+        const sheetsArtifact = yield* artifacts.latest(owner, "contact-sheet")
         const sheetsDir = Option.flatMapNullishOr(sheetsArtifact, artifacts.resolve)
         const sheetSet = Option.flatMap(sheetsArtifact, (a) => Schema.decodeUnknownOption(ContactSheetSet)(a.data))
         const sheets = Option.isSome(sheetsDir) && Option.isSome(sheetSet)
           ? sheetSet.value.sheets.map((s) => `- ${path.join(sheetsDir.value, s.file)}  (${s.start.toFixed(0)}–${s.end.toFixed(0)}s)`)
           : []
+        return { sheets, dir: sheetsDir }
+      })
+
+      const run = Effect.fn("ShotsStage.run")(function*(ctx: StageContext) {
+        const c = yield* context(ctx)
+        const sourceOwner = c.sourceOwner
+        const several = c.sources.length > 1
+        const preset = c.project.presetId === null
+          ? yield* presets.getDefault
+          : yield* presets.get(c.project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
+        const story = yield* latestData(sourceOwner, "story-map", StoryMap)
+        const transcript = yield* transcripts.forSource(sourceOwner.id).pipe(Effect.mapError(() => fail("not-ready", "no transcript")))
+        const overviews = yield* Effect.forEach(c.sources, (s) => overviewSheets(s.owner))
 
         // one-per-second sheets the agent asks for, kept with the project for later attempts
         const detailRoot = path.join(home.projectDir(c.project.id), "shots-detail")
-        const detail = detailSheetTool(contactSheets, path, c.video, c.sourceSeconds, detailRoot)
+        const detail = detailSheetTool(contactSheets, path, c.sources.map((s, i) => ({ video: c.videos[i]!, seconds: s.seconds })), c.sourceSeconds, detailRoot)
         yield* fs.makeDirectory(detailRoot, { recursive: true }).pipe(Effect.mapError(failWith("write")))
         const previewRoot = path.join(home.projectDir(c.project.id), "shots-preview")
         yield* fs.makeDirectory(previewRoot, { recursive: true }).pipe(Effect.mapError(failWith("write")))
-        const preview = previewTool(c.video, c.shotContext, c.reals, previewRoot, ctx.attempt)
+        const preview = previewTool(c.videos, c.shotContext, c.reals, previewRoot, ctx.attempt)
 
+        const briefVideos = c.sources.map((s, i) => ({
+          title: s.source.title,
+          channel: s.source.channel,
+          seconds: s.seconds,
+          transcript: Option.getOrNull(s.transcript),
+          excluded: s.ads,
+          sheets: overviews[i]!.sheets
+        }))
+        const shortStory = several ? yield* loadShortStory(c.project, artifacts, sets) : null
         const brief = buildShotsBrief({
           creatorBrief: c.project.brief,
           title: c.source.title,
@@ -234,21 +271,24 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           story: Option.getOrNull(story),
           excluded: c.excluded,
           sourceSeconds: c.sourceSeconds,
-          sheets,
-          transcript: transcripts.timedText(transcript)
+          sheets: overviews[0]!.sheets,
+          transcript: transcripts.timedText(transcript),
+          ...(several ? { videos: briefVideos, beats: shortStory?.beats ?? [] } : {})
         })
+        // long transcripts come as outlines, read further with the transcript tools
+        const readers = several && !fitsInline(briefVideos) ? transcriptTools(briefVideos, "short") : []
         const plan = yield* runChecked(agent, ctx, {
           stage: "shots",
           instructions: SHOTS_PROMPT,
           skills: ["narrated-shots"],
           brief,
-          output: { tool: "propose_shots", description: "Submit the whole shot plan.", schema: ShotProposal },
-          tools: [detail, preview],
+          output: { tool: "propose_shots", description: "Submit the whole shot plan.", schema: ProposedShots },
+          tools: [detail, preview, ...readers],
           defaultModel: null,
-          readDirs: [...Option.toArray(sheetsDir), detailRoot, previewRoot],
+          readDirs: [...overviews.flatMap((o) => Option.toArray(o.dir)), detailRoot, previewRoot],
           maxTurns: 60
-        }, (proposed) => Effect.succeed(checkShots(proposed, c.shotContext))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
-        yield* record(ctx, c.video, { ...plan, ...c.reals })
+        }, (proposed) => Effect.succeed(checkShots(fromProposedShots(proposed), c.shotContext))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        yield* record(ctx, c.videos, { ...plan, ...c.reals })
       })
 
       // An edit sends back the shots and markers; the real lines are placed again from the script.
@@ -257,7 +297,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         const c = yield* context(ctx)
         const checked = checkShots(proposal, c.shotContext)
         if (checked.problems.length > 0) return yield* fail("invalid-edit", checked.problems.join("; "))
-        yield* record(ctx, c.video, { ...checked.value, ...c.reals })
+        yield* record(ctx, c.videos, { ...checked.value, ...c.reals })
       })
 
       const stage: StageDefinition = {
@@ -281,6 +321,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
     Artifacts.layer,
     Transcripts.layer,
     ContactSheets.layer,
+    VideoSets.layer,
     ScriptRunner.layer,
     ViralHome.layer,
     NodeServices.layer

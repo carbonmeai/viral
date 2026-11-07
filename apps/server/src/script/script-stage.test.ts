@@ -52,11 +52,11 @@ const replay = AgentSession.replay((task: AgentTask<Schema.Top>) => {
 // Runs that don't reach the voice stage never speak.
 const NoVoice = Layer.mergeAll(ElevenLabs.replay(() => new Uint8Array()), Transcriber.layer)
 
-const runtime = () =>
+const runtime = (agent: Layer.Layer<AgentSession> = replay) =>
   ManagedRuntime.make(
     RunManager.layer.pipe(
       Layer.provideMerge(PipelineStagesLive),
-      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, Projects.layer, replay, NoVoice))
+      Layer.provideMerge(Layer.mergeAll(RunStore.layer, Artifacts.layer, Sources.layer, Projects.layer, agent, NoVoice))
     )
   )
 
@@ -111,5 +111,86 @@ test("the script stage fixes rejected scripts, snaps real lines, and waits for a
     return yield* Schema.decodeUnknownEffect(Script)(artifact.data)
   }))
   assert.deepEqual(script.beats[1], { _tag: "Real", quote: "It's like glue.", start: 99.95, end: 101.05 }, "snapped to the transcript")
+  await rt.dispose()
+})
+
+// V2: a second video with its own lines and a sponsor read
+const TRANSCRIPT_V2 = {
+  source: "chemist.mp4",
+  language: "en",
+  segments: [
+    { start: 5, end: 6, text: "Pure citric acid.", words: [w("Pure", 5), w("citric", 5.3), w("acid.", 5.6)] },
+    { start: 50, end: 51, text: "Buy our gum.", words: [w("Buy", 50), w("our", 50.3), w("gum.", 50.6)] }
+  ]
+}
+
+test("a short from two videos: the agent sees both, each real line is checked in its own video and stored with it", async () => {
+  const briefs: Array<string> = []
+  const tools: Array<ReadonlyArray<string>> = []
+  const twoVideos = AgentSession.replay((task: AgentTask<Schema.Top>) => {
+    briefs.push(task.message)
+    tools.push((task.tools ?? []).map((t) => t.name))
+    const base = [narration(70), real("it's like glue", 99), real("it worked", 199), real("way too spicy", 398)]
+    return briefs.length === 1
+      // V1's line said to be in V2, and V2's sponsor read
+      ? { headline: null, beats: [...base, { ...real("so nasty", 300), video: 2 }, { ...real("buy our gum", 50), video: 2 }] }
+      : { headline: null, beats: [...base, real("so nasty", 300), { ...real("pure citric acid", 5), video: 2 }] }
+  })
+  const rt = runtime(twoVideos)
+  const project = await rt.runPromise(Effect.gen(function*() {
+    const sources = yield* Sources
+    const artifacts = yield* Artifacts
+    const withTranscript = Effect.fn(function*(url: string, transcript: unknown, ads: ReadonlyArray<{ start: number; end: number }>) {
+      const source = yield* sources.create({ origin: { _tag: "Url", url }, rights: "owned", rightsNote: null })
+      const owner = { _tag: "Source", id: source.id } as const
+      const slot = yield* artifacts.allocate(owner, "transcript")
+      writeFileSync(join(slot.dir, "transcript.json"), JSON.stringify(transcript))
+      yield* artifacts.record(slot, { data: null, path: join(slot.relDir, "transcript.json") })
+      if (ads.length > 0) {
+        yield* artifacts.record(yield* artifacts.allocate(owner, "ad-ranges"), {
+          data: { ranges: ads.map((a) => ({ ...a, kind: "sponsor", evidence: "x" })) },
+          path: null
+        })
+      }
+      return source
+    })
+    const v1 = yield* withTranscript("https://youtu.be/a", TRANSCRIPT, [])
+    const v2 = yield* withTranscript("https://youtu.be/b", TRANSCRIPT_V2, [{ start: 49, end: 55 }])
+    return yield* (yield* Projects).create({
+      sourceIds: [v1.id, v2.id],
+      title: "Candy science",
+      approach: "claim-interleaved",
+      presetId: null,
+      musicTrackId: null,
+      brief: "The candy, then the chemist explains why it hurts."
+    })
+  }))
+
+  await rt.runPromise(Effect.gen(function*() {
+    const runs = yield* RunManager
+    const run = yield* runs.start({ _tag: "Project", id: project.id }, null)
+    yield* runs.subscribe(run.id, 0).pipe(
+      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RequestRaised"),
+      Stream.runDrain
+    )
+    yield* runs.cancel(run.id)
+  }))
+
+  assert.equal(briefs.length, 2, "asked once, then to fix")
+  assert.match(briefs[0]!, /V1 "/)
+  assert.match(briefs[0]!, /V2 "/)
+  assert.match(briefs[0]!, /\[V2 5\.0–6\.0\] Pure citric acid\./, "V2's lines are labelled with their video")
+  assert.match(briefs[0]!, /Excluded ranges in V2.*49–55s/)
+  assert.deepEqual(tools[0], [], "short transcripts come whole, so no transcript tools")
+  assert.match(briefs[1]!, /"so nasty" isn't in V2's transcript near 300\.0s/)
+  assert.match(briefs[1]!, /"buy our gum" is inside an ad or sponsor read \(49–55s\)/)
+
+  const script = await rt.runPromise(Effect.gen(function*() {
+    const artifact = Option.getOrThrow(yield* (yield* Artifacts).latest({ _tag: "Project", id: project.id }, "script"))
+    return yield* Schema.decodeUnknownEffect(Script)(artifact.data)
+  }))
+  const reals = script.beats.filter((b) => b._tag === "Real")
+  assert.deepEqual(reals.at(-1), { _tag: "Real", quote: "Pure citric acid.", start: 4.95, end: 6.05, source: 1 }, "snapped in V2 and stored as position 1")
+  assert.equal(reals[0] !== undefined && "source" in reals[0], false, "V1's lines are stored without a source")
   await rt.dispose()
 })

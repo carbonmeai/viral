@@ -53,6 +53,10 @@ export const MAX_SHORT_SOURCES = 10
 export const SourceIndex = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: MAX_SHORT_SOURCES - 1 }))
 export type SourceIndex = typeof SourceIndex.Type
 
+// How agents number a short's or a set's videos, matching their V labels: V1 = 1. The server converts to a
+// SourceIndex (V1 = 0) when it checks what an agent sent.
+export const VideoNumber = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_SHORT_SOURCES }))
+
 // A group of videos you want shorts from, with its own story and proposals across them.
 export const SourceSetId = Schema.String.pipe(Schema.brand("SourceSetId"))
 export type SourceSetId = typeof SourceSetId.Type

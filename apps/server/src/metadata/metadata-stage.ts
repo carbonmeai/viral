@@ -1,14 +1,16 @@
 import { NodeServices } from "@effect/platform-node"
-import { CutPlan, type ProjectId, type PublishedShort, RenderedShort, Script, StoryMap } from "@viral/contracts"
+import { CutPlan, type ProjectId, type PublishedShort, RenderedShort, Script, SetStory, type SourceId, StoryMap } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Presets } from "../presets/presets.ts"
+import { creditedChannels } from "../projects/credits.ts"
 import { Projects, sourcesOf } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
 import { checkMetadata, postNotes } from "./metadata-rules.ts"
 import { metadataTask } from "./metadata-task.ts"
 
@@ -30,6 +32,7 @@ export class MetadataStage extends Context.Service<MetadataStage, {
     Effect.gen(function*() {
       const projects = yield* Projects
       const sources = yield* Sources
+      const sets = yield* VideoSets
       const presets = yield* Presets
       const artifacts = yield* Artifacts
       const agent = yield* AgentSession
@@ -39,8 +42,12 @@ export class MetadataStage extends Context.Service<MetadataStage, {
 
       const run = Effect.fn("MetadataStage.run")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        // V1's details; the credits and summaries across videos come with multi-video shorts
-        const source = yield* sources.get(sourcesOf(project)[0]).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        // every video the short draws from, V1 first
+        const videos = yield* Effect.forEach(sourcesOf(project), (id) => sources.get(id)).pipe(
+          Effect.mapError(() => fail("not-found", "no such source"))
+        )
+        const source = videos[0]!
+        const several = videos.length > 1
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
@@ -50,15 +57,32 @@ export class MetadataStage extends Context.Service<MetadataStage, {
               Effect.mapError(() => fail("not-ready", `no ${kind} yet`))
             ))
         const render = yield* latest("render", RenderedShort)
-        const story = Option.flatMap(
-          yield* artifacts.latest({ _tag: "Source", id: source.id }, "story-map"),
-          (a) => Schema.decodeUnknownOption(StoryMap)(a.data)
-        )
+        const storyOf = (id: SourceId) =>
+          Effect.map(artifacts.latest({ _tag: "Source", id }, "story-map"), Option.flatMap((a) => Schema.decodeUnknownOption(StoryMap)(a.data)))
+        const story = yield* storyOf(source.id)
+        // what each video brings: the set's own line for it, else its story summary; and what joins them
+        const setStory = several && project.setId !== null
+          ? Option.flatMap(yield* artifacts.latest({ _tag: "Set", id: project.setId }, "set-story"), (a) => Schema.decodeUnknownOption(SetStory)(a.data))
+          : Option.none()
+        const set = several && project.setId !== null ? yield* sets.get(project.setId).pipe(Effect.option) : Option.none()
+        const setLine = (id: SourceId) =>
+          Option.flatMap(Option.all([setStory, set]), ([s, vs]) => Option.fromNullishOr(s.videos.find((v) => vs.sourceIds[v.source] === id)?.summary))
+        const videoSummaries = several
+          ? yield* Effect.forEach(videos, (v) =>
+            Effect.map(storyOf(v.id), (own) => ({
+              title: v.title,
+              channel: v.channel,
+              seconds: v.durationS ?? 0,
+              summary: Option.getOrNull(Option.orElse(setLine(v.id), () => Option.map(own, (s) => s.summary)))
+            })))
+          : []
 
         // what the short says: the narrated script, or a cut-down short's sections in the creator's words
         const lines = project.format === "cut-down"
           ? (yield* latest("cut-plan", CutPlan)).sections.map((s) => `CREATOR (${s.beat}): "${s.text}"`).join("\n")
-          : (yield* latest("script", Script)).beats.map((b) => b._tag === "Narration" ? `NARRATOR: ${b.text}` : `REAL: "${b.quote}"`).join("\n")
+          : (yield* latest("script", Script)).beats.map((b) =>
+            b._tag === "Narration" ? `NARRATOR: ${b.text}` : several ? `REAL (V${(b.source ?? 0) + 1}): "${b.quote}"` : `REAL: "${b.quote}"`
+          ).join("\n")
         const metadata = yield* runChecked(agent, ctx, metadataTask({
           creatorBrief: project.brief,
           title: source.title,
@@ -67,11 +91,17 @@ export class MetadataStage extends Context.Service<MetadataStage, {
           approach: project.approach,
           durationS: render.durationS,
           workingTitle: project.title,
-          lines
+          lines,
+          ...(several
+            ? { videos: videoSummaries, acrossVideos: Option.getOrNull(Option.map(setStory, (s) => s.summary)) }
+            : {})
         }), (proposed) => Effect.succeed(checkMetadata(proposed))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
 
         // publish: the finished files side by side in ~/.viral/renders/
-        const credit = source.rights !== "owned" ? source.channel : null
+        // every channel whose footage isn't yours ("NileBlue · Mark Rober"); one video reads as before
+        const credit = several
+          ? creditedChannels(videos).join(" · ") || null
+          : source.rights !== "owned" ? source.channel : null
         const notes = postNotes({ metadata, credit, approach: project.approach, style: preset.name, durationS: render.durationS })
         const video = path.join(home.renders, `${project.slug}.mp4`)
         const captions = path.join(home.renders, `${project.slug}.srt`)
@@ -90,5 +120,5 @@ export class MetadataStage extends Context.Service<MetadataStage, {
 
       return MetadataStage.of({ stage: { name: "metadata", artifact: "metadata", gate: null, run } })
     })
-  ).pipe(Layer.provide([Projects.layer, Sources.layer, Presets.layer, Artifacts.layer, ViralHome.layer, NodeServices.layer]))
+  ).pipe(Layer.provide([Projects.layer, Sources.layer, VideoSets.layer, Presets.layer, Artifacts.layer, ViralHome.layer, NodeServices.layer]))
 }

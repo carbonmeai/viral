@@ -8,7 +8,7 @@ import { RenderedShort } from "./render.ts"
 import { Run, RunRequest, StageRun } from "./runs.ts"
 import { Script } from "./script.ts"
 import { ShotPlan, ShotProposal } from "./shot-plan.ts"
-import { Source, SourceId, SourceNotFound } from "./sources.ts"
+import { Source, SourceId, SourceIndex, SourceNotFound } from "./sources.ts"
 import { TranscriptWord } from "./transcript.ts"
 import { ThumbConfig } from "./thumb-config.ts"
 import { Thumbnail } from "./thumbnail.ts"
@@ -26,11 +26,24 @@ export const ScriptLimits = Schema.Struct({
 })
 export type ScriptLimits = typeof ScriptLimits.Type
 
+// One of the short's videos as the editor shows it: its place (V1 = 0), the video, its file relative to its own
+// folder (/media/sources/<id>/<video>) once fetched, and its length in seconds.
+export const ShortVideo = Schema.Struct({
+  position: SourceIndex,
+  source: Source,
+  video: Schema.NullOr(Schema.String),
+  seconds: Schema.Finite
+})
+export type ShortVideo = typeof ShortVideo.Type
+
 // Everything a short's editor shows in one call: the short, its style and voice, how its latest run is going (and
 // the gate waiting, with what it shows), and the latest version of each thing the run has made.
 export const ShortWorkspace = Schema.Struct({
   project: Project,
+  // V1
   source: Source,
+  // every video the short draws from, V1 first (one for a single-video short)
+  videos: Schema.Array(ShortVideo),
   // the style the short is made in (its own, or the default)
   preset: Preset,
   // the ElevenLabs voice its voiceover uses: the short's own, or the style's
@@ -72,7 +85,7 @@ export const ShortWorkspace = Schema.Struct({
   })),
   // `path` is the jpg, relative to the short's folder
   thumbnail: Schema.NullOr(Schema.Struct({ ...at, thumbnail: Thumbnail })),
-  // the long video's file, relative to its folder, for playing the real lines
+  // V1's file, relative to its folder, for playing the real lines (`videos` has each video's)
   sourceVideo: Schema.NullOr(Schema.String),
   // what a cut-down short is cut from and checked against, for editing its sections: the long video's words with
   // their times, its length, the ranges a section may not touch, and the section limits; null for narrated shorts
@@ -89,7 +102,7 @@ export const ShortWorkspace = Schema.Struct({
 })
 export type ShortWorkspace = typeof ShortWorkspace.Type
 
-// A still of the long video at a source second, for picking a shot's frame. `path` is relative to the video's
+// A still of one of the short's videos at a source second, for picking a shot's frame. `path` is relative to the video's
 // own folder (the media route serves it at /media/sources/<id>/<path>).
 export const FrameAt = Schema.Struct({ t: Schema.Finite, path: Schema.String })
 export type FrameAt = typeof FrameAt.Type

@@ -1,6 +1,6 @@
-import type { Script, ShotInsert, ShotPlan, ShotProposal, TranscriptWord } from "@viral/contracts"
+import type { ProposedShots, Script, ShotInsert, ShotPlan, ShotProposal, SourceIndex, TranscriptWord } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
-import { clipSource, type SourceContext, sourceField } from "../projects/source-context.ts"
+import { clipSource, type SourceContext, sourceField, sourceLabel } from "../projects/source-context.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
@@ -68,6 +68,16 @@ export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>)
   return { inserts, outro }
 }
 
+// What the agent sent as a ShotProposal: each shot's V number becomes its position (V2 → source 1; V1 left out).
+// A V number the short doesn't have is kept as a position, for checkShots to name.
+export const fromProposedShots = (proposed: ProposedShots): ShotProposal => ({
+  ...proposed,
+  shots: proposed.shots.map(({ video, ...shot }) => ({
+    ...shot,
+    ...sourceField(video === undefined ? undefined : (video - 1) as SourceIndex)
+  }))
+})
+
 export interface ShotContext {
   readonly words: ReadonlyArray<TranscriptWord>
   // the voiceover's length; the last shot runs to it
@@ -91,7 +101,7 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
   const starts = new Set(proposal.shots.map((s) => s.word))
 
   proposal.shots.forEach((shot, k) => {
-    const name = `shot ${k + 1} (word ${shot.word} "${wordAt(shot.word)}")`
+    const name = `shot ${k + 1} (word ${shot.word} "${wordAt(shot.word)}"${ctx.sources.length > 1 ? `, ${sourceLabel(shot.source ?? 0)}` : ""})`
     if (!valid(shot.word)) return problems.push(`shot ${k + 1}: word ${shot.word} isn't in the voiceover (0–${words.length - 1})`)
     const next = proposal.shots[k + 1]
     if (next !== undefined && next.word <= shot.word) problems.push(`${name}: the next shot must start on a later word`)

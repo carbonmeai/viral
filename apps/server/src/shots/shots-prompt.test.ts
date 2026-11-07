@@ -55,3 +55,35 @@ test("the creator's brief comes first when the short has one, and not at all whe
     assert.doesNotMatch(buildShotsBrief((none === undefined ? input : { ...input, creatorBrief: none })), /creator's brief/)
   }
 })
+
+test("a short from several videos: real lines name their video, and each video has its sheets and ads", () => {
+  const words = ["This", "guy.", "It", "hurt."].map((w, i) => ({ w, s: i, e: i + 0.5 }))
+  const transcript = (text: string, start: number) => ({
+    source: "x",
+    language: "en",
+    segments: [{ start, end: start + 1, text, words: [] }]
+  })
+  const brief = buildShotsBrief({
+    title: "Candy",
+    approach: "claim-interleaved",
+    framing: "band",
+    shotSeconds: 2.2,
+    words,
+    narrationEnds: [1, 3],
+    inserts: [{ start: 10, end: 12, quote: "Ow.", source: 1, afterWord: 1, afterWordText: "guy." }],
+    outro: [{ start: 20, end: 22, quote: "Nasty." }],
+    story: null,
+    excluded: [],
+    sourceSeconds: 600,
+    sheets: [],
+    transcript: "unused",
+    videos: [
+      { title: "Candy", channel: "NileBlue", seconds: 600, transcript: transcript("Nasty.", 20), excluded: [], sheets: ["- /a/sheet_000.png  (0–150s)"] },
+      { title: "Acid", channel: "ChemLab", seconds: 300, transcript: transcript("Ow.", 10), excluded: [{ start: 0, end: 5 }], sheets: ["- /b/sheet_000.png  (0–150s)"] }
+    ]
+  })
+  assert.match(brief, /REAL after word 1 "guy\.": "Ow\." \(V2 10\.0–12\.0s\)/)
+  assert.match(brief, /OUTRO after the narration: "Nasty\." \(V1 20\.0–22\.0s\)/)
+  assert.match(brief, /## V2 "Acid" \(ChemLab, 5:00\)\n\nExcluded ranges in V2 .*0–5s\n\nOverview contact sheets .*\n- \/b\/sheet_000\.png/)
+  assert.match(brief, /Each shot names its video/)
+})

@@ -42,7 +42,7 @@ const replay = AgentSession.replay((task) => {
     : { shots: [...shots, { word: 4, src: 30, fit: true, note: "pain" }], markers: [{ _tag: "Circle", word: 2, x: 0.5, y: 0.5 }] }
 })
 
-const runtime = () =>
+const runtime = (agent: Layer.Layer<AgentSession> = replay) =>
   ManagedRuntime.make(
     RunManager.layer.pipe(
       Layer.provideMerge(PipelineStagesLive),
@@ -51,7 +51,7 @@ const runtime = () =>
         Artifacts.layer,
         Sources.layer,
         Projects.layer,
-        replay,
+        agent,
         ElevenLabs.replay(() => new Uint8Array()),
         Transcriber.layer
       ))
@@ -167,4 +167,105 @@ test("the preview tool returns a plan's problems, or draws its frames for the ag
   const frame = /shot 3 \(word 4 "It", 30\.0s, pain\): (\S+\.jpg)/.exec(drawn)?.[1]
   assert.ok(frame !== undefined && existsSync(frame), "each shot's frame is its own file")
   assert.match(storyboard, /shots-preview\/attempt-\d+-\d+\//)
+})
+
+test("a short from two videos: shots name their video, are checked against its ads, and draw from it", async () => {
+  const seen: Array<AgentTask<Schema.Top>> = []
+  const twoVideos = AgentSession.replay((task) => {
+    seen.push(task)
+    const shots = [{ word: 0, src: 10, note: "him" }, { word: 2, src: 20, note: "tasting" }]
+    return seen.length === 1
+      // V2's shot sits in V2's sponsor read
+      ? { shots: [...shots, { word: 4, src: 2, video: 2, note: "chemist" }], markers: [] }
+      : { shots: [...shots, { word: 4, src: 12, video: 2, note: "chemist" }], markers: [] }
+  })
+  const rt = runtime(twoVideos)
+  const projectId = await rt.runPromise(Effect.gen(function*() {
+    const sources = yield* Sources
+    const artifacts = yield* Artifacts
+    const video = Effect.fn(function*(url: string, lavfi: string, words: ReadonlyArray<{ w: string; s: number; e: number }>, ads: ReadonlyArray<{ start: number; end: number }>) {
+      const source = yield* sources.create({ origin: { _tag: "Url", url }, rights: "owned", rightsNote: null })
+      const owner = { _tag: "Source", id: source.id } as const
+      const slot = yield* artifacts.allocate(owner, "source-video")
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", lavfi, join(slot.dir, "source.mp4")])
+      yield* artifacts.record(slot, { data: null, path: join(slot.relDir, "source.mp4") })
+      const tx = yield* artifacts.allocate(owner, "transcript")
+      writeFileSync(join(tx.dir, "transcript.json"), JSON.stringify(transcriptOf(words)))
+      yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
+      yield* artifacts.record(yield* artifacts.allocate(owner, "ad-ranges"), {
+        data: { ranges: ads.map((a) => ({ ...a, kind: "sponsor", evidence: "x" })) },
+        path: null
+      })
+      return source
+    })
+    const v1 = yield* video("https://youtu.be/a", "testsrc=d=60:s=320x180:r=10", [w("Nasty.", 50)], [])
+    // a square video of another size
+    const v2 = yield* video("https://youtu.be/b", "color=c=blue:d=30:s=200x200:r=10", [w("Ow,", 20), w("that", 20.4), w("hurts.", 20.8)], [{ start: 0, end: 5 }])
+    const project = yield* (yield* Projects).create({
+      sourceIds: [v1.id, v2.id],
+      title: "Pain science",
+      approach: "claim-interleaved",
+      presetId: null,
+      musicTrackId: null,
+      brief: "The candy, then the chemist."
+    })
+    const owner = { _tag: "Project", id: project.id } as const
+    yield* artifacts.record(yield* artifacts.allocate(owner, "script"), {
+      data: {
+        headline: null,
+        beats: [
+          { _tag: "Narration", text: "This guy tasted it." },
+          { _tag: "Real", quote: "Ow, that hurts.", start: 20, end: 21.2, source: 1 },
+          { _tag: "Narration", text: "It hurt." },
+          { _tag: "Real", quote: "Nasty.", start: 50, end: 50.4 }
+        ]
+      },
+      path: null
+    })
+    const vo = yield* artifacts.allocate(owner, "voiceover")
+    yield* artifacts.record(vo, {
+      data: { voiceId: "v", model: "eleven_v4", text: "x", characters: 1, rawPace: 2, atempo: 1, pace: 2, durationS: 3 },
+      path: join(vo.relDir, "vo.wav")
+    })
+    const voTx = yield* artifacts.allocate(owner, "voiceover-transcript")
+    writeFileSync(join(voTx.dir, "transcript.json"), JSON.stringify(transcriptOf(VO)))
+    yield* artifacts.record(voTx, { data: null, path: join(voTx.relDir, "transcript.json") })
+    return project.id
+  }))
+
+  await rt.runPromise(Effect.gen(function*() {
+    const runs = yield* RunManager
+    const run = yield* runs.start({ _tag: "Project", id: projectId }, null)
+    yield* runs.subscribe(run.id, 0).pipe(
+      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RequestRaised"),
+      Stream.runDrain
+    )
+    yield* runs.cancel(run.id)
+  }))
+
+  assert.equal(seen.length, 2)
+  assert.match(seen[0]!.message, /REAL after word 3 "it\.": "Ow, that hurts\." \(V2 20\.0–21\.2s\)/)
+  assert.match(seen[0]!.message, /Excluded ranges in V2.*0–5s/)
+  assert.match(seen[1]!.message, /shot 3 \(word 4 "It", V2\) plays 2\.0–.*inside an excluded range/)
+
+  const plan = await rt.runPromise(Effect.gen(function*() {
+    const artifact = Option.getOrThrow(yield* (yield* Artifacts).latest({ _tag: "Project", id: projectId }, "shot-plan"))
+    return yield* Schema.decodeUnknownEffect(ShotPlan)(artifact.data)
+  }))
+  assert.equal(plan.shots[2]!.source, 1, "stored as V2's position")
+  assert.equal("source" in plan.shots[0]!, false, "a V1 shot has no source")
+  assert.equal(plan.inserts[0]!.source, 1, "the real line keeps its video")
+  assert.equal(plan.outro[0]!.source, undefined)
+  assert.equal(plan.storyboard, "storyboard.png", "the storyboard was drawn from both videos")
+
+  const [detail, preview] = seen[0]!.tools!
+  const sheet = await Effect.runPromise(detail!.run({ start: 10, end: 20, video: 2 }))
+  assert.match(sheet, /\/v2\/10-20\/.*\(V2 10–\d+s\)/, "V2's detail sheet")
+  assert.match(await Effect.runPromise(detail!.run({ start: 0, end: 10, video: 3 })), /there's no V3/)
+  const drawn = await Effect.runPromise(preview!.run({
+    shots: [{ word: 0, src: 10, note: "him" }, { word: 2, src: 20, note: "tasting" }, { word: 4, src: 12, video: 2, note: "chemist" }],
+    markers: []
+  }))
+  assert.match(drawn, /shot 3 \(word 4 "It", V2 12\.0s, chemist\)/)
+  await rt.dispose()
 })

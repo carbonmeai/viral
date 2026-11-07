@@ -9,7 +9,9 @@ Usage:
   uv run render-narrated.py <plan.json> [--out out.mp4] [--keep-temp]
 
 Plan schema: NarratedPlan in packages/contracts/src/narrated-plan.ts. Relative paths in the plan
-resolve against the plan file's folder.
+resolve against the plan file's folder. A short from several videos lists V2… in `sources`
+([{path, transcript}]); a shot, insert or outro clip with `source: 1` plays from the first of them
+(absent = 0 = `source`, V1), and `exclude_by_source` ({"1": [[a, b]]}) holds their excluded ranges.
 
 Ported from the viral-shorts skill's render_narrated.py. The rendering is unchanged; only reporting
 changed: stdout carries one JSON object per line for the server to decode:
@@ -349,10 +351,25 @@ def main() -> None:
     plan_path = Path(args.plan).resolve()
     base = plan_path.parent
     plan = json.loads(plan_path.read_text())
-    src = resolve(base, plan["source"])
+    # the short's videos: V1 is `source`, V2… are `sources`; each clip names its own by index (absent = V1)
+    srcs = [{"path": plan["source"], "transcript": plan.get("source_transcript")}] + plan.get("sources", [])
+    paths = [resolve(base, s["path"]) for s in srcs]
     vo = resolve(base, plan["voiceover"])
     vo_words = words_of(resolve(base, plan["voiceover_transcript"]))
-    src_words = words_of(resolve(base, plan["source_transcript"])) if plan.get("source_transcript") else []
+    words_cache: dict[int, list[dict]] = {}
+
+    def video_of(clip: dict, label: str) -> int:
+        i = int(clip.get("source", 0))
+        if not 0 <= i < len(srcs):
+            fail("unknown-source", f"{label} plays from video {i + 1}, but the plan has {len(srcs)}")
+        return i
+
+    def src_words(i: int) -> list[dict]:
+        """A video's transcript words, read the first time a clip of it needs captions."""
+        if i not in words_cache:
+            t = srcs[i].get("transcript")
+            words_cache[i] = words_of(resolve(base, t)) if t else []
+        return words_cache[i]
     lay = Layout(plan)
     slug = plan.get("slug", plan_path.stem)
     out = Path(args.out).resolve() if args.out else base / "shorts" / f"{slug}.mp4"
@@ -361,14 +378,17 @@ def main() -> None:
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
 
-    # sponsor reads / ads / end screens must never appear in a short
-    excluded = [(float(a), float(b)) for a, b in plan.get("exclude", [])]
+    # sponsor reads / ads / end screens must never appear in a short; `exclude` is V1's, `exclude_by_source` the others'
+    excluded = {0: [(float(a), float(b)) for a, b in plan.get("exclude", [])]}
+    for key, ranges in plan.get("exclude_by_source", {}).items():
+        excluded[int(key)] = [(float(a), float(b)) for a, b in ranges]
 
-    def check(label: str, s: float, e: float) -> None:
-        for a, b in excluded:
+    def check(label: str, s: float, e: float, video: int = 0) -> None:
+        for a, b in excluded.get(video, []):
             if s < b and e > a:
+                where = f"video {video + 1} " if len(srcs) > 1 else ""
                 fail("excluded-range",
-                     f"{label} uses source {s:.1f}-{e:.1f}s, which overlaps excluded range {a}-{b}s (ad/sponsor)")
+                     f"{label} uses {where}source {s:.1f}-{e:.1f}s, which overlaps excluded range {a}-{b}s (ad/sponsor)")
 
     vo_dur = duration(vo)
     narr_end = float(plan.get("narration_end", vo_dur))
@@ -412,9 +432,10 @@ def main() -> None:
         dur = end - sh["at"]
         if dur <= 0.03:
             continue
-        check(f"shot at {sh['at']}s", float(sh["src"]), float(sh["src"]) + dur * float(sh.get("speed", 1.0)))
+        v = video_of(sh, f"shot at {sh['at']}s")
+        check(f"shot at {sh['at']}s", float(sh["src"]), float(sh["src"]) + dur * float(sh.get("speed", 1.0)), v)
         p = tmp / f"shot_{i:03d}.mp4"
-        cut(src, float(sh["src"]), dur, lay, p, sh, with_audio=False)
+        cut(paths[v], float(sh["src"]), dur, lay, p, sh, with_audio=False)
         parts.append(p)
         progress("shots", i + 1, len(shots))
     lst = tmp / "shots.txt"
@@ -445,13 +466,14 @@ def main() -> None:
                      "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
                 segs.append(piece)
             s0, e0 = float(ins["start"]), float(ins["end"])
-            check(f"insert {k}", s0, e0)
+            v = video_of(ins, f"insert {k}")
+            check(f"insert {k}", s0, e0, v)
             clip = tmp / f"insert_{k:02d}.mp4"
-            cut(src, s0, e0 - s0, lay, clip, ins, with_audio=True)
+            cut(paths[v], s0, e0 - s0, lay, clip, ins, with_audio=True)
             segs.append(clip)
             # where the clip starts in the output: after every earlier insert, including one at the same word
             t0 = ins["at"] + sum(i["dur"] for i in inserts[:k])
-            said = [w for w in src_words if w["s"] >= s0 - 0.01 and w["e"] <= e0 + 0.01]
+            said = [w for w in src_words(v) if w["s"] >= s0 - 0.01 and w["e"] <= e0 + 0.01]
             if ins.get("captions", True):
                 caption_words += [{"w": w["w"], "s": t0 + w["s"] - s0, "e": t0 + w["e"] - s0, "real": True} for w in said]
                 real_clips.append((t0, t0 + ins["dur"], " ".join(w["w"] for w in said)))
@@ -466,12 +488,13 @@ def main() -> None:
     for j, o in enumerate(outro):
         progress("outro", j, len(outro))
         s, e = float(o["start"]), float(o["end"])
-        check(f"outro {j}", s, e)
+        v = video_of(o, f"outro {j}")
+        check(f"outro {j}", s, e, v)
         p = tmp / f"outro_{j}.mp4"
-        cut(src, s, e - s, lay, p, o, with_audio=True)
+        cut(paths[v], s, e - s, lay, p, o, with_audio=True)
         segs.append(p)
         if o.get("captions", True):
-            said = [w for w in src_words if w["s"] >= s - 0.01 and w["e"] <= e + 0.01]
+            said = [w for w in src_words(v) if w["s"] >= s - 0.01 and w["e"] <= e + 0.01]
             caption_words += [{"w": w["w"], "s": t + w["s"] - s, "e": t + w["e"] - s, "real": True} for w in said]
             real_clips.append((t, t + e - s, " ".join(w["w"] for w in said)))
         t += e - s

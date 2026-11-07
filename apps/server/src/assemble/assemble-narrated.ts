@@ -33,7 +33,13 @@ export interface NarratedInput {
   readonly shots: ShotPlan
   // sponsor reads, ads and end screens, in source seconds
   readonly excluded: ReadonlyArray<{ readonly start: number; readonly end: number }>
-  // "Video: <channel>" when the footage isn't yours, else null
+  // the short's other videos, V2 first (absolute paths and their own excluded ranges); none for a single-video short
+  readonly others?: ReadonlyArray<{
+    readonly source: string
+    readonly sourceTranscript: string
+    readonly excluded: ReadonlyArray<{ readonly start: number; readonly end: number }>
+  }>
+  // "Video: <channel>" (every credited channel, "Video: A · B") when the footage isn't yours, else null
   readonly credit: string | null
   // the short's track, used when its BPM and drop are known, with its absolute path
   readonly music: { readonly track: MusicTrack; readonly file: string } | null
@@ -86,12 +92,18 @@ export const assembleNarrated = (input: NarratedInput): NarratedPlan => {
     }
     : {}
   const annotations = shots.markers.flatMap((m) => marker(m, words, preset.labels))
+  const others = input.others ?? []
+  // a clip's video, only when it isn't V1, so a single-video plan is written exactly as before
+  const from = (source: number | undefined) => source === undefined || source === 0 ? {} : { source }
+  const range = (r: { readonly start: number; readonly end: number }) => [r.start, r.end] as const
+  const excludedByVideo = others.flatMap((o, i) => o.excluded.length === 0 ? [] : [[String(i + 1), o.excluded.map(range)] as const])
 
   return {
     slug: input.slug,
     title: input.title,
     source: input.source,
     source_transcript: input.sourceTranscript,
+    ...(others.length === 0 ? {} : { sources: others.map((o) => ({ path: o.source, transcript: o.sourceTranscript })) }),
     voiceover: input.voiceover,
     voiceover_transcript: input.voiceoverTranscript,
     canvas: [preset.canvas[0], preset.canvas[1]],
@@ -109,10 +121,12 @@ export const assembleNarrated = (input: NarratedInput): NarratedPlan => {
     highlights: Object.fromEntries(shots.highlights.map((h) =>
       typeof h === "string" ? [h, captions.highlight] : [h.word, h.color === "accent" ? captions.highlight : HIGHLIGHT_COLORS[h.color]]
     )),
-    exclude: input.excluded.map((r) => [r.start, r.end] as const),
+    exclude: input.excluded.map(range),
+    ...(excludedByVideo.length === 0 ? {} : { exclude_by_source: Object.fromEntries(excludedByVideo) }),
     exclude_note: "sponsor reads, ads and end screens",
     shots: shots.shots.map((shot) => ({
       src: shot.src,
+      ...from(shot.source),
       word: shot.word,
       word_text: shot.wordText,
       ...(shot.fit === undefined ? {} : { fit: shot.fit }),
@@ -123,11 +137,12 @@ export const assembleNarrated = (input: NarratedInput): NarratedPlan => {
     inserts: shots.inserts.map((clip) => ({
       start: clip.start,
       end: clip.end,
+      ...from(clip.source),
       after_word: clip.afterWord,
       after_word_text: clip.afterWordText,
       note: clip.quote
     })),
-    outro: shots.outro.map((clip) => ({ start: clip.start, end: clip.end, note: clip.quote })),
+    outro: shots.outro.map((clip) => ({ start: clip.start, end: clip.end, ...from(clip.source), note: clip.quote })),
     ...(annotations.length === 0 ? {} : { annotations }),
     ...music,
     lufs: preset.loudnessLufs

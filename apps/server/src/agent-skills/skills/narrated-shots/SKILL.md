@@ -42,3 +42,12 @@ description: How to plan the shots of a narrated short (any narrated approach). 
 - **Outro clips** play after the last narrated line: the final reaction, or the joke button.
 - **Every real clip is exact source seconds** from the transcript's word timings: start on the first word,
   end just after the last, and keep it clear of excluded ranges.
+
+## Shorts from several videos
+
+- **Every shot names its video** (`video`: its V number, as the brief labels them) and uses that video's own
+  seconds. A wrong video with a valid time shows the wrong footage, so check the storyboard's V labels.
+- **A cut between videos is allowed anywhere,** but the first shot from each new video should sit under the
+  narration that introduces it, so the viewer knows why the footage changed.
+- **Each video's excluded ranges are its own.** Keep every shot and real clip clear of the ranges listed for
+  the video it plays from.

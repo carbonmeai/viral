@@ -4,12 +4,12 @@ import { AdRange } from "./ads.ts"
 import { Project } from "./projects.ts"
 import { Run, StageRun } from "./runs.ts"
 import {
-  MAX_SHORT_SOURCES,
   Source,
   SourceId,
   SourceIndex,
   SourceNotFound,
   SourceSetId,
+  VideoNumber,
   VideoSetNotFound
 } from "./sources.ts"
 import { Proposal, StoryBeat, StoryQuote } from "./story.ts"
@@ -26,9 +26,8 @@ export const VideoSet = Schema.Struct({
 })
 export type VideoSet = typeof VideoSet.Type
 
-// What the agent proposes, numbering the videos as it reads them: V1 = 1. The server checks it and stores a
-// SetStory, whose `source` fields are set positions (V1 = 0) like every other clip reference.
-export const VideoNumber = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_SHORT_SOURCES }))
+// What the agent proposes, numbering the videos as it reads them (VideoNumber: V1 = 1). The server checks it and
+// stores a SetStory, whose `source` fields are set positions (V1 = 0) like every other clip reference.
 
 export const ProposedSetBeat = Schema.Struct({
   // which video the beat is in

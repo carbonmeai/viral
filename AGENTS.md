@@ -47,7 +47,10 @@ apps/server/src/
                        `Projects.fromSetProposal` makes a short from a proposal's videos (set order) and the set's brief
   assemble/            the assemble stage: shot plan + preset (+ music with a known drop) → the renderer's
                        narrated plan, or a cut-down short's sections + preset → the cut-down renderer's plan;
-                       deterministic, so a short re-renders in another style without agent work
+                       deterministic, so a short re-renders in another style without agent work. A narrated short
+                       from several videos lists V2… in the plan's `sources` and their ads in `exclude_by_source`;
+                       the credit names each channel that isn't yours (projects/credits.ts, "Video: A · B").
+                       Cut-down still stops on a section from another video (M5)
   music-bed/           a short's own music bed: the library holds raw songs only, never changed. Assemble fits the
                        short's song to it (render/fit-music.py: the groove looped in whole bars so the song's drop
                        lands on the drop word) and records a `music-bed` artifact (the wav + which parts of the song
@@ -66,7 +69,8 @@ apps/server/src/
                        word keeps it (a "drop" block follows the word); one that no longer fits falls back to
                        automatic with a note. Cut-down shorts have no bed
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
-                       srt and <slug>.md into ~/.viral/renders/
+                       srt and <slug>.md into ~/.viral/renders/. Several videos: each one labelled with what it
+                       brings (the set story's line, else its own story), and the credit lists every channel
   thumbnail/           the thumbnail stage, last in both pipelines (gated): a vision agent (thumbnails skill) picks
                        the layout, the hero moment and crop, the strongest reaction face, the colours and the words,
                        with `contact_sheet` and `preview_thumbnail`; crops are frame fractions turned into pixels.
@@ -99,8 +103,12 @@ apps/server/src/
                        sourcesOf(project)); several need a brief. A clip's optional `source` is its video's index
                        (absent = V1, so single-video plans are written as before). source-context.ts is what the
                        checks see per video (words, length, excluded ranges); ProjectSources loads a short's videos.
-                       Agents, the workspace and the renderers use V1 only until multi-video lands (assemble stops a
-                       plan with a clip from another video). A short's optional
+                       videos-brief.ts lays several videos out for an agent (V labels, "[V2 12.0–13.5] text" lines,
+                       whole transcripts under ~160k characters, else outlines + the transcript tools); agents
+                       answer with 1-based `video` numbers (ProposedScript, ProposedShots), stored as 0-based
+                       `source`. Narrated shorts use every video (script, shots, assemble, render, metadata);
+                       sections and the thumbnail still see V1 (M5, M6). GetShortWorkspace's `videos` lists each
+                       one (position = colour index). A short's optional
                        brief (what it should achieve; CreateProject/CreateProjectFromProposal, SetProjectBrief) goes
                        first in the script, shots, sections, thumbnail and metadata prompts (creator-brief.ts)
   presets/             style profiles; one default, seeded on first start. Edits (UpdatePreset) and renames
@@ -119,7 +127,8 @@ apps/server/src/
                        needs it with that video's own source run through ads (two at a time, joining one already
                        going; cancelled with the set run), then runs set-story
   script/              the script stage: prompt (built on the chosen proposal's angle), per-approach rules, and
-                       the script gate
+                       the script gate. Several videos: the set proposal's angle and beats (video-sets/short-story.ts;
+                       else each video's own story beats), every video's transcript, real lines checked per video
   voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
                        silence trimmed, atempo to the preset's words/sec, local-Whisper word timings, voice gate.
                        The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice.
@@ -133,6 +142,8 @@ apps/server/src/
   shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
                        asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
                        script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate.
+                       Several videos: each video's sheets, ads and transcript; `contact_sheet {video}`; each shot
+                       names its video; storyboard tiles carry their own video and a V label.
                        Frames are always kept one image per file (contact sheets: frames/frame_NNNNN.jpg;
                        shot plans: frames/shot-NN.jpg…) and stitched from those, so clients can offer any frame
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
@@ -165,7 +176,10 @@ apps/server/src/
                        blurred fill, 3-word captions, hook title card, credit; render-narrated.py is the viral-shorts renderer;
                        music_bed.py is its music-bed math, shared with fit-music.py,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
-                       headline, chunk/quote captions, labels, credit). Two goldens: the original candy short
+                       headline, chunk/quote captions, labels, credit). render-narrated.py plays each clip from its
+                       own video (`source` index into [source, ...sources]) and checks it against that video's ranges;
+                       render-narrated-videos.test.ts renders two generated videos and checks colour and pitch.
+                       Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
 apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atoms over the RPC client), feature-based

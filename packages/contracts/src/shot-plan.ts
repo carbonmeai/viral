@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { SourceIndex } from "./sources.ts"
+import { SourceIndex, VideoNumber } from "./sources.ts"
 
 // What the shots agent proposes: b-roll anchored to voiceover words, and a few markers. Word indexes point
 // into the voiceover transcript's words, counted from 0.
@@ -47,6 +47,23 @@ export const ShotProposal = Schema.Struct({
   highlights: Schema.optionalKey(Schema.Array(Highlight))
 })
 export type ShotProposal = typeof ShotProposal.Type
+
+// What the shots agent sends: the same plan, with each shot's video numbered as the agent reads it (V2 = 2;
+// absent = V1). The server checks it and keeps a ShotProposal, whose `source` is the position (V2 = 1).
+const { word, src, fit, cropX, speed, note } = PlannedShot.fields
+export const ProposedShot = Schema.Struct({
+  word,
+  src,
+  fit,
+  cropX,
+  speed,
+  note,
+  // which video the footage is from, by its V number; leave it out when the short has one video
+  video: Schema.optionalKey(VideoNumber)
+})
+export type ProposedShot = typeof ProposedShot.Type
+export const ProposedShots = Schema.Struct({ ...ShotProposal.fields, shots: Schema.Array(ProposedShot) })
+export type ProposedShots = typeof ProposedShots.Type
 
 // A real-voice clip from the script: an insert plays after voiceover word `afterWord`; an outro clip plays
 // after the narration ends.

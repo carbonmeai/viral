@@ -8,6 +8,7 @@ Usage:
   uv run storyboard.py <video> <spec.json> <out.png>
 
 spec.json: {"cols": 6, "tiles": [{"t": 25.0, "label": "1  w0 This", "kind": "shot", "file": "frames/shot-01.jpg"}, ...]}.
+A tile may name its own "video" (a short from several videos); the others use <video>.
 Each tile's frame is saved on its own at `file` (relative to out.png's folder), then the frames are stitched
 into out.png; kind "real" tiles (inserts and outro clips) get a red frame. stdout carries one JSON object per
 line: {"type": "progress", "done": 3, "total": 30}, an error line, or {"type": "done", "tiles": 30}.
@@ -17,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 TILE_W = 320
 LABEL_H = 26
@@ -38,7 +39,7 @@ def main() -> None:
     for i, tile in enumerate(tiles):
         fp = out.parent / tile["file"]
         fp.parent.mkdir(parents=True, exist_ok=True)
-        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{float(tile['t']):.3f}", "-i", video,
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{float(tile['t']):.3f}", "-i", tile.get("video", video),
                             "-frames:v", "1", "-vf", f"scale={TILE_W}:-2", str(fp)], capture_output=True, text=True)
         if r.returncode != 0 or not fp.exists():
             fail("ffmpeg", f"no frame at {tile['t']}s: {r.stderr.strip()[-500:]}")
@@ -50,6 +51,8 @@ def main() -> None:
     d = ImageDraw.Draw(board)
     for i, (tile, frame) in enumerate(zip(tiles, frames)):
         x, y = (i % cols) * TILE_W, (i // cols) * (th + LABEL_H)
+        if frame.height != th:  # another video's frame size: fitted into the tile, letterboxed
+            frame = ImageOps.pad(frame, (TILE_W, th), color="black")
         board.paste(frame, (x, y + LABEL_H))
         real = tile.get("kind") == "real"
         d.text((x + 6, y + 4), str(tile["label"])[:40], font=font, fill="#FF5A4F" if real else "yellow")

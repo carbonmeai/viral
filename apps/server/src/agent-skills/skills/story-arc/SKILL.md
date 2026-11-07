@@ -71,3 +71,11 @@ loop, say) is a weak short, so fix the hook or drop the candidate.
 - **Hook text** restates the open loop in 7 words or fewer and makes sense with the sound off.
 - **Never invent facts or words.** Everything comes from what the video shows or says.
 - **No sponsor reads, ads, QR codes or end screens, ever.**
+
+## Scripts from several videos
+
+- **One narrator ties the videos together.** The first time a video's footage or voice comes in, a narrated
+  line says who or what it is ("Then a chemist tried the same candy").
+- **Every real line names its video** (`video`: its V number) and is quoted from that video's transcript,
+  at that video's seconds. Never move a quote to a video that didn't say it.
+- **Use the fewest videos that tell the story.** A video earns its place with a line or a moment only it has.

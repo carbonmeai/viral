@@ -23,8 +23,13 @@ const Framing = {
   zoom: Schema.optionalKey(Schema.Finite)
 }
 
+// Which of the plan's videos a clip plays from: 0 = `source` (V1), 1 = `sources[0]` (V2)… Absent = V1, so a
+// single-video plan is written exactly as before.
+const ClipSource = { source: Schema.optionalKey(Schema.Int) }
+
 export const NarratedShot = Schema.Struct({
   src: Seconds,
+  ...ClipSource,
   ...WordAnchor,
   ...Framing,
   speed: Schema.optionalKey(Schema.Finite),
@@ -37,6 +42,7 @@ export type NarratedShot = typeof NarratedShot.Type
 export const NarratedInsert = Schema.Struct({
   start: Seconds,
   end: Seconds,
+  ...ClipSource,
   after_word: Schema.Int,
   after_word_text: Schema.optionalKey(Schema.String),
   ...Framing,
@@ -49,6 +55,7 @@ export type NarratedInsert = typeof NarratedInsert.Type
 export const NarratedOutro = Schema.Struct({
   start: Seconds,
   end: Seconds,
+  ...ClipSource,
   ...Framing,
   captions: Schema.optionalKey(Schema.Boolean),
   note: Schema.optionalKey(Schema.String)
@@ -133,6 +140,8 @@ export const NarratedPlan = Schema.Struct({
   title: Schema.optionalKey(Schema.String),
   source: Schema.String,
   source_transcript: Schema.optionalKey(Schema.String),
+  // the short's other videos, V2 first: a clip with `source: 1` plays from the first of these
+  sources: Schema.optionalKey(Schema.Array(Schema.Struct({ path: Schema.String, transcript: Schema.optionalKey(Schema.String) }))),
   voiceover: Schema.String,
   voiceover_transcript: Schema.String,
   canvas: Schema.optionalKey(Schema.Tuple([Schema.Int, Schema.Int])),
@@ -162,6 +171,8 @@ export const NarratedPlan = Schema.Struct({
   highlights: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   // sponsor/ad/end-screen source ranges; the renderer fails if a shot touches one
   exclude: Schema.optionalKey(Schema.Array(SourceRange)),
+  // the same for the other videos, by clip source index ("1" = V2); `exclude` stays V1's
+  exclude_by_source: Schema.optionalKey(Schema.Record(Schema.String, Schema.Array(SourceRange))),
   exclude_note: Schema.optionalKey(Schema.String),
   narration_end: Schema.optionalKey(Seconds),
   shots: Schema.Array(NarratedShot),

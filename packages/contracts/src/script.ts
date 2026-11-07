@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { SourceIndex } from "./sources.ts"
+import { SourceIndex, VideoNumber } from "./sources.ts"
 
 // One beat of a narrated short: a line the narrator says, or a real line from the long video played in its
 // own audio. Real lines carry exact source seconds, checked against their video's transcript.
@@ -22,3 +22,18 @@ export const Script = Schema.Struct({
   beats: Schema.Array(ScriptBeat)
 })
 export type Script = typeof Script.Type
+
+// What the script agent sends: the same beats, with a real line's video numbered as the agent reads it (V2 = 2;
+// absent = V1). The server checks it and stores a Script, whose `source` is the position (V2 = 1).
+export const ProposedScriptBeat = Schema.Union([
+  Schema.TaggedStruct("Narration", { text: Schema.String }),
+  Schema.TaggedStruct("Real", {
+    quote: Schema.String,
+    start: Schema.Finite,
+    end: Schema.Finite,
+    // which video it's from, by its V number; leave it out when the short has one video
+    video: Schema.optionalKey(VideoNumber)
+  })
+])
+export const ProposedScript = Schema.Struct({ headline: Script.fields.headline, beats: Schema.Array(ProposedScriptBeat) })
+export type ProposedScript = typeof ProposedScript.Type

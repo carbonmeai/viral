@@ -96,7 +96,6 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         const project = yield* projects.get(projectId)
         const owner = { _tag: "Project", id: projectId } as const
         const sources = yield* sourcesFor(project)
-        // the editor shows V1 for now; every video's details come with multi-video shorts
         const [v1] = sources
         const source = v1.source
         const preset = project.presetId === null
@@ -147,12 +146,19 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
               thumbnail: fileIn(rendersFolder, thumbnailPublished ? publishedThumbnail : null)
             })
         })
-        const sourceVideo = yield* artifacts.latest(v1.owner, "source-video")
+        const videos = yield* Effect.forEach(sources, (s) =>
+          Effect.map(artifacts.latest(s.owner, "source-video"), (video) => ({
+            position: s.index,
+            source: s.source,
+            video: Option.getOrNull(Option.flatMapNullishOr(video, (a) => a.path)),
+            seconds: s.seconds
+          })))
         const cut = project.format === "cut-down" && Option.isSome(sectionSources(sources)) ? Option.some(v1) : Option.none<ProjectSource>()
 
         return {
           project,
           source,
+          videos,
           preset,
           voiceId: project.voiceId ?? preset.config.voice.voiceId,
           scriptLimits: limits === undefined
@@ -179,7 +185,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
             files: { folder: home.renders, thumbnail: thumbnailPublished ? publishedThumbnail : null }
           }))),
           thumbnail: Option.getOrNull(Option.map(thumbnail, (a) => ({ version: a.version, path: a.path, thumbnail: a.data }))),
-          sourceVideo: Option.getOrNull(Option.flatMapNullishOr(sourceVideo, (a) => a.path)),
+          sourceVideo: videos[0]?.video ?? null,
           cutSource: Option.getOrNull(Option.map(cut, (c) => ({
             words: c.words,
             sourceSeconds: c.seconds,

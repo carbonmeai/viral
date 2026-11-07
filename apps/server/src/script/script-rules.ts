@@ -1,5 +1,5 @@
-import type { ApproachName, Script, ScriptBeat } from "@viral/contracts"
-import { clipSource, type SourceContext, sourceField } from "../projects/source-context.ts"
+import type { ApproachName, ProposedScript, Script, ScriptBeat, SourceIndex } from "@viral/contracts"
+import { clipSource, type SourceContext, sourceField, sourceLabel } from "../projects/source-context.ts"
 import { locateQuote } from "../transcribe/quote-match.ts"
 
 export interface ScriptLimits {
@@ -28,6 +28,17 @@ const countWords = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w
 export const narrationWords = (script: Script) =>
   script.beats.reduce((n, beat) => n + (beat._tag === "Narration" ? countWords(beat.text) : 0), 0)
 
+// What the agent sent as a Script: a real line's V number becomes its position (V2 → source 1; V1 left out). A V
+// number the short doesn't have is kept as a position, for checkScript to name.
+export const fromProposedScript = (proposed: ProposedScript): Script => ({
+  headline: proposed.headline,
+  beats: proposed.beats.map((beat) => {
+    if (beat._tag === "Narration") return beat
+    const { video, ...rest } = beat
+    return { ...rest, ...sourceField(video === undefined ? undefined : (video - 1) as SourceIndex) }
+  })
+})
+
 // Checks a script against its approach and the short's videos (V1 first), and snaps every real line to its own
 // video's exact word timings. Returns the snapped script and a list of problems, empty when the script is good.
 export const checkScript = (
@@ -46,7 +57,8 @@ export const checkScript = (
     const { words, excluded: ads } = video.source
     const span = locateQuote(words, beat.quote, beat.start)
     if (span === null) {
-      problems.push(`beat ${i + 1}: "${beat.quote}" isn't in the transcript near ${beat.start.toFixed(1)}s; quote the words exactly as spoken`)
+      const where = sources.length > 1 ? `${sourceLabel(beat.source ?? 0)}'s transcript` : "the transcript"
+      problems.push(`beat ${i + 1}: "${beat.quote}" isn't in ${where} near ${beat.start.toFixed(1)}s; quote the words exactly as spoken`)
       return beat
     }
     const length = span.end - span.start
