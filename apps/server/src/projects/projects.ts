@@ -20,9 +20,11 @@ import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
+import { arrangementKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { DatabaseLive } from "../persistence/database.ts"
 import { Presets } from "../presets/presets.ts"
+import { Settings } from "../settings/settings.ts"
 import { Sources } from "../sources/sources.ts"
 import { projectSlug } from "./project-slug.ts"
 
@@ -98,6 +100,7 @@ export class Projects extends Context.Service<Projects, {
       const presets = yield* Presets
       const music = yield* MusicLibrary
       const artifacts = yield* Artifacts
+      const settings = yield* Settings
 
       const findAll = SqlSchema.findAll({
         Request: Schema.Void,
@@ -195,8 +198,10 @@ export class Projects extends Context.Service<Projects, {
       })
 
       const setMusic = Effect.fn("Projects.setMusic")(function*(id: ProjectId, musicTrackId: MusicTrackId | null) {
-        yield* get(id)
+        const before = yield* get(id)
         if (musicTrackId !== null) yield* music.get(musicTrackId)
+        // an arrangement is of one song: a different song starts from the automatic one again
+        if (before.musicTrackId !== musicTrackId) yield* settings.remove(arrangementKey(id))
         const now = DateTime.formatIso(yield* DateTime.now)
         yield* sql`UPDATE projects SET music_track_id = ${musicTrackId}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
         return yield* get(id)
@@ -212,7 +217,7 @@ export class Projects extends Context.Service<Projects, {
       return Projects.of({ create, fromProposal, setBrief, setVoice, setPreset, setMusic, list, get, remove })
     })
   ).pipe(
-    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer]),
+    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer, Settings.layer]),
     Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto])
   )
 }

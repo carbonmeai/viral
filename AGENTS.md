@@ -38,8 +38,18 @@ apps/server/src/
                        lands on the drop word) and records a `music-bed` artifact (the wav + which parts of the song
                        play where); the narrated plan's `music_bed` points the renderer at it, so it doesn't fit again.
                        GetMusicBed reads it; RefitMusic changes the song (or removes it) and/or the drop word
-                       (setting project.<id>.music.dropWord) and re-runs the short from assemble. Cut-down shorts
-                       have no bed
+                       (setting project.<id>.music.dropWord) and re-runs the short from assemble. A short can have
+                       its own arrangement (project.<id>.music.arrangement; none = automatic): ordered blocks of the
+                       song's bars (bar 0 the earliest whole bar before the drop), each looped N times, played after
+                       the block before or pinned to start on the drop word or any voiceover word; music_bed.py's
+                       `arrange` lays them out (lead-in ends on the first pin, gaps filled by looping in whole bars,
+                       equal-power crossfades where unrelated parts meet, the last block loops to the end). The
+                       automatic bed stays the original recipe, byte for byte, and describes itself as blocks.
+                       music-arrangement.ts checks one in plain words (MusicArrangementInvalid); ArrangeMusic sets or
+                       resets it and re-runs from assemble; PreviewMusicArrangement fits a throwaway bed in
+                       projects/<id>/music-preview/ to listen to first. A new song resets the arrangement, a new drop
+                       word keeps it (a "drop" block follows the word); one that no longer fits falls back to
+                       automatic with a note. Cut-down shorts have no bed
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
                        srt and <slug>.md into ~/.viral/renders/
   thumbnail/           the thumbnail stage, last in both pipelines (gated): a vision agent (thumbnails skill) picks
@@ -267,6 +277,7 @@ bun run cli project from-proposal <source-id> <n>
 bun run cli project style <project-id> <preset-id|default>   # see `preset list`
 bun run cli music add <file> --rights owned && bun run cli music beat <track-id> <bpm> <drop-s>
 bun run cli project music <project-id> <track-id|none>       # none = voice only
+bun run cli project music-arrange <project-id> <file.json|auto> # the bed's arrangement (blocks of bars, loops, pins)
 bun run cli project voice <project-id> <voice-id|preset>     # see `voices`
 bun run cli project run <project-id> [--from <stage>]        # stops at each gate
 bun run cli approve <request-id> | reject <request-id> "note" | edit <request-id> <file.json>

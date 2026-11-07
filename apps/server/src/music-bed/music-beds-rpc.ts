@@ -6,6 +6,8 @@ export const MusicBedsRpcLive = MusicBedsRpcs.toLayer(Effect.gen(function*() {
   const beds = yield* MusicBeds
   return MusicBedsRpcs.of({
     GetMusicBed: ({ projectId }) => beds.get(projectId),
-    RefitMusic: ({ projectId, trackId, dropWord }) => beds.refit(projectId, trackId, dropWord)
+    RefitMusic: ({ projectId, trackId, dropWord }) => beds.refit(projectId, trackId, dropWord),
+    ArrangeMusic: ({ projectId, arrangement }) => beds.arrange(projectId, arrangement),
+    PreviewMusicArrangement: ({ projectId, arrangement }) => beds.preview(projectId, arrangement)
   })
 }))

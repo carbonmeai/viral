@@ -29,7 +29,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from music_bed import build_music  # needs numpy (in this script's dependencies)
+from music_bed import arrangement_of, build_music  # needs numpy (in this script's dependencies)
 
 FPS = 30
 # Caption font. Arial Rounded Bold is macOS-only and can't be redistributed; set VIRAL_CAPTION_FONT
@@ -558,7 +558,7 @@ def main() -> None:
                 else:
                     drop_at = float(mcfg.get("drop_at", narr_end))
                 built = tmp / "music_built.wav"
-                build_music(mcfg, base, drop_at, total, built)
+                build_music(mcfg, base, drop_at, total, built, arrangement_of(mcfg, plan, vo_words))
             inputs += ["-i", str(built)]
             start = 0.0
             emit({"type": "log", "message": f"music: drop lands at {drop_at:.2f}s (song {mcfg['drop']}s)"})

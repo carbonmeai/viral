@@ -51,6 +51,7 @@ const program = Effect.gen(function*() {
     MusicTrackNotFound: (e) => Console.error(`no music track ${e.id}`),
     MusicAnalysisError: (e) => Console.error(`couldn't analyse the track (${e.code}): ${e.message}`),
     MusicFileUnreadable: (e) => Console.error(`can't read ${e.file}: ${e.message}`),
+    MusicArrangementInvalid: (e) => Console.error(`the arrangement can't be played:\n${e.problems.map((p) => `  - ${p}`).join("\n")}`),
     SchemaError: (e) => Console.error(e.message),
     RunNotFound: (e) => Console.error(`no run ${e.id}`),
     RequestNotPending: (e) => Console.error(`request ${e.id} isn't waiting for an answer`)

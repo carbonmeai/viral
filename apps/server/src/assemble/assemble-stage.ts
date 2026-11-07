@@ -1,10 +1,11 @@
 import { NodeServices } from "@effect/platform-node"
-import { AdRanges, type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan, NarratedPlan, type ProjectId, Script, ShotPlan, Transcript } from "@viral/contracts"
+import { AdRanges, type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan, MusicArrangement, NarratedPlan, type ProjectId, Script, ShotPlan, Transcript } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { MusicBedFitter } from "../music-bed/music-bed-fitter.ts"
-import { dropWordKey } from "../music-bed/music-bed-settings.ts"
+import { checkArrangement, planArrangement, wordStartsInShort } from "../music-bed/music-arrangement.ts"
+import { arrangementKey, dropWordKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { Presets } from "../presets/presets.ts"
 import { Projects } from "../projects/projects.ts"
@@ -109,17 +110,39 @@ export class AssembleStage extends Context.Service<AssembleStage, {
         if (track !== null && assembled.music === undefined) {
           yield* ctx.progress(null, `"${track.title}" has no BPM or drop yet, so this short goes without music`)
         }
+        // your arrangement of the song, when you made one and it still fits the short (a new voiceover can leave
+        // a pinned word behind); otherwise the automatic one
+        const stored = Option.getOrNull(yield* settings.get(arrangementKey(project.id), MusicArrangement))
+        const arrangement = stored === null || track === null || typeof assembled.music !== "object" || track.bpm === null || track.dropS === null
+          ? null
+          : yield* Effect.gen(function*() {
+            const problems = checkArrangement(stored, {
+              barS: 240 / track.bpm!,
+              songDropS: track.dropS!,
+              songDurationS: track.durationS,
+              dropWord,
+              words: wordStartsInShort(assembled, words),
+              durationS: null
+            })
+            if (problems.length === 0) return stored
+            yield* ctx.progress(null, `your music arrangement no longer fits this short (${problems[0]}), so the automatic one is used`)
+            return null
+          })
+        const withArrangement: NarratedPlan = arrangement === null || typeof assembled.music !== "object"
+          ? assembled
+          : { ...assembled, music: { ...assembled.music, arrangement: planArrangement(arrangement, dropWord) } }
         // the short gets its own fitted bed, saved with it; the library song is never changed
         // only a song with a known drop is fitted; a plain looped track (a file name) plays as it is
-        const plan = track === null || typeof assembled.music !== "object"
-          ? assembled
+        const plan = track === null || typeof withArrangement.music !== "object"
+          ? withArrangement
           : (yield* fitter.fit({
             owner: ctx.owner,
             stageRunId: ctx.stageRunId,
-            plan: assembled,
+            plan: withArrangement,
             track,
             dropWord,
-            dropWordText: dropWord === null ? null : words[dropWord]?.w ?? null
+            dropWordText: dropWord === null ? null : words[dropWord]?.w ?? null,
+            arrangement
           }).pipe(
             Effect.tap(({ bed }) => ctx.progress(null, `music: "${bed.trackTitle}" fitted, the drop lands at ${bed.dropAtS.toFixed(1)}s`)),
             Effect.mapError((e) => fail(`music-${e.code}`, e.message))

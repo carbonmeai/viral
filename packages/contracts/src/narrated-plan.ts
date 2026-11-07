@@ -87,7 +87,19 @@ export const NarratedAnnotation = Schema.Union([
 ])
 export type NarratedAnnotation = typeof NarratedAnnotation.Type
 
-// Bar-aligned music bed: the build loops in whole bars so `drop` lands on `drop_word` (or `drop_at`).
+// A block of an arranged music bed (music_bed.py's `arrange`): the song's bars `from_bar`–`to_bar` (bar 0 is the
+// earliest whole bar before the drop, so the drop sits on a bar line), played `loops` times, straight after the
+// block before it or, with `word`, starting exactly on that voiceover word.
+export const MusicArrangementBlockConfig = Schema.Struct({
+  from_bar: Schema.Int,
+  to_bar: Schema.Int,
+  loops: Schema.Int,
+  word: Schema.optionalKey(Schema.Int)
+})
+export type MusicArrangementBlockConfig = typeof MusicArrangementBlockConfig.Type
+
+// Bar-aligned music bed: the build loops in whole bars so `drop` lands on `drop_word` (or `drop_at`); with an
+// `arrangement`, the song's blocks are laid out as it says instead.
 export const MusicConfig = Schema.Struct({
   file: Schema.String,
   drop: Seconds,
@@ -101,6 +113,7 @@ export const MusicConfig = Schema.Struct({
   drop_offset: Schema.optionalKey(Seconds),
   drop_at: Schema.optionalKey(Seconds),
   drop_gain: Schema.optionalKey(Schema.Finite),
+  arrangement: Schema.optionalKey(Schema.Array(MusicArrangementBlockConfig)),
   note: Schema.optionalKey(Schema.String)
 })
 export type MusicConfig = typeof MusicConfig.Type
