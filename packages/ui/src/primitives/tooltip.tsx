@@ -15,8 +15,8 @@ export function Tooltip({ content, children }: TooltipProps) {
     <BaseTooltip.Root>
       <BaseTooltip.Trigger render={children} />
       <BaseTooltip.Portal>
-        <BaseTooltip.Positioner sideOffset={6}>
-          <BaseTooltip.Popup className="rounded-ctl bg-pop px-2 py-1 text-xs text-fg shadow-pop">{content}</BaseTooltip.Popup>
+        <BaseTooltip.Positioner sideOffset={6} collisionPadding={8}>
+          <BaseTooltip.Popup className="max-w-[min(320px,var(--available-width))] rounded-ctl bg-pop px-2 py-1 text-xs text-fg shadow-pop">{content}</BaseTooltip.Popup>
         </BaseTooltip.Positioner>
       </BaseTooltip.Portal>
     </BaseTooltip.Root>
