@@ -1,6 +1,12 @@
 import type { GatePayload, RunUpdate } from "@viral/contracts"
 import { Console, Effect } from "effect"
 
+// "V2 " before a clip's seconds when the short draws from several videos (absent = V1); nothing for one video.
+const videoLabels = (items: ReadonlyArray<{ readonly source?: number }>) => {
+  const several = items.some((item) => item.source !== undefined)
+  return (source: number | undefined) => several ? `V${(source ?? 0) + 1} ` : ""
+}
+
 // What a gate is asking you to approve, in readable form.
 const describePayload = (payload: GatePayload | null): string => {
   if (payload === null) return ""
@@ -8,10 +14,11 @@ const describePayload = (payload: GatePayload | null): string => {
     case "ScriptGate": {
       const { script, narrationWords } = payload
       const headline = script.headline === null ? "" : `  HEADLINE  ${script.headline.join(" / ")}\n`
+      const video = videoLabels(script.beats.flatMap((beat) => beat._tag === "Narration" ? [] : [beat]))
       const beats = script.beats.map((beat) =>
         beat._tag === "Narration"
           ? `  NARRATOR  ${beat.text}`
-          : `    REAL    "${beat.quote}"  (${beat.start.toFixed(1)}–${beat.end.toFixed(1)}s)`
+          : `    REAL    "${beat.quote}"  (${video(beat.source)}${beat.start.toFixed(1)}–${beat.end.toFixed(1)}s)`
       ).join("\n")
       return `${headline}${beats}\n  ${narrationWords} narrated words\n`
     }
@@ -22,13 +29,14 @@ const describePayload = (payload: GatePayload | null): string => {
     }
     case "ShotsGate": {
       const { plan, storyboard } = payload
+      const video = videoLabels([...plan.shots, ...plan.inserts, ...plan.outro])
       const shots = plan.shots.map((shot, k) =>
-        `  ${String(k + 1).padStart(2)}  w${String(shot.word).padEnd(3)} ${shot.wordText.padEnd(12)} ${shot.src.toFixed(1).padStart(7)}s` +
+        `  ${String(k + 1).padStart(2)}  w${String(shot.word).padEnd(3)} ${shot.wordText.padEnd(12)} ${video(shot.source)}${shot.src.toFixed(1).padStart(7)}s` +
         `${shot.fit === true ? " fit" : ""}${shot.speed === undefined ? "" : ` ×${shot.speed}`}  ${shot.note}`
       ).join("\n")
       const reals = [
-        ...plan.inserts.map((i) => `  REAL after w${i.afterWord} "${i.afterWordText}": "${i.quote}"`),
-        ...plan.outro.map((o) => `  OUTRO "${o.quote}"`)
+        ...plan.inserts.map((i) => `  REAL after w${i.afterWord} "${i.afterWordText}": ${video(i.source)}"${i.quote}"`),
+        ...plan.outro.map((o) => `  OUTRO ${video(o.source)}"${o.quote}"`)
       ].join("\n")
       return `${shots}\n${reals}\n  ${plan.shots.length} shots · ${plan.markers.length} markers · storyboard ${storyboard ?? "(none)"}\n`
     }
