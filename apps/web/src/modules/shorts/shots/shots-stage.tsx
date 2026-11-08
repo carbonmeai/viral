@@ -3,6 +3,7 @@ import { IconButton } from "@viral/ui/primitives/button"
 import { cn } from "@viral/ui/cn"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Detail } from "../../system/detail.tsx"
+import { ClipBadge } from "../clip-badge.tsx"
 import { ShotPreview } from "./shot-preview.tsx"
 import { highlightWords, mmss, type ShotDraft, shotWith, storyboardOrder } from "./shots-values.ts"
 
@@ -10,7 +11,7 @@ export type ShotsView = "preview" | "storyboard"
 
 // The Shots step's stage: the selected shot as the short will show it, or every shot as a storyboard in playing
 // order with the real lines where they cut in. Clicking a tile selects that shot.
-export function ShotsStage({ plan, draft, preset, headline, view, selected, onSelect, frameOf, realFrameOf, candidate }: {
+export function ShotsStage({ plan, draft, preset, headline, view, selected, onSelect, frameOf, realFrameOf, candidate, videos }: {
   readonly plan: ShotPlan
   readonly draft: ShotDraft
   readonly preset: Preset
@@ -24,6 +25,8 @@ export function ShotsStage({ plan, draft, preset, headline, view, selected, onSe
   readonly realFrameOf: (kind: "insert" | "outro", index: number) => string | null
   // a still being tried in the frame picker, shown on the stage instead of the shot's own frame
   readonly candidate: string | null
+  // how many videos the short has (badges on each shot and real line when more than one)
+  readonly videos: number
 }) {
   const highlights = highlightWords(plan)
   const shot = plan.shots[selected]
@@ -49,6 +52,7 @@ export function ShotsStage({ plan, draft, preset, headline, view, selected, onSe
         <div className="flex shrink-0 items-center gap-3.5 px-3.5 pt-1.5 pb-2.5">
           <span className="w-[160px] text-xs text-fg-2">
             Shot {selected + 1} of {plan.shots.length}
+            {videos < 2 ? null : <ClipBadge source={now.source} videos={videos} className="ml-1.5 align-middle" />}
             <Detail><span className="text-fg-3"> · {mmss(now.src)}</span></Detail>
           </span>
           <div className="mx-auto flex items-center gap-1">
@@ -72,7 +76,10 @@ export function ShotsStage({ plan, draft, preset, headline, view, selected, onSe
               <div key={`${item.kind}-${item.index}`} className="grid content-start gap-1 rounded-ctl bg-item p-1.5">
                 <div className="relative aspect-video overflow-hidden rounded-[6px] bg-ctl-active">
                   {src === null ? null : <img src={src} alt="" className="size-full object-cover" loading="lazy" />}
-                  <span className="absolute top-1 left-1 rounded-[4px] bg-black/70 px-1 text-[10px] font-medium text-t-real">{item.kind === "insert" ? "REAL" : "END"}</span>
+                  <span className="absolute top-1 left-1 flex items-center gap-1">
+                    <span className="rounded-[4px] bg-black/70 px-1 text-[10px] font-medium text-t-real">{item.kind === "insert" ? "REAL" : "END"}</span>
+                    {videos < 2 ? null : <span className="rounded-[5px] bg-black/70"><ClipBadge source={clip.source} videos={videos} /></span>}
+                  </span>
                 </div>
                 <span className="line-clamp-2 text-xs text-t-real italic">“{clip.quote}”</span>
                 <span className="truncate text-[11px] text-fg-3">{item.kind === "insert" ? "the creator’s own voice" : "plays after the narration"}</span>
@@ -94,7 +101,10 @@ export function ShotsStage({ plan, draft, preset, headline, view, selected, onSe
             >
               <div className="relative aspect-video overflow-hidden rounded-[6px] bg-ctl-active">
                 {frameOf(item.k) === null ? null : <img src={frameOf(item.k)!} alt={s.note} className="size-full object-cover" loading="lazy" />}
-                <span className="absolute top-1 left-1 rounded-[4px] bg-black/70 px-1 text-[10px] font-medium text-white">{String(item.k + 1).padStart(2, "0")}</span>
+                <span className="absolute top-1 left-1 flex items-center gap-1">
+                  <span className="rounded-[4px] bg-black/70 px-1 text-[10px] font-medium text-white">{String(item.k + 1).padStart(2, "0")}</span>
+                  {videos < 2 ? null : <span className="rounded-[5px] bg-black/70"><ClipBadge source={shotWith(s, draft.get(item.k)).source} videos={videos} /></span>}
+                </span>
                 {changed ? <span className="absolute top-1 right-1 rounded-[4px] bg-lemon px-1 text-[10px] font-medium text-lemon-ink">edited</span> : null}
               </div>
               <span className="truncate text-xs">

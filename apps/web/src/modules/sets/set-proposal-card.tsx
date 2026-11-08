@@ -1,20 +1,39 @@
-import type { SetProposal, VideoSetShort } from "@viral/contracts"
+import { useAtomValue } from "@effect/atom-react"
+import type { SetProposal, SourceId, VideoSetShort } from "@viral/contracts"
 import { Button } from "@viral/ui/primitives/button"
 import { Status } from "@viral/ui/primitives/status"
+import { Option } from "effect"
+import { AsyncResult } from "effect/reactivity"
 import { Sparkles } from "lucide-react"
+import { serverUrl } from "../../config/server-url.ts"
+import { artifactPathUrl } from "../../lib/media-url.ts"
 import type { StatusView } from "../home/home-values.ts"
+import { framesAroundAtom, framesKey } from "../shorts/shorts-api.ts"
 import { useDetailed } from "../system/detail.tsx"
 import { SCORE_AXES } from "../videos/video-values.ts"
 import { proposalVideos } from "./set-values.ts"
 import { VideoBadge } from "./video-badge.tsx"
 
+// A still of the card's moment (a beat in one of its videos), else the video's poster while it's pulled or if it
+// can't be.
+function MomentStill({ moment, fallback }: { readonly moment: { readonly sourceId: SourceId; readonly t: number }; readonly fallback: string | null }) {
+  const result = useAtomValue(framesAroundAtom(framesKey(moment.sourceId, moment.t, 0)))
+  const frame = Option.getOrNull(AsyncResult.value(result))?.frames[0] ?? null
+  const src = frame === null ? fallback : artifactPathUrl(serverUrl, { _tag: "Source", id: moment.sourceId }, frame.path)
+  return src === null
+    ? <div className="aspect-video rounded-ctl bg-ctl-active" />
+    : <img src={src} alt="" className="aspect-video w-full rounded-ctl bg-ctl-active object-cover" loading="lazy" />
+}
+
 // One short across the set's videos: a still, which videos it uses (V badges in their colours, with titles), the
 // approach, the hook, the title, the four scores and why it works, then make it (or open the one already made).
-export function SetProposalCard({ proposal, index, titles, still, made, busy, onMake, onOpen }: {
+export function SetProposalCard({ proposal, index, titles, moment, still, made, busy, onMake, onOpen }: {
   readonly proposal: SetProposal
   readonly index: number
   // each set video's title, by position
   readonly titles: ReadonlyArray<string>
+  // the moment its still shows (a beat in one of its videos), and the poster shown otherwise
+  readonly moment: { readonly sourceId: SourceId; readonly t: number } | null
   readonly still: string | null
   readonly made: { readonly short: VideoSetShort; readonly status: StatusView | null } | null
   readonly busy: boolean
@@ -26,7 +45,7 @@ export function SetProposalCard({ proposal, index, titles, still, made, busy, on
   return (
     <article className="flex min-w-0 flex-col rounded-panel bg-panel p-1.5">
       <div className="flex flex-1 flex-col gap-2.5 rounded-[10px] bg-item p-3">
-        {still === null
+        {moment !== null ? <MomentStill moment={moment} fallback={still} /> : still === null
           ? <div className="aspect-video rounded-ctl bg-ctl-active" />
           : <img src={still} alt="" className="aspect-video w-full rounded-ctl bg-ctl-active object-cover" loading="lazy" />}
         <div className="grid gap-1">

@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { FrameAt, GateResponse, MusicTrack, MusicTrackId, ProjectId, RunId, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
+import type { GateResponse, MusicTrack, MusicTrackId, ProjectId, RunId, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Button } from "@viral/ui/primitives/button"
 import { Status } from "@viral/ui/primitives/status"
@@ -69,6 +69,7 @@ import { CutTimeline } from "./sections/cut-timeline.tsx"
 import { SectionsInspector, type SectionsTab } from "./sections/sections-inspector.tsx"
 import { SectionsStage, type SectionsView } from "./sections/sections-stage.tsx"
 import { changeCount, draftOf, proposalOf as sectionsProposal, sectionBlocks, type SectionsDraft } from "./sections/sections-values.ts"
+import type { PickedFrame, PickerVideo } from "./shots/frame-picker.tsx"
 import { ShotsInspector, type ShotsTab } from "./shots/shots-inspector.tsx"
 import { ShotsStage, type ShotsView } from "./shots/shots-stage.tsx"
 import { proposalOf, type ShotChange, shotSpans, timelineShots } from "./shots/shots-values.ts"
@@ -158,7 +159,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [shotsView, setShotsView] = useState<ShotsView>("preview")
   const [shotsTab, setShotsTab] = useState<ShotsTab>("shot")
   const [picking, setPicking] = useState(false)
-  const [candidate, setCandidate] = useState<FrameAt | null>(null)
+  const [candidate, setCandidate] = useState<PickedFrame | null>(null)
   const [draft, setDraft] = useState<ReadonlyMap<number, ShotChange>>(new Map())
   const [shotProblems, setShotProblems] = useState<ReadonlyArray<string>>([])
   // Render, Publish and Thumbnail: the inspector's tab, where the player is, the title you'll post with, and the
@@ -240,9 +241,17 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   // a shot's image: the still you picked for it, else its planned frame next to the shot plan
   const sourceOwner = { _tag: "Source", id: ws.source.id } as const
   const stillUrl = (path: string) => artifactPathUrl(serverUrl, sourceOwner, path)
+  // the short's videos (V1 first): each one's file, and a still of it, by position
+  const videoOf = (source: number) => ws.videos[source] ?? ws.videos[0]
+  const videoUrlOf = (source: number) => {
+    const v = videoOf(source)
+    return v === undefined || v.video === null ? null : artifactPathUrl(serverUrl, { _tag: "Source", id: v.source.id }, v.video)
+  }
+  const videoStillUrl = (path: string, source: number) => artifactPathUrl(serverUrl, { _tag: "Source", id: videoOf(source)?.source.id ?? ws.source.id }, path)
+  const pickerVideos: ReadonlyArray<PickerVideo> = ws.videos.map((v) => ({ sourceId: v.source.id, title: v.source.title ?? "Untitled video", seconds: v.seconds }))
   const shotFrame = (k: number) => {
-    const picked = draft.get(k)?.still
-    if (picked !== undefined) return stillUrl(picked)
+    const change = draft.get(k)
+    if (change?.still !== undefined) return videoStillUrl(change.still, change.source ?? ws.shotPlan?.plan.shots[k]?.source ?? 0)
     const frame = ws.shotPlan?.plan.shots[k]?.frame ?? null
     return frame === null || ws.shotPlan === null ? null : artifactFileUrl(serverUrl, projectOwner, "shot-plan", ws.shotPlan.version, frame)
   }
@@ -444,12 +453,12 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       <>
         {stageBar(`${ws.script.script.beats.length} lines`)}
         <div className="min-h-0 flex-1 overflow-auto">
-          <ScriptStage script={ws.script.script} preset={ws.preset} sourceVideoUrl={sourceVideoUrl} gate={gate} selected={beat} onSelect={setBeat} />
+          <ScriptStage script={ws.script.script} preset={ws.preset} videoUrlOf={videoUrlOf} videos={ws.videos.length} gate={gate} selected={beat} onSelect={setBeat} />
         </div>
       </>
     )
     inspector = ws.script === null ? null : (
-      <ScriptInspector script={ws.script.script} limits={ws.scriptLimits} preset={ws.preset} stages={stages} gate={gate} tab={scriptTab} onTab={setScriptTab} />
+      <ScriptInspector script={ws.script.script} limits={ws.scriptLimits} preset={ws.preset} videos={ws.videos.map((v) => v.source.title ?? "Untitled video")} stages={stages} gate={gate} tab={scriptTab} onTab={setScriptTab} />
     )
   } else if (open === "voice") {
     stage = ws.voiceover === null ? notYet("voiceover") : (
@@ -461,7 +470,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
             words={ws.voiceover.words}
             url={voiceUrl}
             voiceName={voiceName}
-            pauses={layout?.pauses.map((p) => p.at) ?? []}
+            pauses={layout?.pauses ?? []}
+            videos={ws.videos.length}
             onTime={onTime}
           />
         </div>
@@ -510,7 +520,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
             }}
             frameOf={shotFrame}
             realFrameOf={realFrame}
-            candidate={candidate === null ? null : stillUrl(candidate.path)}
+            candidate={candidate === null ? null : videoStillUrl(candidate.path, candidate.source)}
+            videos={ws.videos.length}
           />
         </>
       )
@@ -526,8 +537,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
             setDraft((d) => new Map(d).set(shot, { ...d.get(shot), ...change }))
           }}
           frameOf={shotFrame}
-          sourceId={ws.source.id}
-          stillUrl={stillUrl}
+          videos={pickerVideos}
+          stillUrl={videoStillUrl}
           picking={picking}
           onPicking={setPicking}
           candidate={candidate}
@@ -611,7 +622,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       const image = thumbnail.thumbnail.image
       stage = (
         <>
-          {stageBar(config.lines.map((l) => l.text).join(" "))}
+          {stageBar(`${config.lines.map((l) => l.text).join(" ")}${ws.videos.length > 1 ? " · made from V1 for now" : ""}`)}
           <ThumbnailStage
             url={image === null ? null : artifactFileUrl(serverUrl, projectOwner, "thumbnail", thumbnail.version, image)}
             layout={config.layout ?? "classic"}
@@ -807,7 +818,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   return (
     <>
       <TitleBar title={titleOf(ws)}>
-        <MultiVideoNote count={ws.project.sourceIds.length} />
+        <MultiVideoNote count={ws.project.sourceIds.length} format={ws.project.format} />
         <BriefButton project={ws.project} running={(progress.run ?? ws.run)?.status === "running" || (progress.run ?? ws.run)?.status === "waiting"} onSaved={refresh} />
         {status}
       </TitleBar>
@@ -862,9 +873,11 @@ function Editor({ ws, progress, step, onStep, refresh }: {
             captions={`${captions.enabled ? `${captions.mode === "chunk" ? `${captions.maxWords} words at a time` : "One word at a time"} · ${captions.case}` : "No captions (finish in an editor from the .srt)"}`}
             music={ws.project.musicTrackId === null ? "No music · voice only" : "Music · fitted when the short is laid out"}
             shots={ws.shotPlan !== null ? `${ws.shotPlan.plan.shots.length} shots` : "Shots are planned in step 3"}
+            videos={ws.videos.length}
             shotBlocks={shotBlocks === null ? null : {
               blocks: shotBlocks,
               frameOf: shotFrame,
+              sourceOf: (k) => draft.get(k)?.source ?? ws.shotPlan?.plan.shots[k]?.source ?? 0,
               selected: open === "shots" ? shotK : null,
               onSelect: (k) => {
                 setShotK(k)

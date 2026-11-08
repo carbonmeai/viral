@@ -3,17 +3,23 @@ import { cn } from "@viral/ui/cn"
 import { Pause, Play } from "lucide-react"
 import { Fragment, useEffect, useRef, useState } from "react"
 import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
+import { videoColor } from "../../sets/set-values.ts"
 import { Detail } from "../../system/detail.tsx"
+import { ClipBadge } from "../clip-badge.tsx"
 import { peaksOf, wordIndexAt } from "./voice-values.ts"
 
 const BARS = 160
 
+// Where the voiceover pauses for a real line (voiceover seconds), and the line's video (V1 = 0).
+type RealPause = { readonly at: number; readonly source: number }
+
 // The waveform of the take, drawn from the audio itself (decoded in the browser), filled up to the playhead.
-function Waveform({ url, duration, time, pauses, onSeek }: {
+function Waveform({ url, duration, time, pauses, videos, onSeek }: {
   readonly url: string
   readonly duration: number
   readonly time: number
-  readonly pauses: ReadonlyArray<number>
+  readonly pauses: ReadonlyArray<RealPause>
+  readonly videos: number
   readonly onSeek: (t: number) => void
 }) {
   const [peaks, setPeaks] = useState<ReadonlyArray<number>>([])
@@ -66,8 +72,13 @@ function Waveform({ url, duration, time, pauses, onSeek }: {
           return <rect key={i} x={i + 0.2} y={50 - h / 2} width={0.6} height={h} rx={0.3} fill={i / BARS < played ? "var(--lemon)" : "var(--fg-3)"} />
         })}
       </svg>
-      {pauses.map((at, i) => (
-        <span key={i} title="A real line plays here" className="absolute -top-1 -bottom-1 w-0.5 rounded-full bg-t-real" style={{ left: `${(at / duration) * 100}%` }} />
+      {pauses.map(({ at, source }, i) => (
+        <span
+          key={i}
+          title={videos < 2 ? "A real line plays here" : `A real line from V${source + 1} plays here`}
+          className="absolute -top-1 -bottom-1 w-0.5 rounded-full bg-t-real"
+          style={{ left: `${(at / duration) * 100}%`, ...(videos < 2 ? {} : { background: videoColor(source) }) }}
+        />
       ))}
     </div>
   )
@@ -75,13 +86,15 @@ function Waveform({ url, duration, time, pauses, onSeek }: {
 
 // The voice step: play the take, see its waveform, and follow the words as they're spoken. Real lines play
 // in the creator's voice where the orange marks are.
-export function VoiceStage({ voiceover, words, url, voiceName, pauses, onTime }: {
+export function VoiceStage({ voiceover, words, url, voiceName, pauses, videos, onTime }: {
   readonly voiceover: Voiceover
   readonly words: ReadonlyArray<TranscriptWord>
   readonly url: string | null
   readonly voiceName: string
-  // voiceover seconds where real lines play
-  readonly pauses: ReadonlyArray<number>
+  // where real lines play, and their videos
+  readonly pauses: ReadonlyArray<RealPause>
+  // how many videos the short has
+  readonly videos: number
   readonly onTime: (t: number | null) => void
 }) {
   const audio = useRef<HTMLAudioElement>(null)
@@ -114,7 +127,12 @@ export function VoiceStage({ voiceover, words, url, voiceName, pauses, onTime }:
     onTime(t)
   }
   const current = wordIndexAt(words, time)
-  const afterWord = new Set(pauses.map((at) => words.findIndex((w) => Math.abs(w.e - at) < 0.001)))
+  // the real lines after each word, by their videos
+  const afterWord = new Map<number, Array<number>>()
+  for (const { at, source } of pauses) {
+    const i = words.findIndex((w) => Math.abs(w.e - at) < 0.001)
+    afterWord.set(i, [...(afterWord.get(i) ?? []), source])
+  }
 
   return (
     <div className="mx-auto grid w-full max-w-[680px] gap-5 px-5 pt-5 pb-8">
@@ -138,7 +156,7 @@ export function VoiceStage({ voiceover, words, url, voiceName, pauses, onTime }:
       </div>
       {url === null ? null : (
         <>
-          <Waveform url={url} duration={voiceover.durationS} time={time} pauses={pauses} onSeek={seek} />
+          <Waveform url={url} duration={voiceover.durationS} time={time} pauses={pauses} videos={videos} onSeek={seek} />
           <audio ref={audio} src={url} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
         </>
       )}
@@ -151,7 +169,12 @@ export function VoiceStage({ voiceover, words, url, voiceName, pauses, onTime }:
             >
               {w.w}
             </span>
-            {afterWord.has(i) ? <span className="mx-1 rounded-chip bg-[color-mix(in_srgb,var(--t-real)_16%,transparent)] px-1.5 text-xs text-t-real">real line</span> : " "}
+            {afterWord.has(i) ? afterWord.get(i)!.map((source, k) => (
+              <span key={k} className="mx-1 inline-flex items-center gap-1 rounded-chip bg-[color-mix(in_srgb,var(--t-real)_16%,transparent)] px-1.5 align-middle text-xs text-t-real">
+                real line
+                <ClipBadge source={source} videos={videos} className="h-[15px] min-w-[22px]" />
+              </span>
+            )) : " "}
           </Fragment>
         ))}
       </p>

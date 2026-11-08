@@ -1,4 +1,4 @@
-import type { FrameAt, Preset, ShotPlan, SourceId, StageRun } from "@viral/contracts"
+import type { Preset, ShotPlan, StageRun } from "@viral/contracts"
 import { Button, IconButton } from "@viral/ui/primitives/button"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Captions, ChevronLeft, ChevronRight, Image, MessageSquare } from "lucide-react"
@@ -8,7 +8,8 @@ import type { GateControls } from "../gate.ts"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { Detail } from "../../system/detail.tsx"
-import { FramePicker } from "./frame-picker.tsx"
+import { ClipBadge } from "../clip-badge.tsx"
+import { FramePicker, type PickedFrame, type PickerVideo } from "./frame-picker.tsx"
 import { changedShots, mmss, type ShotChange, type ShotDraft, shotWith } from "./shots-values.ts"
 
 export type ShotsTab = "shot" | "captions" | "ask"
@@ -56,13 +57,14 @@ export interface ShotsInspectorProps {
   readonly onSelect: (k: number) => void
   readonly onChange: (k: number, change: ShotChange) => void
   readonly frameOf: (k: number) => string | null
-  readonly sourceId: SourceId
-  readonly stillUrl: (path: string) => string
+  // the short's videos, V1 first
+  readonly videos: ReadonlyArray<PickerVideo>
+  readonly stillUrl: (path: string, source: number) => string
   // the frame picker: open for the selected shot, with the still being tried
   readonly picking: boolean
   readonly onPicking: (open: boolean) => void
-  readonly candidate: FrameAt | null
-  readonly onCandidate: (frame: FrameAt | null) => void
+  readonly candidate: PickedFrame | null
+  readonly onCandidate: (frame: PickedFrame | null) => void
   // your edit: checking and sending it, its problems
   readonly problems: ReadonlyArray<string>
   readonly onRevert: () => void
@@ -83,6 +85,9 @@ export function ShotsInspector(props: ShotsInspectorProps) {
   const editable = gate.request !== null
   const changes = changedShots(plan, draft)
   const full = preset.config.framing === "full"
+  const videos = props.videos
+  const source = now.source ?? 0
+  const videoTitle = videos[source]?.title ?? "Untitled video"
 
   return (
     <>
@@ -125,17 +130,25 @@ export function ShotsInspector(props: ShotsInspectorProps) {
               </div>
               <span className="font-medium">“{shot.wordText}…”</span>
               <span className="text-sm text-fg-2">{shot.note}</span>
+              {videos.length < 2 ? null : (
+                <span className="flex min-w-0 items-center gap-2 text-xs text-fg-2">
+                  <ClipBadge source={source} videos={videos.length} />
+                  <span className="truncate">{videoTitle}</span>
+                  <span className="ml-auto shrink-0 tabular-nums">{mmss(now.src)}</span>
+                </span>
+              )}
             </InspectorBlock>
 
             {props.picking ? (
               <FramePicker
-                sourceId={props.sourceId}
+                videos={videos}
+                source={source}
                 around={now.src}
                 current={now.src}
                 chosen={props.candidate}
                 onChoose={props.onCandidate}
                 onUse={(frame) => {
-                  onChange(selected, { src: frame.t, still: frame.path })
+                  onChange(selected, { src: frame.t, source: frame.source, still: frame.path })
                   props.onCandidate(null)
                   props.onPicking(false)
                 }}
@@ -180,7 +193,7 @@ export function ShotsInspector(props: ShotsInspectorProps) {
                 />
                 <Detail>
                   <Facts rows={[
-                    ["From the video at", `${mmss(now.src)} · ${now.src.toFixed(1)}s`],
+                    ["From the video at", `${videos.length < 2 ? "" : `V${source + 1} · `}${mmss(now.src)} · ${now.src.toFixed(1)}s`],
                     ["Starts on word", `${shot.word} · “${shot.wordText}”`]
                   ]} />
                 </Detail>

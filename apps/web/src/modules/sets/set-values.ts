@@ -65,3 +65,30 @@ export const setPhase = (run: Run | null, stages: ReadonlyArray<StageRun>, hasSt
 
 // The videos a proposal uses, by position, in set order (each once).
 export const proposalVideos = (sources: ReadonlyArray<number>) => [...new Set(sources)].sort((a, b) => a - b)
+
+// The moment a proposal card shows: a beat from one of the videos it uses, a different one for each card where the
+// story has enough (card i takes its (i+1)th video, wrapping, and that video's (i+1)th beat), so the three cards
+// don't all show the same video's poster. Null when the story has no beat in its videos.
+export const proposalMoment = (
+  story: { readonly beats: ReadonlyArray<{ readonly source: number; readonly start: number }>; readonly proposals: ReadonlyArray<{ readonly sources: ReadonlyArray<number> }> },
+  index: number
+): { readonly source: number; readonly t: number } | null => {
+  const videos = proposalVideos(story.proposals[index]?.sources ?? [])
+  if (videos.length === 0) return null
+  for (let k = 0; k < videos.length; k++) {
+    const source = videos[(index + k) % videos.length]!
+    const beats = story.beats.filter((b) => b.source === source)
+    const beat = beats[index % Math.max(beats.length, 1)]
+    if (beat !== undefined) return { source, t: beat.start }
+  }
+  return null
+}
+
+// The list with the item at `from` moved to `to` (dragging a video to another place on New › Several videos).
+export const reorder = <A>(items: ReadonlyArray<A>, from: number, to: number): ReadonlyArray<A> => {
+  if (from === to || from < 0 || from >= items.length || to < 0 || to >= items.length) return items
+  const next = [...items]
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item!)
+  return next
+}

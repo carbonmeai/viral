@@ -92,6 +92,10 @@ export const narratedWords = (script: Script) =>
   script.beats.reduce((n, beat) => n + (beat._tag === "Narration" ? beat.text.split(/\s+/).filter((w) => /\w/.test(w)).length : 0), 0)
 export const realLines = (script: Script) => script.beats.filter((b) => b._tag === "Real").length
 
+// How many real lines come from each of the short's videos, by position (V1 first).
+export const realsByVideo = (script: Script, videos: number) =>
+  Array.from({ length: videos }, (_, i) => script.beats.filter((b) => b._tag === "Real" && (b.source ?? 0) === i).length)
+
 // Where each narration beat's voiceover words end: the expected count, corrected to the nearest word that
 // matches the beat's last word (the server places real lines the same way).
 export const narrationEnds = (script: Script, words: ReadonlyArray<TranscriptWord>): ReadonlyArray<number> => {
@@ -125,11 +129,12 @@ export interface TimelineLayout {
   // the short's length: the voiceover with the real lines played in, then the outro
   readonly total: number
   readonly narration: ReadonlyArray<TimelineSegment>
-  readonly reals: ReadonlyArray<TimelineSegment & { readonly kind: "insert" | "outro" }>
+  // each real line with the video it's from (V1 = 0)
+  readonly reals: ReadonlyArray<TimelineSegment & { readonly kind: "insert" | "outro"; readonly source: number }>
   // where the narration ends and the outro clips begin
   readonly outroStart: number
-  // where the voiceover pauses for a real line (voiceover seconds) and for how long
-  readonly pauses: ReadonlyArray<{ readonly at: number; readonly dur: number }>
+  // where the voiceover pauses for a real line (voiceover seconds), for how long, and the line's video
+  readonly pauses: ReadonlyArray<{ readonly at: number; readonly dur: number; readonly source: number }>
 }
 
 // A moment of the voiceover in the short's own time: every pause before it has played by then.
@@ -142,8 +147,8 @@ export const shortTimeOf = (layout: Pick<TimelineLayout, "pauses">, voiceoverSec
 export const layoutTimeline = (script: Script, words: ReadonlyArray<TranscriptWord>, voiceoverSeconds: number): TimelineLayout => {
   const ends = narrationEnds(script, words)
   const lastNarration = script.beats.findLastIndex((b) => b._tag === "Narration")
-  const inserts: Array<{ at: number; dur: number; label: string }> = []
-  const outro: Array<{ dur: number; label: string }> = []
+  const inserts: Array<{ at: number; dur: number; label: string; source: number }> = []
+  const outro: Array<{ dur: number; label: string; source: number }> = []
   const spans: Array<{ from: number; to: number; label: string }> = []
   let narrated = -1
   let firstWord = 0
@@ -157,22 +162,22 @@ export const layoutTimeline = (script: Script, words: ReadonlyArray<TranscriptWo
       firstWord = end + 1
       return
     }
-    const clip = { dur: Math.max(0, beat.end - beat.start), label: beat.quote }
+    const clip = { dur: Math.max(0, beat.end - beat.start), label: beat.quote, source: beat.source ?? 0 }
     if (i > lastNarration || narrated < 0) outro.push(clip)
     else inserts.push({ ...clip, at: words[ends[narrated] ?? 0]?.e ?? 0 })
   })
   // voiceover time → the short's time: every insert that starts before t has played by then
   const shifted = (t: number) => t + inserts.filter((x) => x.at < t).reduce((n, x) => n + x.dur, 0)
-  const reals: Array<TimelineSegment & { readonly kind: "insert" | "outro" }> = []
+  const reals: Array<TimelineSegment & { readonly kind: "insert" | "outro"; readonly source: number }> = []
   inserts.forEach((x, k) => {
     // back-to-back inserts after the same word follow each other
     const start = x.at + inserts.slice(0, k).reduce((n, y) => n + y.dur, 0)
-    reals.push({ start, end: start + x.dur, label: x.label, kind: "insert" })
+    reals.push({ start, end: start + x.dur, label: x.label, kind: "insert", source: x.source })
   })
   const outroStart = shifted(voiceoverSeconds) + inserts.filter((x) => x.at >= voiceoverSeconds).reduce((n, x) => n + x.dur, 0)
   let t = outroStart
   for (const clip of outro) {
-    reals.push({ start: t, end: t + clip.dur, label: clip.label, kind: "outro" })
+    reals.push({ start: t, end: t + clip.dur, label: clip.label, kind: "outro", source: clip.source })
     t += clip.dur
   }
   return {
@@ -180,7 +185,7 @@ export const layoutTimeline = (script: Script, words: ReadonlyArray<TranscriptWo
     narration: spans.map((s) => ({ start: shifted(s.from), end: shifted(s.to), label: s.label })),
     reals,
     outroStart,
-    pauses: inserts.map((x) => ({ at: x.at, dur: x.dur }))
+    pauses: inserts.map((x) => ({ at: x.at, dur: x.dur, source: x.source }))
   }
 }
 

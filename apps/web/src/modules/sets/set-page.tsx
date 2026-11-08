@@ -25,7 +25,7 @@ import { VideoSkeleton } from "../videos/video-skeleton.tsx"
 import { runProgressAtom, startProjectRun } from "../videos/videos-api.ts"
 import { runSpend, shortForProposal, stageDetail } from "../videos/video-values.ts"
 import { SetProposalCard } from "./set-proposal-card.tsx"
-import { memberState, proposalVideos, setPhase } from "./set-values.ts"
+import { memberState, proposalMoment, proposalVideos, setPhase } from "./set-values.ts"
 import { createProjectFromSetProposal, deleteVideoSet, renameVideoSet, startSetRun, videoSetOverviewAtom } from "./sets-api.ts"
 import { VideoBadge } from "./video-badge.tsx"
 
@@ -88,6 +88,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
   const [asking, setAsking] = useState<number | null>(null)
   const [making, setMaking] = useState<number | null>(null)
   const [renaming, setRenaming] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const { set, story, members } = data
@@ -118,6 +119,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
   }
   const deleteSet = () => {
     setError(null)
+    setConfirmingDelete(false)
     remove({ payload: { id: set.id } })
       .then(() => navigate({ to: "/" }))
       .catch(() => setError(data.shorts.length > 0 ? `Delete its ${plural(data.shorts.length, "short")} first.` : "Couldn't delete the set."))
@@ -144,7 +146,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
           <Menu label={`More for ${set.title}`}>
             <MenuItem onClick={() => setRenaming(true)}><Pencil />Rename</MenuItem>
             {phase === "proposed" ? <MenuItem onClick={() => runAgain("set-story")}><Play />Suggest again</MenuItem> : null}
-            <MenuItem tone="danger" onClick={deleteSet}><Trash2 />Delete set</MenuItem>
+            <MenuItem tone="danger" onClick={() => setConfirmingDelete(true)}><Trash2 />Delete set</MenuItem>
           </Menu>
         </>
       }
@@ -199,14 +201,17 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
               <div className="grid grid-cols-3 gap-2">
                 {story.proposals.map((proposal, i) => {
                   const short = shortForProposal(data.shorts, i, proposal.title)
-                  const first = proposalVideos(proposal.sources)[0]
-                  const still = first === undefined ? null : thumbOf.get(members[first]?.source.id ?? members[0]!.source.id) ?? null
+                  const at = proposalMoment(story, i)
+                  const shown = at?.source ?? proposalVideos(proposal.sources)[0]
+                  const sourceId = shown === undefined ? null : members[shown]?.source.id ?? null
+                  const still = sourceId === null ? null : thumbOf.get(sourceId) ?? null
                   return (
                     <SetProposalCard
                       key={i}
                       proposal={proposal}
                       index={i}
                       titles={titles}
+                      moment={at === null || sourceId === null ? null : { sourceId, t: at.t }}
                       still={still}
                       made={short === null ? null : { short, status: statusOf.get(short.project.id) ?? null }}
                       busy={making === i}
@@ -246,6 +251,20 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
         onMake={(brief) => {
           if (asking !== null) make(asking, brief)
         }}
+      />
+      <Dialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title={`Delete “${set.title}”?`}
+        description={data.shorts.length > 0
+          ? `Shorts were made from this set. Delete its ${plural(data.shorts.length, "short")} first.`
+          : "The set's story and proposals go. Its videos stay in your library."}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmingDelete(false)}>Keep</Button>
+            <Button variant="primary" disabled={data.shorts.length > 0} onClick={deleteSet}>Delete</Button>
+          </>
+        }
       />
       <RenameDialog open={renaming} setId={set.id} title={set.title} onDone={() => (setRenaming(false), refresh())} />
     </Page>

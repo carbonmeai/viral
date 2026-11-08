@@ -25,7 +25,7 @@ test("each shot runs from its word to the next shot's word, the last to the end 
 
 test("on the short's timeline, shots after a real line move later by its length", () => {
   // the real line plays after "it." (ends at 1.9 s) for 1.5 s
-  const layout = { pauses: [{ at: 1.9, dur: 1.5 }] }
+  const layout = { pauses: [{ at: 1.9, dur: 1.5, source: 0 }] }
   const blocks = timelineShots(shotSpans(plan, words, 4), layout)
   assert.deepEqual(blocks.map((b) => [b.k, +b.start.toFixed(2), +b.end.toFixed(2)]), [
     [0, 0, 1],
@@ -66,4 +66,16 @@ test("a headline line is sized like the renderer: capped by the style, shrunk to
   assert.equal(headlineSize("ONE CANDY", 0, 0.13), 13, "a short first line takes the style's size")
   assert.ok(Math.abs(headlineSize("AB", 1, 0.13) - 7.8) < 1e-9, "later lines are capped at 60% of it")
   assert.ok(headlineSize("EVERY TASTE IN ONE BITE", 0, 0.13) < 13, "a long line shrinks to fit the width")
+})
+
+test("a shot keeps its video in the edit, and a frame picked from another video moves it there", () => {
+  const multi: ShotPlan = { ...plan, shots: [plan.shots[0]!, { ...plan.shots[1]!, source: 1 }, plan.shots[2]!] }
+  // untouched, the V2 shot stays V2 and V1 shots carry no source
+  assert.deepEqual(proposalOf(multi, new Map()).shots.map((s) => s.source), [undefined, 1, undefined])
+  assert.equal(changedShots(multi, new Map([[1, { source: 1 }]])), 0)
+  // a frame from V2 for shot 1; a frame from V1 for the V2 shot
+  const draft = new Map([[0, { src: 12, source: 1, still: "frames-around/12000.jpg" }], [1, { src: 5, source: 0 }]])
+  const edited = proposalOf(multi, draft).shots
+  assert.deepEqual(edited.map((s) => [s.src, s.source]), [[12, 1], [5, undefined], [30, undefined]])
+  assert.equal(changedShots(multi, draft), 2)
 })

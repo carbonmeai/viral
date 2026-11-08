@@ -5,7 +5,8 @@ import { Check, ListChecks, MessageSquare, Type } from "lucide-react"
 import { useState } from "react"
 import { AskBox } from "../ask-box.tsx"
 import { InspectorBlock } from "../editor-frame.tsx"
-import { narratedWords, realLines } from "../editor-values.ts"
+import { VideoBadge } from "../../sets/video-badge.tsx"
+import { narratedWords, realLines, realsByVideo } from "../editor-values.ts"
 import type { GateControls } from "../gate.ts"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { StepDetails } from "../step-details.tsx"
@@ -35,8 +36,10 @@ function Meter({ label, value, range }: { readonly label: string; readonly value
   )
 }
 
-export function ScriptInspector({ script, limits, preset, stages, gate, tab, onTab }: {
+export function ScriptInspector({ script, limits, preset, videos, stages, gate, tab, onTab }: {
   readonly script: Script
+  // the short's videos' titles, V1 first
+  readonly videos: ReadonlyArray<string>
   readonly limits: ScriptLimits | null
   readonly preset: Preset
   readonly stages: ReadonlyArray<StageRun>
@@ -62,9 +65,20 @@ export function ScriptInspector({ script, limits, preset, stages, gate, tab, onT
                 <Meter label="Real lines" value={realLines(script)} range={limits.reals} />
               </>
             )}
+            {videos.length < 2 ? null : (
+              <InspectorBlock title="Real lines by video">
+                {realsByVideo(script, videos.length).map((count, i) => (
+                  <span key={i} className="flex min-w-0 items-center gap-2 text-sm text-fg-1">
+                    <VideoBadge index={i} />
+                    <span className="truncate">{videos[i]}</span>
+                    <span className="ml-auto text-fg-2 tabular-nums">{count}</span>
+                  </span>
+                ))}
+              </InspectorBlock>
+            )}
             <InspectorBlock title="Checked by the server">
               {[
-                "Every real line is in the transcript, at its times",
+                videos.length < 2 ? "Every real line is in the transcript, at its times" : "Every real line is in its own video's transcript, at its times",
                 "None inside an ad, a sponsor read or the end screen",
                 ...(limits?.realsOnlyAtEnd ? ["Real lines only after the narration"] : []),
                 "Headline under 8 words"

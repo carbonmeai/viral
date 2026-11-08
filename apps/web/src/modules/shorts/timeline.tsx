@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react"
 import { Captions, Image, Mic, Music, Quote } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "@viral/ui/cn"
+import { videoColor, videoLabel } from "../sets/set-values.ts"
 import { clockOf, type TimelineLayout, type TimelineSegment } from "./editor-values.ts"
 import type { ShotBlock } from "./shots/shots-values.ts"
 
@@ -25,17 +26,19 @@ export function Lane({ children }: { readonly children?: ReactNode }) {
 }
 
 // A coloured block on a lane, from `start` to `end` (seconds), labelled.
-export function Block({ start, end, total, color, label, dim }: {
+export function Block({ start, end, total, color, label, title, dim }: {
   readonly start: number
   readonly end: number
   readonly total: number
   readonly color: string
   readonly label: ReactNode
+  // the hover text, when the label isn't plain text
+  readonly title?: string
   readonly dim?: boolean
 }) {
   return (
     <div
-      title={typeof label === "string" ? label : undefined}
+      title={title ?? (typeof label === "string" ? label : undefined)}
       className="absolute inset-y-0 flex items-center gap-1.5 overflow-hidden rounded-[7px] px-2 text-[11.5px] font-medium whitespace-nowrap"
       style={{
         left: `${(start / total) * 100}%`,
@@ -54,6 +57,8 @@ export function Block({ start, end, total, color, label, dim }: {
 export interface TimelineShots {
   readonly blocks: ReadonlyArray<ShotBlock>
   readonly frameOf: (k: number) => string | null
+  // each shot's video (V1 = 0), for tinting them in a short from several videos
+  readonly sourceOf?: (k: number) => number
   readonly selected: number | null
   readonly onSelect: (k: number) => void
 }
@@ -89,11 +94,14 @@ export interface TimelineProps {
   readonly musicParts?: TimelineMusicParts | null
   // the drop word and pinned words, marked on the narration
   readonly marks?: ReadonlyArray<TimelineMark>
+  // how many videos the short has: with more than one, shots and real lines are tinted by their video
+  readonly videos?: number
 }
 
 // The short on one timeline, read-only for now: the narration, the shots, the real lines (in the creator's own
 // voice), the captions and the music, in the short's own seconds.
-export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop, musicBlocks, musicParts, marks }: TimelineProps) {
+export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop, musicBlocks, musicParts, marks, videos = 1 }: TimelineProps) {
+  const multi = videos > 1
   if (layout === null) {
     return (
       <div className="grid grid-cols-[112px_minmax(700px,1fr)] items-center gap-y-1.5">
@@ -138,11 +146,12 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
           {shotBlocks === null || shotBlocks === undefined ? <Block start={0} end={narrationEnd} total={total} color="" dim label={shots} /> : (
             shotBlocks.blocks.map((b, i) => {
               const src = shotBlocks.frameOf(b.k)
+              const source = shotBlocks.sourceOf?.(b.k) ?? 0
               return (
                 <button
                   key={i}
                   type="button"
-                  title={`Shot ${b.k + 1}`}
+                  title={multi ? `Shot ${b.k + 1} · ${videoLabel(source)}` : `Shot ${b.k + 1}`}
                   aria-label={`Shot ${b.k + 1}`}
                   onClick={() => shotBlocks.onSelect(b.k)}
                   className={cn(
@@ -154,7 +163,9 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
                     width: `max(3px, calc(${((b.end - b.start) / total) * 100}% - 1px))`,
                     ...(src === null ? {} : { backgroundImage: `url("${src}")` })
                   }}
-                />
+                >
+                  {multi ? <span className="absolute inset-x-0 bottom-0 h-[3px]" style={{ background: videoColor(source) }} /> : null}
+                </button>
               )
             })
           )}
@@ -162,7 +173,17 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
 
         <TrackName icon={Quote} color="var(--t-real)" name="Real lines" />
         <Lane>
-          {layout.reals.map((r, i) => <Block key={i} start={r.start} end={r.end} total={total} color="var(--t-real)" label={r.label} />)}
+          {layout.reals.map((r, i) => (
+            <Block
+              key={i}
+              start={r.start}
+              end={r.end}
+              total={total}
+              color={multi ? videoColor(r.source) : "var(--t-real)"}
+              title={multi ? `${videoLabel(r.source)} · ${r.label}` : r.label}
+              label={multi ? <><span className="text-[10px] font-semibold">{videoLabel(r.source)}</span>{r.label}</> : r.label}
+            />
+          ))}
         </Lane>
 
         <TrackName icon={Captions} color="var(--t-cap)" name="Captions" />

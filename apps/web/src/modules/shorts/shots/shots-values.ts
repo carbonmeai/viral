@@ -1,11 +1,14 @@
 import type { PlannedShot, ShotPlan, ShotProposal, TranscriptWord } from "@viral/contracts"
 import type { TimelineLayout } from "../editor-values.ts"
 
-// What you changed about one shot before sending the edit: a new frame (its source second, and the still that
-// shows it), framing, crop or speed. Anything left out stays as planned.
+// What you changed about one shot before sending the edit: a new frame (its source second, the still that shows
+// it, and which video it's from when you picked one from another video), framing, crop or speed. Anything left out
+// stays as planned.
 export interface ShotChange {
   readonly src?: number
-  // the picked still, relative to the video's folder (frames-around/<ms>.jpg)
+  // the video the new frame is from, by position (V1 = 0)
+  readonly source?: number
+  // the picked still, relative to its video's folder (frames-around/<ms>.jpg)
   readonly still?: string
   readonly fit?: boolean
   readonly cropX?: number
@@ -17,6 +20,7 @@ export type ShotDraft = ReadonlyMap<number, ShotChange>
 export const shotWith = (shot: ShotPlan["shots"][number], change: ShotChange | undefined) => ({
   ...shot,
   ...(change?.src === undefined ? {} : { src: change.src }),
+  ...(change?.source === undefined ? {} : { source: change.source }),
   ...(change?.fit === undefined ? {} : { fit: change.fit }),
   ...(change?.cropX === undefined ? {} : { cropX: change.cropX }),
   ...(change?.speed === undefined ? {} : { speed: change.speed })
@@ -28,7 +32,7 @@ export const changedShots = (plan: ShotPlan, draft: ShotDraft) =>
     const shot = plan.shots[k]
     if (shot === undefined) return false
     const next = shotWith(shot, change)
-    return next.src !== shot.src || (next.fit ?? false) !== (shot.fit ?? false) || next.cropX !== shot.cropX || (next.speed ?? 1) !== (shot.speed ?? 1)
+    return next.src !== shot.src || (next.source ?? 0) !== (shot.source ?? 0) || (next.fit ?? false) !== (shot.fit ?? false) || next.cropX !== shot.cropX || (next.speed ?? 1) !== (shot.speed ?? 1)
   }).length
 
 // The edited shot list the shots gate takes: every shot with your changes, the markers and highlights as planned.
@@ -38,6 +42,8 @@ export const proposalOf = (plan: ShotPlan, draft: ShotDraft): ShotProposal => ({
     return {
       word: s.word,
       src: s.src,
+      // V1 is left out, as the server stores it
+      ...((s.source ?? 0) === 0 ? {} : { source: s.source }),
       note: s.note,
       ...(s.fit === undefined ? {} : { fit: s.fit }),
       ...(s.cropX === undefined ? {} : { cropX: s.cropX }),

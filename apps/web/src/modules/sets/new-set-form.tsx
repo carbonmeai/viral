@@ -7,13 +7,15 @@ import { Panel } from "@viral/ui/primitives/panel"
 import { Textarea } from "@viral/ui/primitives/textarea"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { ArrowDown, ArrowUp, Check, FolderOpen, Plus, X } from "lucide-react"
+import { cn } from "@viral/ui/cn"
+import { ArrowDown, ArrowUp, Check, FolderOpen, GripVertical, Plus, X } from "lucide-react"
 import { useState } from "react"
 import { desktop } from "../../config/server-url.ts"
 import { clock } from "../../lib/format.ts"
 import { overviewAtom } from "../home/overview.ts"
 import { createSource } from "../videos/videos-api.ts"
 import { isVideoLink, RIGHTS_CHOICES } from "../videos/video-values.ts"
+import { reorder } from "./set-values.ts"
 import { createVideoSet, startSetRun } from "./sets-api.ts"
 import { VideoBadge } from "./video-badge.tsx"
 
@@ -42,6 +44,8 @@ export function NewSetForm() {
   const [rights, setRights] = useState<SourceRights>("unconfirmed")
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // the video being dragged to another place (its current index); the arrows do the same from the keyboard
+  const [dragging, setDragging] = useState<number | null>(null)
 
   const full = picks.length >= MAX_SHORT_SOURCES
   const value = input.trim()
@@ -94,11 +98,34 @@ export function NewSetForm() {
 
   return (
     <div className="grid gap-2">
-      <Panel title="Videos" count={`${picks.length} of ${MAX_SHORT_SOURCES}`} actions={picks.length > 1 ? "V1 first: the order you'd tell it in" : undefined}>
+      <Panel title="Videos" count={`${picks.length} of ${MAX_SHORT_SOURCES}`} actions={picks.length > 1 ? "V1 first: drag them into the order you'd tell it in" : undefined}>
         {picks.length === 0
           ? <div className="rounded-ctl bg-item px-3 py-3 text-xs text-fg-2">Pick at least two from your library below, or add links and files.</div>
           : picks.map((pick, i) => (
-            <div key={keyOf(pick)} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-ctl bg-item px-3 py-2">
+            <div
+              key={keyOf(pick)}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move"
+                e.dataTransfer.setData("text/plain", keyOf(pick))
+                setDragging(i)
+              }}
+              onDragOver={(e) => {
+                if (dragging === null) return
+                e.preventDefault()
+                if (dragging !== i) {
+                  setPicks((all) => reorder(all, dragging, i))
+                  setDragging(i)
+                }
+              }}
+              onDrop={(e) => e.preventDefault()}
+              onDragEnd={() => setDragging(null)}
+              className={cn(
+                "grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 rounded-ctl bg-item py-2 pr-3 pl-1.5",
+                dragging === i && "opacity-60 shadow-[inset_0_0_0_1px_var(--lemon)]"
+              )}
+            >
+              <GripVertical aria-hidden className="size-4 cursor-grab text-fg-3 active:cursor-grabbing" />
               <VideoBadge index={i} />
               <span className="min-w-0">
                 <span className="block truncate font-medium">{pick.title}</span>

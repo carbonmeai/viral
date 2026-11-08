@@ -4,6 +4,7 @@ import { cn } from "@viral/ui/cn"
 import { Pause, Pencil, Play } from "lucide-react"
 import { useLayoutEffect, useRef, useState } from "react"
 import { Detail } from "../../system/detail.tsx"
+import { ClipBadge } from "../clip-badge.tsx"
 import { clockOf } from "../editor-values.ts"
 import type { GateControls } from "../gate.ts"
 import { useClipPlayer } from "../use-clip-player.ts"
@@ -32,16 +33,20 @@ function GrowingTextarea({ value, onChange, label }: { readonly value: string; r
 }
 
 // The script as a document: the headline as it will look, then each line in playing order. Narration is what
-// the narrator says; real lines play in the creator's own voice (click ▶ to hear them from the video).
-export function ScriptStage({ script, preset, sourceVideoUrl, gate, selected, onSelect }: {
+// the narrator says; real lines play in the creator's own voice (click ▶ to hear them from their video, badged
+// V1, V2… in a short from several videos).
+export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected, onSelect }: {
   readonly script: Script
   readonly preset: Preset
-  readonly sourceVideoUrl: string | null
+  // each video's file by position (V1 = 0), or null before it's fetched
+  readonly videoUrlOf: (source: number) => string | null
+  // how many videos the short has
+  readonly videos: number
   readonly gate: GateControls
   readonly selected: number | null
   readonly onSelect: (beat: number | null) => void
 }) {
-  const player = useClipPlayer(sourceVideoUrl)
+  const player = useClipPlayer(videoUrlOf(0))
   const [editing, setEditing] = useState<number | null>(null)
   const [draft, setDraft] = useState("")
   const [problems, setProblems] = useState<ReadonlyArray<string>>([])
@@ -80,13 +85,17 @@ export function ScriptStage({ script, preset, sourceVideoUrl, gate, selected, on
           const isSel = selected === i
           if (beat._tag === "Real") {
             const key = `real-${i}`
+            const url = videoUrlOf(beat.source ?? 0)
             return (
               <div key={i} className="grid grid-cols-[70px_minmax(0,1fr)_auto] items-baseline gap-3.5 rounded-ctl px-3 py-2 hover:bg-ctl">
-                <span className="text-[11px] font-medium tracking-[.05em] text-t-real uppercase">Real</span>
+                <span className="flex items-center gap-1.5 text-[11px] font-medium tracking-[.05em] text-t-real uppercase">
+                  Real
+                  <ClipBadge source={beat.source} videos={videos} />
+                </span>
                 <span className="text-[15px] leading-[1.55] text-fg-2 italic">“{beat.quote}”</span>
                 <span className="flex items-center gap-1.5 text-[11.5px] text-fg-3">
                   {clockOf(beat.start)}–{clockOf(beat.end)}
-                  <IconButton label={player.playing === key ? "Stop" : "Play this line from the video"} onClick={() => player.play(key, beat.start, beat.end)} disabled={sourceVideoUrl === null}>
+                  <IconButton label={player.playing === key ? "Stop" : "Play this line from the video"} onClick={() => player.play(key, beat.start, beat.end, url)} disabled={url === null}>
                     {player.playing === key ? <Pause /> : <Play />}
                   </IconButton>
                 </span>
