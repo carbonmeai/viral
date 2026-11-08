@@ -30,3 +30,30 @@ export const providerLabel = (provider: string | null) => PROVIDER_LABELS[provid
 // What a cost is: real money, or what a CLI plan covered.
 export const billingLabel = (billing: "billed" | "subscription" | null) =>
   billing === "billed" ? "Billed" : billing === "subscription" ? "Plan value" : "Not tracked"
+
+// A whole number with thousands separators: "41,250".
+export const formatExact = (n: number) => Math.round(n).toLocaleString("en-US")
+
+// The ElevenLabs plan's meter: characters used and left this billing period, and how full it is (0–1).
+export const planMeter = (used: number, limit: number) => ({
+  left: Math.max(0, limit - used),
+  fraction: limit <= 0 ? 0 : Math.min(1, used / limit)
+})
+
+// What `characters` cost at the plan's price per character; null when the price isn't known, so none is invented.
+export const estimateUsd = (characters: number, usdPerCharacter: number | null) =>
+  usdPerCharacter === null ? null : Math.round(characters * usdPerCharacter * 100) / 100
+
+// Why the plan can't be shown, in plain words.
+export const planUnavailableText = (reason: "no-key" | "no-permission" | "failed") =>
+  reason === "no-key"
+    ? "Add an ElevenLabs key in Settings › Accounts to see your plan’s characters left."
+    : reason === "no-permission"
+    ? "To see your plan’s characters left, give your ElevenLabs key the User › Read permission."
+    : "Couldn’t reach ElevenLabs for your plan just now."
+
+// "eleven_v4" → "Eleven v4", "eleven_multilingual_v2" → "Eleven Multilingual v2".
+export const ttsModelLabel = (model: string) =>
+  model === "unknown"
+    ? "Before tracking"
+    : model.split("_").map((part) => /^v\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)).join(" ")

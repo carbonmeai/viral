@@ -92,7 +92,7 @@ export const narratedWords = (script: Script) =>
   script.beats.reduce((n, beat) => n + (beat._tag === "Narration" ? beat.text.split(/\s+/).filter((w) => /\w/.test(w)).length : 0), 0)
 export const realLines = (script: Script) => script.beats.filter((b) => b._tag === "Real").length
 
-// How many real lines come from each of the short's videos, by position (V1 first).
+// How many real lines come from each of the short's videos, by position (the first one first).
 export const realsByVideo = (script: Script, videos: number) =>
   Array.from({ length: videos }, (_, i) => script.beats.filter((b) => b._tag === "Real" && (b.source ?? 0) === i).length)
 
@@ -129,7 +129,7 @@ export interface TimelineLayout {
   // the short's length: the voiceover with the real lines played in, then the outro
   readonly total: number
   readonly narration: ReadonlyArray<TimelineSegment>
-  // each real line with the video it's from (V1 = 0)
+  // each real line with the video it's from (the first = 0)
   readonly reals: ReadonlyArray<TimelineSegment & { readonly kind: "insert" | "outro"; readonly source: number }>
   // where the narration ends and the outro clips begin
   readonly outroStart: number

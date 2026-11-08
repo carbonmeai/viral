@@ -8,6 +8,8 @@ export const appSettingsAtom = ViralClient.query("GetSettings", undefined, { rea
 export const storageAtom = ViralClient.query("GetStorage", undefined, { reactivityKeys: ["storage"] })
 export const modelEvalsAtom = ViralClient.query("GetModelEvals", undefined, { reactivityKeys: ["evals"] })
 export const usageAtom = Atom.family((days: number) => ViralClient.query("GetUsage", { days }, { reactivityKeys: ["usage"] }))
+// the ElevenLabs plan's characters left; the server keeps ElevenLabs' answer for a minute
+export const elevenLabsPlanAtom = ViralClient.query("GetElevenLabsPlan", undefined, { reactivityKeys: ["usage", "accounts"] })
 
 // Writes.
 export const setSecret = ViralClient.mutation("SetSecret")

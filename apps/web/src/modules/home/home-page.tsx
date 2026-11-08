@@ -54,7 +54,7 @@ function HomeContent({ data }: { readonly data: Overview }) {
         count={data.waiting.length}
         actions={<Link to="/waiting" className={buttonVariants({ variant: "ghost" })}>View all</Link>}
       >
-        <WaitingRows items={data.waiting.slice(0, WAITING_ON_HOME)} showVideo thumbs={thumbs} now={Date.now()} />
+        <WaitingRows items={data.waiting.slice(0, WAITING_ON_HOME)} showVideo thumbs={thumbs} videos={new Map(data.shorts.map((s) => [s.project.id, s.sourceTitle]))} now={Date.now()} />
       </Panel>
 
       <div className="grid grid-cols-2 items-start gap-2">

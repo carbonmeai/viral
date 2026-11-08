@@ -6,11 +6,12 @@ import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { videoColor } from "../../sets/set-values.ts"
 import { Detail } from "../../system/detail.tsx"
 import { ClipBadge } from "../clip-badge.tsx"
+import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { peaksOf, wordIndexAt } from "./voice-values.ts"
 
 const BARS = 160
 
-// Where the voiceover pauses for a real line (voiceover seconds), and the line's video (V1 = 0).
+// Where the voiceover pauses for a real line (voiceover seconds), and the line's video (the first = 0).
 type RealPause = { readonly at: number; readonly source: number }
 
 // The waveform of the take, drawn from the audio itself (decoded in the browser), filled up to the playhead.
@@ -22,6 +23,7 @@ function Waveform({ url, duration, time, pauses, videos, onSeek }: {
   readonly videos: number
   readonly onSeek: (t: number) => void
 }) {
+  const named = useShortVideos()
   const [peaks, setPeaks] = useState<ReadonlyArray<number>>([])
   const [decoding, setDecoding] = useState(true)
   useEffect(() => {
@@ -75,7 +77,7 @@ function Waveform({ url, duration, time, pauses, videos, onSeek }: {
       {pauses.map(({ at, source }, i) => (
         <span
           key={i}
-          title={videos < 2 ? "A real line plays here" : `A real line from V${source + 1} plays here`}
+          title={videos < 2 ? "A real line plays here" : `A real line from ${nameOf(named, source)} plays here`}
           className="absolute -top-1 -bottom-1 w-0.5 rounded-full bg-t-real"
           style={{ left: `${(at / duration) * 100}%`, ...(videos < 2 ? {} : { background: videoColor(source) }) }}
         />

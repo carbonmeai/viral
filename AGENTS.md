@@ -193,9 +193,12 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        (make-short-dialog.tsx). New has two tabs (?kind=several): One video, and Several videos
                        (sets/new-set-form.tsx: pick from the library or add links/files, reorder, a required brief)
                        sets/: a video set's page (/sets/<id>): Videos (each video's reading, live from its own run)
-                       and Proposals (V badges in each video's colour: set-values.ts videoColor, video-badge.tsx;
-                       "Make this short" starts from the set's brief). Sets are listed in the sidebar's Video sets.
-                       The editor of a short from several videos says its steps show V1 only (multi-video-note.tsx)
+                       and Proposals ("Make this short" starts from the set's brief). Sets are listed in the
+                       sidebar's Video sets. The UI never says "V1"/"V2" (it reads as a version): a video is its
+                       colour dot and a short name from its title ("Heidi Klum", else "Video 2"; set-values.ts
+                       videoColor/videoNames, video-badge.tsx; the editor's names come from short-videos.tsx), with
+                       the full title on hover; single-video shorts show none. The title bar's videos chip
+                       (multi-video-note.tsx) says what still uses the first video only (thumbnail; cut-down shorts)
                        shorts/: a short's editor, one fixed frame for every step (editor-frame.tsx: step bar, stage,
                        inspector, timeline), from GetShortWorkspace and the run followed live. The title bar's Brief
                        button edits the brief (just save, or save and re-run from Script/Sections). Script and Voice

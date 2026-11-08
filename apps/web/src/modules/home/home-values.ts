@@ -1,5 +1,6 @@
-import type { Run, WaitingItem } from "@viral/contracts"
+import type { Project, Run, Source, WaitingItem } from "@viral/contracts"
 import { plural } from "../../lib/format.ts"
+import { videoNames } from "../sets/set-values.ts"
 import { STEP_NAMES, videosSpanned } from "../waiting/waiting.ts"
 
 export type Tone = "neutral" | "ok" | "wait" | "run"
@@ -55,4 +56,10 @@ export const homeStats = ({ waiting, videos, shorts }: HomeStatsInput) => {
     videos: { value: videos.length, sub: `${mapped} mapped · ${processing} processing` },
     shorts: { value: shorts.length, sub: `${published} published · ${waitingShorts} waiting` }
   }
+}
+
+// The line a short's row names its videos with: the one video's title, or each of several by its short name.
+export const videosOf = (project: Pick<Project, "sourceIds">, sources: ReadonlyArray<Pick<Source, "id" | "title">>): string | null => {
+  const titles = project.sourceIds.map((id) => sources.find((s) => s.id === id)?.title ?? null)
+  return titles.length > 1 ? videoNames(titles).join(" · ") : titles[0] ?? null
 }

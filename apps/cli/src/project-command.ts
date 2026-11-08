@@ -7,7 +7,7 @@ import { show } from "./show.ts"
 
 export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <title> [--approach question-recap|claim-interleaved|cut-down]
                  [--preset <id>] [--music <track-id>] [--brief "<what it should achieve>"]
-                                          (several videos, V1 first, need a brief)
+                                          (several videos in order, need a brief)
   project from-proposal <source-id> <n>   (proposal n from \`source story\`)
   project style <id> <preset-id|default>  (the short's style; see \`preset list\`)
   project music <id> <track-id|none>      (none = voice only)

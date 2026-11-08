@@ -1,10 +1,11 @@
 import type { GatePayload, RunUpdate } from "@viral/contracts"
 import { Console, Effect } from "effect"
 
-// "V2 " before a clip's seconds when the short draws from several videos (absent = V1); nothing for one video.
+// "Video 2 · " before a clip's seconds when the short draws from several videos (absent = the first); nothing for
+// one video.
 const videoLabels = (items: ReadonlyArray<{ readonly source?: number }>) => {
   const several = items.some((item) => item.source !== undefined)
-  return (source: number | undefined) => several ? `V${(source ?? 0) + 1} ` : ""
+  return (source: number | undefined) => several ? `Video ${(source ?? 0) + 1} · ` : ""
 }
 
 // What a gate is asking you to approve, in readable form.

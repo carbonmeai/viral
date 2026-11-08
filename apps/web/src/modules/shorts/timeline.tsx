@@ -2,9 +2,10 @@ import type { LucideIcon } from "lucide-react"
 import { Captions, Image, Mic, Music, Quote } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "@viral/ui/cn"
-import { videoColor, videoLabel } from "../sets/set-values.ts"
+import { videoColor } from "../sets/set-values.ts"
 import { clockOf, type TimelineLayout, type TimelineSegment } from "./editor-values.ts"
 import type { ShotBlock } from "./shots/shots-values.ts"
+import { nameOf, useShortVideos } from "./short-videos.tsx"
 
 // One track's colour tile, like Cap's soft icon tiles.
 export function TrackName({ icon: Icon, color, name }: { readonly icon: LucideIcon; readonly color: string; readonly name: string }) {
@@ -57,7 +58,7 @@ export function Block({ start, end, total, color, label, title, dim }: {
 export interface TimelineShots {
   readonly blocks: ReadonlyArray<ShotBlock>
   readonly frameOf: (k: number) => string | null
-  // each shot's video (V1 = 0), for tinting them in a short from several videos
+  // each shot's video (the first = 0), for tinting them in a short from several videos
   readonly sourceOf?: (k: number) => number
   readonly selected: number | null
   readonly onSelect: (k: number) => void
@@ -101,6 +102,7 @@ export interface TimelineProps {
 // The short on one timeline, read-only for now: the narration, the shots, the real lines (in the creator's own
 // voice), the captions and the music, in the short's own seconds.
 export function Timeline({ layout, head, captions, music, shots, shotBlocks, drop, musicBlocks, musicParts, marks, videos = 1 }: TimelineProps) {
+  const named = useShortVideos()
   const multi = videos > 1
   if (layout === null) {
     return (
@@ -151,7 +153,7 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
                 <button
                   key={i}
                   type="button"
-                  title={multi ? `Shot ${b.k + 1} · ${videoLabel(source)}` : `Shot ${b.k + 1}`}
+                  title={multi ? `Shot ${b.k + 1} · ${nameOf(named, source)}` : `Shot ${b.k + 1}`}
                   aria-label={`Shot ${b.k + 1}`}
                   onClick={() => shotBlocks.onSelect(b.k)}
                   className={cn(
@@ -180,8 +182,8 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
               end={r.end}
               total={total}
               color={multi ? videoColor(r.source) : "var(--t-real)"}
-              title={multi ? `${videoLabel(r.source)} · ${r.label}` : r.label}
-              label={multi ? <><span className="text-[10px] font-semibold">{videoLabel(r.source)}</span>{r.label}</> : r.label}
+              title={multi ? `${named.titles[r.source] ?? nameOf(named, r.source)} · ${r.label}` : r.label}
+              label={r.label}
             />
           ))}
         </Lane>

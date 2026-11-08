@@ -158,7 +158,7 @@ function TryLine({ voiceId, onClose }: { readonly voiceId: string; readonly onCl
         disabled={text.trim() === "" || state === "speaking"}
         onClick={() => {
           setState("speaking")
-          void speak({ payload: { voiceId, text: text.trim() } })
+          void speak({ payload: { voiceId, text: text.trim() }, reactivityKeys: ["usage"] })
             .then((result) => {
               setTake(homeFileUrl(serverUrl, `voice-previews/${result.path.split("/").at(-1) ?? ""}`))
               setState("idle")

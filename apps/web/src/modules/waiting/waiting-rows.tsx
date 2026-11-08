@@ -14,13 +14,15 @@ export interface WaitingRowsProps {
   readonly showVideo: boolean
   // thumbnails by short id
   readonly thumbs: ReadonlyMap<string, string | null>
+  // each short's videos as its row names them, by short id (a short from several videos names them all)
+  readonly videos?: ReadonlyMap<string, string | null>
   readonly now: number
 }
 
 // Steps waiting for you, one row each; opening a row goes to that short (or video) at that step.
 const stepSearch = (step: ReturnType<typeof stepOfStage>) => step === undefined ? {} : { step }
 
-export function WaitingRows({ items, showVideo, thumbs, now }: WaitingRowsProps) {
+export function WaitingRows({ items, showVideo, thumbs, videos, now }: WaitingRowsProps) {
   const navigate = useNavigate()
   if (items.length === 0) {
     return <Row className="grid-cols-1"><span className="text-fg-2">Nothing is waiting for you.</span></Row>
@@ -35,7 +37,7 @@ export function WaitingRows({ items, showVideo, thumbs, now }: WaitingRowsProps)
         <RowTitle
           media={<Thumb shape="tall" width={26} src={item.projectId === null ? null : thumbs.get(item.projectId) ?? null} />}
           title={waitingTitle(item)}
-          sub={waitingSub(item, showVideo)}
+          sub={waitingSub(item, showVideo, item.projectId === null ? null : videos?.get(item.projectId))}
         />
         <span><Status tone="wait">{actionLabel(item)}</Status></span>
         <span className="text-xs text-fg-2">{ago(item.request.createdAt.epochMilliseconds, now)}</span>

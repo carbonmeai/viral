@@ -8,7 +8,8 @@ import type { GateControls } from "../gate.ts"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { Detail } from "../../system/detail.tsx"
-import { ClipBadge } from "../clip-badge.tsx"
+import { VideoDot } from "../../sets/video-badge.tsx"
+import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { FramePicker, type PickedFrame, type PickerVideo } from "./frame-picker.tsx"
 import { changedShots, mmss, type ShotChange, type ShotDraft, shotWith } from "./shots-values.ts"
 
@@ -57,7 +58,7 @@ export interface ShotsInspectorProps {
   readonly onSelect: (k: number) => void
   readonly onChange: (k: number, change: ShotChange) => void
   readonly frameOf: (k: number) => string | null
-  // the short's videos, V1 first
+  // the short's videos, the first one first
   readonly videos: ReadonlyArray<PickerVideo>
   readonly stillUrl: (path: string, source: number) => string
   // the frame picker: open for the selected shot, with the still being tried
@@ -79,6 +80,7 @@ export interface ShotsInspectorProps {
 // picker, and your changes collected as one edit you send to the gate.
 export function ShotsInspector(props: ShotsInspectorProps) {
   const { plan, draft, preset, selected, onSelect, onChange, frameOf, gate, tab, onTab } = props
+  const named = useShortVideos()
   const shot = plan.shots[selected]
   if (shot === undefined) return null
   const now = shotWith(shot, draft.get(selected))
@@ -132,7 +134,7 @@ export function ShotsInspector(props: ShotsInspectorProps) {
               <span className="text-sm text-fg-2">{shot.note}</span>
               {videos.length < 2 ? null : (
                 <span className="flex min-w-0 items-center gap-2 text-xs text-fg-2">
-                  <ClipBadge source={source} videos={videos.length} />
+                  <VideoDot index={source} />
                   <span className="truncate">{videoTitle}</span>
                   <span className="ml-auto shrink-0 tabular-nums">{mmss(now.src)}</span>
                 </span>
@@ -193,7 +195,7 @@ export function ShotsInspector(props: ShotsInspectorProps) {
                 />
                 <Detail>
                   <Facts rows={[
-                    ["From the video at", `${videos.length < 2 ? "" : `V${source + 1} · `}${mmss(now.src)} · ${now.src.toFixed(1)}s`],
+                    ["From the video at", `${videos.length < 2 ? "" : `${nameOf(named, source)} · `}${mmss(now.src)} · ${now.src.toFixed(1)}s`],
                     ["Starts on word", `${shot.word} · “${shot.wordText}”`]
                   ]} />
                 </Detail>

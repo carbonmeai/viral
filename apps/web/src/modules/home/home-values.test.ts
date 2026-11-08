@@ -1,7 +1,7 @@
 import type { Run, WaitingItem } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { homeStats, shortStatus, videoStatus } from "./home-values.ts"
+import { homeStats, shortStatus, videoStatus, videosOf } from "./home-values.ts"
 
 const run = (status: Run["status"]) => ({ status }) as Run
 const waitingOn = (stage: string, sourceId = "candy") =>
@@ -30,4 +30,14 @@ test("the stat row counts across videos and shorts", () => {
   assert.deepEqual(stats.waiting, { value: 2, sub: "across 2 videos" })
   assert.deepEqual(stats.videos, { value: 2, sub: "1 mapped · 1 processing" })
   assert.deepEqual(stats.shorts, { value: 3, sub: "1 published · 1 waiting" })
+})
+
+test("a short's row names its video, or every one of several by its short name", () => {
+  const sources = [
+    { id: "candy", title: "He made the world's most extreme candy" },
+    { id: "heidi", title: "Heidi Klum as severed hand in 25th anniversary of iconic Halloween party" }
+  ]
+  assert.equal(videosOf({ sourceIds: ["candy"] } as never, sources as never), "He made the world's most extreme candy")
+  assert.equal(videosOf({ sourceIds: ["candy", "heidi"] } as never, sources as never), "Extreme candy · Heidi Klum")
+  assert.equal(videosOf({ sourceIds: ["gone"] } as never, sources as never), null)
 })

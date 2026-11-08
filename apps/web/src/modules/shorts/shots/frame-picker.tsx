@@ -7,15 +7,16 @@ import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { useState } from "react"
-import { VideoBadge } from "../../sets/video-badge.tsx"
+import { VideoDot } from "../../sets/video-badge.tsx"
 import { InspectorBlock } from "../editor-frame.tsx"
+import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { framesAroundAtom, framesKey } from "../shorts-api.ts"
 import { mmss } from "./shots-values.ts"
 
 const NEAR = 3
 const WIDE = 8
 
-// A still from one of the short's videos (V1 = 0), picked or being tried for a shot.
+// A still from one of the short's videos (the first = 0), picked or being tried for a shot.
 export type PickedFrame = FrameAt & { readonly source: number }
 
 // One of the short's videos as the picker offers it.
@@ -29,7 +30,7 @@ export interface PickerVideo {
 // another one. Clicking one tries it on the stage; "Use" puts it in your edit. The arrows move earlier or later,
 // "Wider" looks further either side.
 export function FramePicker({ videos, source, around, current, chosen, onChoose, onUse, onCancel, stillUrl }: {
-  // the short's videos, V1 first
+  // the short's videos, the first one first
   readonly videos: ReadonlyArray<PickerVideo>
   // the shot's video now
   readonly source: number
@@ -42,6 +43,7 @@ export function FramePicker({ videos, source, around, current, chosen, onChoose,
   readonly onCancel: () => void
   readonly stillUrl: (path: string, source: number) => string
 }) {
+  const named = useShortVideos()
   const [span, setSpan] = useState(NEAR)
   const [video, setVideo] = useState(source)
   const [at, setAt] = useState(around)
@@ -82,8 +84,8 @@ export function FramePicker({ videos, source, around, current, chosen, onChoose,
                 i === video ? "bg-ctl-active text-fg shadow-[inset_0_0_0_1px_var(--line-2)]" : "text-fg-2 hover:bg-ctl"
               )}
             >
-              <VideoBadge index={i} />
-              <span className="max-w-[110px] truncate">{v.title}</span>
+              <VideoDot index={i} />
+              <span className="max-w-[140px] truncate">{nameOf(named, i)}</span>
             </button>
           ))}
         </div>
@@ -117,14 +119,14 @@ export function FramePicker({ videos, source, around, current, chosen, onChoose,
       </div>
       <span className="text-xs text-fg-2">
         Click a frame to try it on the stage. The outlined one is what the shot shows now.
-        {videos.length < 2 || video === source ? null : ` Using one moves this shot to ${`V${video + 1}`}.`}
+        {videos.length < 2 || video === source ? null : ` Using one moves this shot to ${nameOf(named, video)}.`}
       </span>
       <div className="flex items-center justify-between gap-2">
         <Button variant="ghost" disabled={span === WIDE} onClick={() => setSpan(WIDE)}>Wider</Button>
         <div className="flex gap-2">
           <Button onClick={onCancel}>Cancel</Button>
           <Button variant="primary" disabled={chosen === null} onClick={() => chosen !== null && onUse(chosen)}>
-            {chosen === null ? "Pick a frame" : `Use ${videos.length < 2 ? "" : `V${chosen.source + 1} `}${mmss(chosen.t)}`}
+            {chosen === null ? "Pick a frame" : `Use ${videos.length < 2 ? "" : `${nameOf(named, chosen.source)} `}${mmss(chosen.t)}`}
           </Button>
         </div>
       </div>

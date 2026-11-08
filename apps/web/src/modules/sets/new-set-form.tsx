@@ -17,7 +17,7 @@ import { createSource } from "../videos/videos-api.ts"
 import { isVideoLink, RIGHTS_CHOICES } from "../videos/video-values.ts"
 import { reorder } from "./set-values.ts"
 import { createVideoSet, startSetRun } from "./sets-api.ts"
-import { VideoBadge } from "./video-badge.tsx"
+import { VideoDot } from "./video-badge.tsx"
 
 // A video in the set being made: one from your library, or a link or file added here (made into a video on Start).
 type Pick =
@@ -30,7 +30,7 @@ const fileName = (path: string) => path.split("/").at(-1) ?? path
 export const BRIEF_PLACEHOLDER =
   "e.g. Compare how each creator tried to make the same candy, and who actually got it right. Keep it about the build, not the sponsors."
 
-// Several videos into one set: pick 2–10 from your library or add links and files, put them in order (V1 first),
+// Several videos into one set: pick 2–10 from your library or add links and files, put them in order (the first video leads),
 // and say what their shorts should achieve. Start reads each video, proposes shorts across them, and opens the set.
 export function NewSetForm() {
   const navigate = useNavigate()
@@ -98,7 +98,7 @@ export function NewSetForm() {
 
   return (
     <div className="grid gap-2">
-      <Panel title="Videos" count={`${picks.length} of ${MAX_SHORT_SOURCES}`} actions={picks.length > 1 ? "V1 first: drag them into the order you'd tell it in" : undefined}>
+      <Panel title="Videos" count={`${picks.length} of ${MAX_SHORT_SOURCES}`} actions={picks.length > 1 ? "Drag them into the order you'd tell it in" : undefined}>
         {picks.length === 0
           ? <div className="rounded-ctl bg-item px-3 py-3 text-xs text-fg-2">Pick at least two from your library below, or add links and files.</div>
           : picks.map((pick, i) => (
@@ -126,7 +126,7 @@ export function NewSetForm() {
               )}
             >
               <GripVertical aria-hidden className="size-4 cursor-grab text-fg-3 active:cursor-grabbing" />
-              <VideoBadge index={i} />
+              <VideoDot index={i} className="size-2.5" />
               <span className="min-w-0">
                 <span className="block truncate font-medium">{pick.title}</span>
                 <span className="block truncate text-xs text-fg-2">

@@ -50,7 +50,7 @@ export class SetStoryStage extends Context.Service<SetStoryStage, {
         const members = yield* projectSources.ofSources(set.sourceIds).pipe(
           Effect.mapError((e) => fail("not-found", `a video in the set is gone (${e.id})`))
         )
-        const missing = members.filter((m) => Option.isNone(m.transcript)).map((m) => `V${m.index + 1}`)
+        const missing = members.filter((m) => Option.isNone(m.transcript)).map((m) => `Video ${m.index + 1}`)
         if (missing.length > 0) return yield* fail("not-ready", `${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} no transcript yet`)
 
         const videos = yield* Effect.forEach(members, (member) =>

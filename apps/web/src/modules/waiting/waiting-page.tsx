@@ -17,6 +17,7 @@ export function WaitingPage() {
               items={data.waiting}
               showVideo
               thumbs={new Map(data.shorts.map((s) => [s.project.id, s.thumb]))}
+              videos={new Map(data.shorts.map((s) => [s.project.id, s.sourceTitle]))}
               now={Date.now()}
             />
           </div>

@@ -12,7 +12,7 @@ import { framesAroundAtom, framesKey } from "../shorts/shorts-api.ts"
 import { useDetailed } from "../system/detail.tsx"
 import { SCORE_AXES } from "../videos/video-values.ts"
 import { proposalVideos } from "./set-values.ts"
-import { VideoBadge } from "./video-badge.tsx"
+import { VideoDot } from "./video-badge.tsx"
 
 // A still of the card's moment (a beat in one of its videos), else the video's poster while it's pulled or if it
 // can't be.
@@ -25,7 +25,7 @@ function MomentStill({ moment, fallback }: { readonly moment: { readonly sourceI
     : <img src={src} alt="" className="aspect-video w-full rounded-ctl bg-ctl-active object-cover" loading="lazy" />
 }
 
-// One short across the set's videos: a still, which videos it uses (V badges in their colours, with titles), the
+// One short across the set's videos: a still, which videos it uses (each one's colour and title), the
 // approach, the hook, the title, the four scores and why it works, then make it (or open the one already made).
 export function SetProposalCard({ proposal, index, titles, moment, still, made, busy, onMake, onOpen }: {
   readonly proposal: SetProposal
@@ -51,7 +51,7 @@ export function SetProposalCard({ proposal, index, titles, moment, still, made, 
         <div className="grid gap-1">
           {videos.map((i) => (
             <div key={i} className="flex min-w-0 items-center gap-2 text-xs">
-              <VideoBadge index={i} />
+              <VideoDot index={i} />
               <span className="truncate text-fg-1">{titles[i] ?? "Untitled video"}</span>
             </div>
           ))}

@@ -20,6 +20,8 @@ test("waiting rows read like the mockup, globally and per video", () => {
   assert.equal(waitingTitle(shots), "02 · He Made a Candy")
   assert.equal(waitingSub(shots, true), "Extreme candy · Shots step")
   assert.equal(waitingSub(shots, false), "Shots step")
+  // a short from several videos names them all
+  assert.equal(waitingSub(shots, true, "Extreme candy · Heidi Klum"), "Extreme candy · Heidi Klum · Shots step")
   assert.equal(actionLabel(shots), "Approve the shots")
   assert.equal(scopeWaiting([shots, voice], null).length, 2)
   assert.deepEqual(scopeWaiting([shots, voice], "candy"), [shots])

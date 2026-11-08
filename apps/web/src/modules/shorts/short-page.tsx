@@ -17,6 +17,8 @@ import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
 import { BriefButton } from "./brief-button.tsx"
 import { MultiVideoNote } from "./multi-video-note.tsx"
+import { videoNames } from "../sets/set-values.ts"
+import { ShortVideosProvider } from "./short-videos.tsx"
 import { EditorFrame } from "./editor-frame.tsx"
 import { EditorSkeleton } from "./editor-skeleton.tsx"
 import {
@@ -241,7 +243,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   // a shot's image: the still you picked for it, else its planned frame next to the shot plan
   const sourceOwner = { _tag: "Source", id: ws.source.id } as const
   const stillUrl = (path: string) => artifactPathUrl(serverUrl, sourceOwner, path)
-  // the short's videos (V1 first): each one's file, and a still of it, by position
+  // the short's videos (the first one first): each one's file, and a still of it, by position
   const videoOf = (source: number) => ws.videos[source] ?? ws.videos[0]
   const videoUrlOf = (source: number) => {
     const v = videoOf(source)
@@ -622,7 +624,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       const image = thumbnail.thumbnail.image
       stage = (
         <>
-          {stageBar(`${config.lines.map((l) => l.text).join(" ")}${ws.videos.length > 1 ? " · made from V1 for now" : ""}`)}
+          {stageBar(`${config.lines.map((l) => l.text).join(" ")}${ws.videos.length > 1 ? ` · pictures from the first video, ${videoNames(ws.videos.map((v) => v.source.title))[0]}, for now` : ""}`)}
           <ThumbnailStage
             url={image === null ? null : artifactFileUrl(serverUrl, projectOwner, "thumbnail", thumbnail.version, image)}
             layout={config.layout ?? "classic"}
@@ -816,7 +818,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
 
   const captions = ws.preset.config.captions
   return (
-    <>
+    <ShortVideosProvider titles={ws.videos.map((v) => v.source.title)}>
       <TitleBar title={titleOf(ws)}>
         <MultiVideoNote count={ws.project.sourceIds.length} format={ws.project.format} />
         <BriefButton project={ws.project} running={(progress.run ?? ws.run)?.status === "running" || (progress.run ?? ws.run)?.status === "waiting"} onSaved={refresh} />
@@ -889,6 +891,6 @@ function Editor({ ws, progress, step, onStep, refresh }: {
           />
         )}
       />
-    </>
+    </ShortVideosProvider>
   )
 }

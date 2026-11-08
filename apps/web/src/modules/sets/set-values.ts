@@ -1,8 +1,61 @@
 import type { Run, StageName, StageRun, VideoSetMember } from "@viral/contracts"
 import { latestAttempts } from "../videos/run-progress.ts"
 
-// "V1"…"V10": how a set's (or a short's) videos are named everywhere, V1 first.
-export const videoLabel = (index: number) => `V${index + 1}`
+// "Video 1", "Video 2"…: a video's place spelled out, for one without a title (never "V1", which reads as a version).
+export const videoLabel = (index: number) => `Video ${index + 1}`
+
+// Words a short name leaves out: small words, and the filler video titles are full of.
+const FILLER = new Set([
+  "a", "an", "the", "and", "or", "but", "of", "in", "on", "at", "to", "for", "with", "as", "by", "from", "into", "about",
+  "vs", "is", "are", "was", "were", "be", "it", "its", "this", "that", "my", "your", "his", "her", "their", "our", "he",
+  "she", "they", "we", "i", "you", "me", "him", "them", "us", "how", "why", "what", "when", "who", "which", "i'm",
+  "we're", "made", "make", "makes", "making", "built", "build", "building", "tried", "try", "trying", "just", "very",
+  "really", "most", "world's", "worlds", "ever", "best", "official", "video", "full", "episode", "part", "new"
+])
+const NAME_MAX = 18
+const capitalized = (word: string) => /^\p{Lu}/u.test(word)
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+// A short name for a video, from its title: a name in it when it has one ("Heidi Klum", "Red Bull"), else its first
+// two or three meaningful words ("Extreme candy"), at most ~18 characters; "Video 2" when the title gives nothing.
+export const shortVideoName = (title: string | null | undefined, index: number): string => {
+  const words = (title ?? "")
+    .replace(/\.(mp4|mov|m4v|webm|mkv)$/i, "")
+    .replace(/[([{][^)\]}]*[)\]}]/g, " ")
+    .replace(/[_|#:]+/g, " ")
+    .replace(/’/g, "'")
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}']+$/gu, ""))
+    .filter((w) => w.length > 0)
+  if (words.length === 0) return videoLabel(index)
+  const meaningful = (w: string) => !FILLER.has(w.toLowerCase())
+  // a run of two or more capitalized words is a name, unless the whole title is in title case
+  const titleCase = words.filter(capitalized).length / words.length > 0.6
+  let picked: ReadonlyArray<string> = []
+  if (!titleCase) {
+    for (let i = 0; i < words.length && picked.length === 0; i++) {
+      let j = i
+      while (j < words.length && capitalized(words[j]!) && meaningful(words[j]!)) j++
+      if (j - i >= 2) picked = words.slice(i, j)
+    }
+  }
+  if (picked.length === 0) picked = words.filter(meaningful)
+  if (picked.length === 0) return videoLabel(index)
+  let name = ""
+  for (const word of picked.slice(0, 3)) {
+    const next = name === "" ? word : `${name} ${word}`
+    if (next.length > NAME_MAX) break
+    name = next
+  }
+  if (name === "") name = `${picked[0]!.slice(0, NAME_MAX - 1)}…`
+  return capitalize(name)
+}
+
+// Every video's short name, by position; two that come out the same are spelled out ("Video 1", "Video 2") instead.
+export const videoNames = (titles: ReadonlyArray<string | null | undefined>): ReadonlyArray<string> => {
+  const names = titles.map((t, i) => shortVideoName(t, i))
+  return names.map((name, i) => names.filter((n) => n.toLowerCase() === name.toLowerCase()).length > 1 ? videoLabel(i) : name)
+}
 
 // Each video's colour, by position: the timeline's hues first, so a video keeps its colour from the set page to
 // the editor.

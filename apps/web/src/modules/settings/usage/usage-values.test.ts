@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { barHeights, billingLabel, dayLabel, formatCount, formatUsd, providerLabel } from "./usage-values.ts"
+import { barHeights, billingLabel, dayLabel, estimateUsd, formatCount, formatExact, formatUsd, planMeter, planUnavailableText, providerLabel, ttsModelLabel } from "./usage-values.ts"
 
 test("usage numbers read the way people say them", () => {
   assert.equal(formatUsd(0), "$0")
@@ -21,4 +21,16 @@ test("providers and billing get plain names", () => {
   assert.equal(providerLabel(null), "Before tracking")
   assert.equal(billingLabel("subscription"), "Plan value")
   assert.equal(billingLabel(null), "Not tracked")
+})
+
+test("the ElevenLabs plan reads as characters used and left, and a price only when it's known", () => {
+  assert.equal(formatExact(41_250), "41,250")
+  assert.deepEqual(planMeter(41_250, 100_000), { left: 58_750, fraction: 0.4125 })
+  assert.deepEqual(planMeter(120, 100), { left: 0, fraction: 1 })
+  assert.deepEqual(planMeter(0, 0), { left: 0, fraction: 0 })
+  assert.equal(estimateUsd(10_000, 0.00022), 2.2)
+  assert.equal(estimateUsd(10_000, null), null)
+  assert.match(planUnavailableText("no-permission"), /User › Read/)
+  assert.equal(ttsModelLabel("eleven_v4"), "Eleven v4")
+  assert.equal(ttsModelLabel("eleven_multilingual_v2"), "Eleven Multilingual v2")
 })

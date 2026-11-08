@@ -34,11 +34,11 @@ function GrowingTextarea({ value, onChange, label }: { readonly value: string; r
 
 // The script as a document: the headline as it will look, then each line in playing order. Narration is what
 // the narrator says; real lines play in the creator's own voice (click ▶ to hear them from their video, badged
-// V1, V2… in a short from several videos).
+// its colour and short name in a short from several videos).
 export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected, onSelect }: {
   readonly script: Script
   readonly preset: Preset
-  // each video's file by position (V1 = 0), or null before it's fetched
+  // each video's file by position (the first = 0), or null before it's fetched
   readonly videoUrlOf: (source: number) => string | null
   // how many videos the short has
   readonly videos: number
@@ -88,11 +88,11 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
             const url = videoUrlOf(beat.source ?? 0)
             return (
               <div key={i} className="grid grid-cols-[70px_minmax(0,1fr)_auto] items-baseline gap-3.5 rounded-ctl px-3 py-2 hover:bg-ctl">
-                <span className="flex items-center gap-1.5 text-[11px] font-medium tracking-[.05em] text-t-real uppercase">
-                  Real
+                <span className="text-[11px] font-medium tracking-[.05em] text-t-real uppercase">Real</span>
+                <span className="grid justify-items-start gap-1">
+                  <span className="text-[15px] leading-[1.55] text-fg-2 italic">“{beat.quote}”</span>
                   <ClipBadge source={beat.source} videos={videos} />
                 </span>
-                <span className="text-[15px] leading-[1.55] text-fg-2 italic">“{beat.quote}”</span>
                 <span className="flex items-center gap-1.5 text-[11.5px] text-fg-3">
                   {clockOf(beat.start)}–{clockOf(beat.end)}
                   <IconButton label={player.playing === key ? "Stop" : "Play this line from the video"} onClick={() => player.play(key, beat.start, beat.end, url)} disabled={url === null}>

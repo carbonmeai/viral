@@ -21,11 +21,12 @@ export const waitingTitle = (item: WaitingItem) =>
     ? item.sourceTitle ?? "Untitled video"
     : `${String(item.projectNumber ?? 0).padStart(2, "0")} · ${item.projectTitle}`
 
-// The line under it: which video, and which step ("Extreme candy · Shots step"); the video is left out when
-// the list is already one video's.
-export const waitingSub = (item: WaitingItem, showVideo: boolean) => {
+// The line under it: which video, and which step ("Extreme candy · Shots step"); a short from several videos
+// names them all (`videos`: "Extreme candy · Heidi Klum"). The videos are left out when the list is already one
+// video's.
+export const waitingSub = (item: WaitingItem, showVideo: boolean, videos?: string | null) => {
   const step = `${STEP_NAMES[item.request.stage] ?? item.request.stage} step`
-  return showVideo ? `${item.sourceTitle ?? "Untitled video"} · ${step}` : step
+  return showVideo ? `${videos ?? item.sourceTitle ?? "Untitled video"} · ${step}` : step
 }
 
 // The global list, or one video's: the same items, filtered.

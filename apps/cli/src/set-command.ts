@@ -5,7 +5,7 @@ import { Client } from "./client.ts"
 import { follow } from "./run-command.ts"
 
 export const SET_USAGE = `  set create <source-id>,<source-id>[,…] --brief "<why they belong together>" [--title <name>]
-                                          (2–10 videos, V1 first)
+                                          (2–10 videos, in the order you'd tell it in)
   set run <id> [--again]                  (reads each video, then proposes shorts across them; --again proposes anew)
   set story <id> | list | rename <id> <name> | delete <id>
   set make <id> <n> [--brief "<another brief>"]
@@ -16,16 +16,16 @@ const printSetStory = Effect.fn("printSetStory")(function*(id: SourceSetId) {
   const overview = yield* client.GetVideoSetOverview({ id })
   yield* Console.log(`${overview.set.title}\n  brief: ${overview.set.brief}`)
   for (const m of overview.members) {
-    yield* Console.log(`  V${m.position + 1} ${m.source.title ?? m.source.id}${m.ready ? "" : "  (not read yet)"}`)
+    yield* Console.log(`  Video ${m.position + 1}  ${m.source.title ?? m.source.id}${m.ready ? "" : "  (not read yet)"}`)
   }
   const story = overview.story
   if (story === null) return yield* Console.log("no set story yet; run `set run`")
   yield* Console.log(`\n${story.summary}`)
   for (const b of story.beats) {
-    yield* Console.log(`  V${b.source + 1} ${b.start.toFixed(0)}–${b.end.toFixed(0)}s ${b.beat}: ${b.summary}`)
+    yield* Console.log(`  Video ${b.source + 1}  ${b.start.toFixed(0)}–${b.end.toFixed(0)}s ${b.beat}: ${b.summary}`)
   }
   yield* Effect.forEach(story.proposals, (p, i) =>
-    Console.log(`\n${i + 1}. ${p.title}  [${p.approach}]  uses ${p.sources.map((s) => `V${s + 1}`).join(", ")}\n   "${p.hook}"\n   ${p.why}`), { discard: true })
+    Console.log(`\n${i + 1}. ${p.title}  [${p.approach}]  uses ${p.sources.map((s) => `Video ${s + 1}`).join(", ")}\n   "${p.hook}"\n   ${p.why}`), { discard: true })
 })
 
 export const setCommand = Effect.fn("setCommand")(function*() {

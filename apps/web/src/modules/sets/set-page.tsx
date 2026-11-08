@@ -25,9 +25,9 @@ import { VideoSkeleton } from "../videos/video-skeleton.tsx"
 import { runProgressAtom, startProjectRun } from "../videos/videos-api.ts"
 import { runSpend, shortForProposal, stageDetail } from "../videos/video-values.ts"
 import { SetProposalCard } from "./set-proposal-card.tsx"
-import { memberState, proposalMoment, proposalVideos, setPhase } from "./set-values.ts"
+import { memberState, proposalMoment, proposalVideos, setPhase, videoNames } from "./set-values.ts"
 import { createProjectFromSetProposal, deleteVideoSet, renameVideoSet, startSetRun, videoSetOverviewAtom } from "./sets-api.ts"
-import { VideoBadge } from "./video-badge.tsx"
+import { VideoBadge, VideoDot } from "./video-badge.tsx"
 
 export type SetTab = "videos" | "proposals"
 
@@ -97,6 +97,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
   const phase = setPhase(run, stages, story !== null)
   const current: SetTab = tab ?? (phase === "proposed" ? "proposals" : "videos")
   const titles = members.map((m) => m.source.title ?? "Untitled video")
+  const names = videoNames(members.map((m) => m.source.title))
   const thumbOf = new Map((home?.videos ?? []).map((v) => [v.source.id, v.thumb]))
   const statusOf = new Map((home?.shorts ?? []).map((s) => [s.project.id, s.status]))
   const read = members.filter((m) => m.ready).length
@@ -190,7 +191,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
                 <p className="m-0 mb-2 leading-relaxed text-fg-1">{story.summary}</p>
                 {story.videos.map((v) => (
                   <div key={v.source} className="flex min-w-0 items-start gap-2.5 rounded-ctl bg-item px-3 py-2">
-                    <VideoBadge index={v.source} className="mt-px" />
+                    <VideoDot index={v.source} className="mt-[7px]" />
                     <span className="min-w-0 text-fg-1">
                       <span className="font-medium text-fg">{titles[v.source] ?? "Untitled video"}</span>
                       <span className="text-fg-2"> · {v.summary}</span>
@@ -225,7 +226,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
                 <Panel title="Beats" count={story.beats.length}>
                   {story.beats.map((beat, i) => (
                     <div key={i} className="grid grid-cols-[auto_90px_minmax(0,1fr)_auto] items-start gap-3 rounded-ctl bg-item px-3 py-2.5">
-                      <VideoBadge index={beat.source} className="mt-px" />
+                      <VideoBadge index={beat.source} name={names[beat.source]} title={titles[beat.source]} className="mt-px" />
                       <span className="w-fit rounded-chip px-2 py-0.5 text-xs font-medium" style={beatStyle(beat.beat)}>{beat.beat}</span>
                       <div className="min-w-0">
                         <div>{beat.summary}</div>
@@ -301,7 +302,7 @@ function MemberLine({ member, thumb, run, progress }: {
   ].filter((p) => p !== null).join(" · ")
   return (
     <div className="grid grid-cols-[auto_72px_minmax(0,1fr)_auto] items-center gap-3 rounded-ctl bg-item px-3 py-2">
-      <VideoBadge index={member.position} />
+      <VideoDot index={member.position} className="size-2.5" />
       {thumb === null ? <span className="aspect-video w-[72px] rounded-[5px] bg-ctl-active" /> : <img src={thumb} alt="" className="aspect-video w-[72px] rounded-[5px] object-cover" loading="lazy" />}
       <div className="min-w-0">
         <Link to="/videos/$sourceId" params={{ sourceId: source.id }} className="block truncate font-medium hover:underline">{source.title ?? "Untitled video"}</Link>

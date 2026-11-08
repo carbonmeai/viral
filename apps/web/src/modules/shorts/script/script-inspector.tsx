@@ -5,7 +5,7 @@ import { Check, ListChecks, MessageSquare, Type } from "lucide-react"
 import { useState } from "react"
 import { AskBox } from "../ask-box.tsx"
 import { InspectorBlock } from "../editor-frame.tsx"
-import { VideoBadge } from "../../sets/video-badge.tsx"
+import { VideoDot } from "../../sets/video-badge.tsx"
 import { narratedWords, realLines, realsByVideo } from "../editor-values.ts"
 import type { GateControls } from "../gate.ts"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
@@ -38,7 +38,7 @@ function Meter({ label, value, range }: { readonly label: string; readonly value
 
 export function ScriptInspector({ script, limits, preset, videos, stages, gate, tab, onTab }: {
   readonly script: Script
-  // the short's videos' titles, V1 first
+  // the short's videos' titles, the first one first
   readonly videos: ReadonlyArray<string>
   readonly limits: ScriptLimits | null
   readonly preset: Preset
@@ -69,7 +69,7 @@ export function ScriptInspector({ script, limits, preset, videos, stages, gate, 
               <InspectorBlock title="Real lines by video">
                 {realsByVideo(script, videos.length).map((count, i) => (
                   <span key={i} className="flex min-w-0 items-center gap-2 text-sm text-fg-1">
-                    <VideoBadge index={i} />
+                    <VideoDot index={i} />
                     <span className="truncate">{videos[i]}</span>
                     <span className="ml-auto text-fg-2 tabular-nums">{count}</span>
                   </span>

@@ -1,16 +1,36 @@
 import type { Run, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { memberState, proposalMoment, proposalVideos, reorder, setPhase, videoColor, videoLabel } from "./set-values.ts"
+import { memberState, proposalMoment, proposalVideos, reorder, setPhase, shortVideoName, videoColor, videoLabel, videoNames } from "./set-values.ts"
 
 const run = (status: Run["status"], error: string | null = null) => ({ status, error }) as Run
 const stage = (name: StageRun["stage"], status: StageRun["status"]) => ({ stage: name, status, attempt: 1 }) as StageRun
 
-test("videos are V1…V10 with a colour each, the same for the same position", () => {
-  assert.equal(videoLabel(0), "V1")
-  assert.equal(videoLabel(9), "V10")
+test("videos are spelled out by place with a colour each, the same for the same position", () => {
+  assert.equal(videoLabel(0), "Video 1")
+  assert.equal(videoLabel(9), "Video 10")
   assert.equal(new Set(Array.from({ length: 10 }, (_, i) => videoColor(i))).size, 10)
   assert.equal(videoColor(1), videoColor(11))
+})
+
+test("a video's short name: a name in its title, else its first meaningful words, else its place", () => {
+  assert.equal(shortVideoName("Heidi Klum as severed hand in 25th anniversary of iconic Halloween party", 1), "Heidi Klum")
+  assert.equal(shortVideoName("Making the world's most powerful Red Bull", 1), "Red Bull")
+  assert.equal(shortVideoName("He made the world’s most extreme candy", 0), "Extreme candy")
+  assert.equal(shortVideoName("candy.mp4", 0), "Candy")
+  assert.equal(shortVideoName("How I Built The Biggest Lego Set Ever", 0), "Biggest Lego Set")
+  assert.equal(shortVideoName("Supercalifragilisticexpialidocious", 0), "Supercalifragilis…")
+  assert.equal(shortVideoName(null, 1), "Video 2")
+  assert.equal(shortVideoName("  the of  ", 2), "Video 3")
+  for (const t of ["Heidi Klum as severed hand in 25th anniversary of iconic Halloween party", "A very long title with many many words in it"]) {
+    assert.ok(shortVideoName(t, 0).length <= 18)
+  }
+})
+
+test("two videos whose short names match are spelled out instead", () => {
+  assert.deepEqual(videoNames(["candy", "Heidi Klum at Halloween", null]), ["Candy", "Heidi Klum", "Video 3"])
+  assert.deepEqual(videoNames(["Extreme candy part 1", "Extreme candy part 2"]), ["Extreme candy 1", "Extreme candy 2"])
+  assert.deepEqual(videoNames(["The candy", "Candy!"]), ["Video 1", "Video 2"])
 })
 
 test("a set's video: being read with its step, read, stopped, or not started", () => {

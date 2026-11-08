@@ -6,7 +6,7 @@ import type { TimelineLayout } from "../editor-values.ts"
 // stays as planned.
 export interface ShotChange {
   readonly src?: number
-  // the video the new frame is from, by position (V1 = 0)
+  // the video the new frame is from, by position (the first = 0)
   readonly source?: number
   // the picked still, relative to its video's folder (frames-around/<ms>.jpg)
   readonly still?: string
@@ -42,7 +42,7 @@ export const proposalOf = (plan: ShotPlan, draft: ShotDraft): ShotProposal => ({
     return {
       word: s.word,
       src: s.src,
-      // V1 is left out, as the server stores it
+      // the first video is left out, as the server stores it
       ...((s.source ?? 0) === 0 ? {} : { source: s.source }),
       note: s.note,
       ...(s.fit === undefined ? {} : { fit: s.fit }),

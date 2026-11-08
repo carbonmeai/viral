@@ -15,7 +15,7 @@ import { Atom } from "effect/reactivity"
 import { ViralClient } from "../../api/client.ts"
 import { serverUrl } from "../../config/server-url.ts"
 import { artifactFileUrl } from "../../lib/media-url.ts"
-import { shortStatus, type StatusView, videoStatus } from "./home-values.ts"
+import { shortStatus, type StatusView, videoStatus, videosOf } from "./home-values.ts"
 
 export interface VideoSummary {
   readonly source: Source
@@ -26,6 +26,8 @@ export interface VideoSummary {
 
 export interface ShortSummary {
   readonly project: Project
+  // the video it's from ("He made the world's most extreme candy"), or every one by its short name for a short from
+  // several ("Extreme candy · Heidi Klum")
   readonly sourceTitle: string | null
   readonly status: StatusView
   readonly thumb: string | null
@@ -66,8 +68,7 @@ const load = Effect.gen(function*() {
         : null
       return {
         project,
-        // a short is listed under its first video (V1)
-        sourceTitle: sources.find((s) => s.id === project.sourceIds[0])?.title ?? null,
+        sourceTitle: videosOf(project, sources),
         status: shortStatus(newest(runs), waiting.find((w) => w.projectId === project.id)),
         thumb,
         durationS: Option.getOrNull(Option.map(decoded(latest(artifacts, "render"), RenderedShort), (r) => r.durationS))
