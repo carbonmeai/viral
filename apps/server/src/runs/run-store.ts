@@ -264,12 +264,16 @@ export class RunStore extends Context.Service<RunStore, {
       const updateStageRun = Effect.fn("RunStore.updateStageRun")(
         function*(id: StageRunId, status: StageRunStatus, error: string | null) {
           const done = status !== "running" && status !== "waiting"
+          // the time the stage worked: up to its gate when it has one (the first time it waits), so the time
+          // spent reviewing it isn't counted
+          const timed = done || status === "waiting"
           const at = yield* now
           yield* sql`
             UPDATE stage_runs
             SET status = ${status}, error = ${error}, finished_at = ${done ? at : null},
-                duration_ms = CASE WHEN ${done ? 1 : 0} = 1
-                  THEN CAST((julianday(${at}) - julianday(started_at)) * 86400000 AS INTEGER) ELSE duration_ms END
+                duration_ms = CASE WHEN ${timed ? 1 : 0} = 1
+                  THEN coalesce(duration_ms, CAST((julianday(${at}) - julianday(started_at)) * 86400000 AS INTEGER))
+                  ELSE duration_ms END
             WHERE id = ${id}
           `
           return toStageRun(yield* stageRunById(id))

@@ -154,6 +154,22 @@ test("a gated run waits for approval, then later runs reuse approved work", asyn
   await rt.dispose()
 })
 
+test("a gated stage's time stops at its gate, so time spent reviewing it isn't counted", async () => {
+  const rt = boot()
+  const owner = await createSource(rt)
+  const run = await start(rt, owner)
+  const atGate = await until(rt, run.id, raised)
+  await rt.runPromise(Effect.sleep("400 millis"))
+  await respond(rt, requestOf(atGate).id, { _tag: "Approve" })
+  await until(rt, run.id, finished)
+  const transcribe = await rt.runPromise(Effect.gen(function*() {
+    return (yield* (yield* RunStore).listStageRuns(run.id)).find((s) => s.stage === "transcribe")
+  }))
+  assert.ok(transcribe?.durationMs !== null && transcribe?.durationMs !== undefined, "the time is recorded")
+  assert.ok(transcribe.durationMs < 400, `the review isn't counted (${transcribe.durationMs}ms)`)
+  await rt.dispose()
+})
+
 test("reject re-runs the stage with your note; edit records your version", async () => {
   const rt = boot()
   const owner = await createSource(rt)
