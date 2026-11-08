@@ -37,3 +37,13 @@ A cut-down short is a list of **sections**, each one stretch of the source with 
 - **Hook text:** the open loop in 7 words or fewer, readable with the sound off, shown over the hook.
 - **Never use excluded ranges** (sponsor reads, ads, end screens).
 - Score the result on the virality radar (`story-arc`) and say which axis is weakest.
+
+## Shorts from several videos
+
+- **Every section names its video** (`video`: its V number, as the brief labels them) and uses that video's own
+  seconds. Check the storyboard's V labels: a wrong video with a valid time plays the wrong footage.
+- **A cut between videos is allowed anywhere,** but the first section from each new video needs a **context
+  cut**: a line that says who or where this is ("Meanwhile at her party…", the person naming the thing), so the
+  jump makes sense without a narrator.
+- **Use the fewest videos the story needs,** and let one video carry the hook rather than splitting it.
+- **Each video's excluded ranges are its own.** Keep every section clear of the ranges listed for its video.

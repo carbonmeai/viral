@@ -43,3 +43,29 @@ test("the recap style: a blurred fill, no hook card and no credit", () => {
   assert.equal(out.credit, undefined)
   assert.equal(out.caption_case, "lower")
 })
+
+test("a short from two videos lists V2 with its own excluded ranges, and a V2 section names it", () => {
+  const two: CutPlan = {
+    ...plan,
+    sections: [...plan.sections, { beat: "payoff", start: 5, end: 9, source: 1, note: "the hand", text: "look at my hand", frame: null }]
+  }
+  const out = assembleCut({
+    ...input(fullBleed),
+    plan: two,
+    others: [{ source: "/s2/source.mp4", sourceTranscript: "/s2/transcript.json", excluded: [{ start: 0, end: 3 }] }],
+    credit: "Video: NileBlue · Heidi"
+  })
+  Schema.decodeSync(CutRenderPlan)(out, { onExcessProperty: "error" })
+  assert.deepEqual(out.sources, [{ path: "/s2/source.mp4", transcript: "/s2/transcript.json" }])
+  assert.deepEqual(out.exclude, [[2158, 2270]])
+  assert.deepEqual(out.exclude_by_source, { "1": [[0, 3]] })
+  assert.deepEqual(out.sections[2], { beat: "payoff", start: 5, end: 9, source: 1 })
+  assert.ok(!("source" in out.sections[0]!), "a V1 section is written as before")
+  assert.equal(out.credit, "Video: NileBlue · Heidi")
+})
+
+test("a single-video plan has no videos list or per-video ranges", () => {
+  const out = assembleCut(input(fullBleed))
+  assert.equal("sources" in out, false)
+  assert.equal("exclude_by_source" in out, false)
+})

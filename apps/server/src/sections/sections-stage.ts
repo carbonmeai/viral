@@ -5,6 +5,7 @@ import {
   CutPlan,
   type GatePayload,
   type ProjectId,
+  ProposedSections,
   SectionsProposal,
   StoryMap
 } from "@viral/contracts"
@@ -18,11 +19,15 @@ import { detailSheetTool } from "../contact-sheet/detail-sheet-tool.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects } from "../projects/projects.ts"
+import { fitsInline } from "../projects/videos-brief.ts"
 import type { SourceContext } from "../projects/source-context.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { ScriptRunner } from "../script-runner/script-runner.ts"
+import { transcriptTools } from "../set-story/transcript-tools.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
-import { checkSections, type CutDraft } from "./section-rules.ts"
+import { loadShortStory } from "../video-sets/short-story.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
+import { checkSections, type CutDraft, fromProposedSections } from "./section-rules.ts"
 import { buildSectionsBrief, SECTIONS_PROMPT } from "./sections-prompt.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "sections", code, message })
@@ -39,7 +44,14 @@ const StoryboardLine = Schema.fromJsonString(Schema.Union([
 ]))
 const StoryboardSpec = Schema.fromJsonString(Schema.Struct({
   cols: Schema.Int,
-  tiles: Schema.Array(Schema.Struct({ t: Schema.Finite, label: Schema.String, kind: Schema.Literals(["shot", "real"]), file: Schema.String }))
+  tiles: Schema.Array(Schema.Struct({
+    t: Schema.Finite,
+    label: Schema.String,
+    kind: Schema.Literals(["shot", "real"]),
+    file: Schema.String,
+    // the tile's own video, in a short from several videos (else the storyboard's)
+    video: Schema.optionalKey(Schema.String)
+  }))
 }))
 
 const frameFile = (index: number) => `frames/section-${String(index + 1).padStart(2, "0")}.jpg`
@@ -48,13 +60,18 @@ const firstWords = (text: string, n: number) => {
   return words.length <= n ? text : `${words.slice(0, n).join(" ")}…`
 }
 
-// One storyboard tile per section in playing order, a moment after its first word, saved on its own too.
-const storyboardTiles = (draft: CutDraft) =>
+// "V2 " before a section in a short from several videos; nothing in a single-video short
+const videoTag = (videos: ReadonlyArray<string>, source: number | undefined) => videos.length > 1 ? `V${(source ?? 0) + 1} ` : ""
+
+// One storyboard tile per section in playing order, a moment after its first word, saved on its own too. In a
+// short from several videos (`videos`, V1 first) each tile is drawn from its own video and labelled with its V.
+const storyboardTiles = (draft: CutDraft, videos: ReadonlyArray<string>) =>
   draft.sections.map((section, k) => ({
     t: Math.min(section.start + 0.3, section.end),
-    label: `${k + 1} ${section.beat} "${firstWords(section.text, 4)}"`,
+    label: `${k + 1} ${videoTag(videos, section.source)}${section.beat} "${firstWords(section.text, 4)}"`,
     kind: "shot" as const,
-    file: frameFile(k)
+    file: frameFile(k),
+    ...(videos.length > 1 ? { video: videos[section.source ?? 0] ?? videos[0]! } : {})
   }))
 
 // Plans a cut-down short: an agent picks the creator's best stretches of speech by story beat, hook first,
@@ -70,6 +87,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       const projectSources = yield* ProjectSources
       const artifacts = yield* Artifacts
       const transcripts = yield* Transcripts
+      const sets = yield* VideoSets
       const contactSheets = yield* ContactSheets
       const scripts = yield* ScriptRunner
       const agent = yield* AgentSession
@@ -85,21 +103,24 @@ export class SectionsStage extends Context.Service<SectionsStage, {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
         if (project.format !== "cut-down") return yield* fail("wrong-approach", `${project.approach} shorts aren't cut down`)
         const sources = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
-        // the agent cuts from V1 for now; several videos come to the sections with multi-video cut-down shorts
         const [v1] = sources
-        const video = yield* Effect.fromOption(v1.video).pipe(
-          Effect.mapError(() => fail("not-ready", "the source video hasn't been fetched"))
-        )
-        if (sources.some((s) => Option.isNone(s.transcript))) return yield* fail("not-ready", "the source has no transcript")
+        const one = sources.length === 1
+        const unfetched = sources.filter((s) => Option.isNone(s.video)).map((s) => `V${s.index + 1}`)
+        if (unfetched.length > 0) return yield* fail("not-ready", one ? "the source video hasn't been fetched" : `${unfetched.join(", ")} hasn't been fetched`)
+        const untranscribed = sources.filter((s) => Option.isNone(s.transcript)).map((s) => `V${s.index + 1}`)
+        if (untranscribed.length > 0) return yield* fail("not-ready", one ? "the source has no transcript" : `${untranscribed.join(", ")} has no transcript`)
+        // every video's file, V1 first
+        const videos = sources.map((s) => Option.getOrThrow(s.video))
         const transcript = Option.getOrThrow(v1.transcript)
         const sectionContext: SourceContext = v1
-        return { project, source: v1.source, sourceOwner: v1.owner, video, transcript, sources, sectionContext }
+        return { project, source: v1.source, sourceOwner: v1.owner, videos, transcript, sources, sectionContext }
       })
 
       // Draws a plan's frames (frames/section-NN.jpg) and their storyboard into `dir`; null when it couldn't.
-      const draw = Effect.fn("SectionsStage.draw")(function*(video: string, draft: CutDraft, dir: string) {
+      const draw = Effect.fn("SectionsStage.draw")(function*(videos: ReadonlyArray<string>, draft: CutDraft, dir: string) {
         const spec = path.join(dir, "storyboard.json")
-        yield* Schema.encodeEffect(StoryboardSpec)({ cols: 6, tiles: storyboardTiles(draft) }).pipe(
+        const video = videos[0]!
+        yield* Schema.encodeEffect(StoryboardSpec)({ cols: 6, tiles: storyboardTiles(draft, videos) }).pipe(
           Effect.flatMap((json) => fs.writeFileString(spec, json)),
           Effect.mapError(failWith("write"))
         )
@@ -114,22 +135,22 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       })
 
       // The agent's self-check: the plan's problems, or each section's first frame drawn so it can see them.
-      const previewTool = (video: string, sources: ReadonlyArray<SourceContext>, root: string, attempt: number) => {
+      const previewTool = (videos: ReadonlyArray<string>, sources: ReadonlyArray<SourceContext>, root: string, attempt: number) => {
         let drawn = 0
         return agentTool({
           name: "preview_sections",
           description: "Check a cut-down plan and draw each section's first frame. Returns the problems to fix, or the storyboard and frame files to Read.",
-          schema: SectionsProposal,
-          run: Effect.fn("SectionsStage.preview")(function*(proposal: SectionsProposal) {
-            const checked = checkSections(proposal, sources)
+          schema: ProposedSections,
+          run: Effect.fn("SectionsStage.preview")(function*(proposed: ProposedSections) {
+            const checked = checkSections(fromProposedSections(proposed), sources)
             if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
             const dir = path.join(root, `attempt-${attempt}-${++drawn}`)
             yield* fs.makeDirectory(dir, { recursive: true })
-            const storyboard = yield* draw(video, checked.value, dir)
+            const storyboard = yield* draw(videos, checked.value, dir)
             const total = checked.value.sections.reduce((n, s) => n + s.end - s.start, 0)
             if (storyboard === null) return `The plan passes the checks (${total.toFixed(1)}s), but its frames couldn't be drawn; submit it.`
             const frames = checked.value.sections.map((s, k) =>
-              `- section ${k + 1} (${s.beat}, ${s.start.toFixed(1)}–${s.end.toFixed(1)}s, "${firstWords(s.text, 8)}"): ${path.join(dir, frameFile(k))}`
+              `- section ${k + 1} (${s.beat}, ${videoTag(videos, s.source)}${s.start.toFixed(1)}–${s.end.toFixed(1)}s, "${firstWords(s.text, 8)}"): ${path.join(dir, frameFile(k))}`
             )
             return [
               `The plan passes the checks and runs ${total.toFixed(1)}s. Storyboard (every section in playing order): ${path.join(dir, storyboard)}`,
@@ -140,9 +161,9 @@ export class SectionsStage extends Context.Service<SectionsStage, {
         })
       }
 
-      const record = Effect.fn("SectionsStage.record")(function*(ctx: StageContext, video: string, draft: CutDraft) {
+      const record = Effect.fn("SectionsStage.record")(function*(ctx: StageContext, videos: ReadonlyArray<string>, draft: CutDraft) {
         const slot = yield* artifacts.allocate(ctx.owner, "cut-plan")
-        const storyboard = yield* draw(video, draft, slot.dir)
+        const storyboard = yield* draw(videos, draft, slot.dir)
         const plan: CutPlan = {
           hookText: draft.hookText,
           sections: draft.sections.map((s, k) => ({ ...s, frame: storyboard === null ? null : frameFile(k) })),
@@ -155,17 +176,25 @@ export class SectionsStage extends Context.Service<SectionsStage, {
         })
       })
 
-      const run = Effect.fn("SectionsStage.run")(function*(ctx: StageContext) {
-        const c = yield* context(ctx)
-        const story = yield* latestData(c.sourceOwner, "story-map", StoryMap)
-        const proposal = Option.flatMapNullishOr(story, (m) => m.proposals.find((p) => p.approach === c.project.approach))
-
-        const sheetsArtifact = yield* artifacts.latest(c.sourceOwner, "contact-sheet")
+      // a video's overview contact sheets, as lines for the brief, and their folder for the agent to read
+      const overviewSheets = Effect.fn("SectionsStage.overviewSheets")(function*(owner: ArtifactOwner) {
+        const sheetsArtifact = yield* artifacts.latest(owner, "contact-sheet")
         const sheetsDir = Option.flatMapNullishOr(sheetsArtifact, artifacts.resolve)
         const sheetSet = Option.flatMap(sheetsArtifact, (a) => Schema.decodeUnknownOption(ContactSheetSet)(a.data))
         const sheets = Option.isSome(sheetsDir) && Option.isSome(sheetSet)
           ? sheetSet.value.sheets.map((s) => `- ${path.join(sheetsDir.value, s.file)}  (${s.start.toFixed(0)}–${s.end.toFixed(0)}s)`)
           : []
+        return { sheets, dir: sheetsDir }
+      })
+
+      const run = Effect.fn("SectionsStage.run")(function*(ctx: StageContext) {
+        const c = yield* context(ctx)
+        const several = c.sources.length > 1
+        const story = yield* latestData(c.sourceOwner, "story-map", StoryMap)
+        // one video: its own story proposal; several: the set's proposal and beats, or each video's own beats
+        const shortStory = several ? yield* loadShortStory(c.project, artifacts, sets) : null
+        const proposal = Option.flatMapNullishOr(story, (m) => m.proposals.find((p) => p.approach === c.project.approach))
+        const overviews = yield* Effect.forEach(c.sources, (s) => overviewSheets(s.owner))
 
         const projectDir = home.projectDir(c.project.id)
         const detailRoot = path.join(projectDir, "sections-detail")
@@ -173,32 +202,46 @@ export class SectionsStage extends Context.Service<SectionsStage, {
         yield* Effect.forEach([detailRoot, previewRoot], (dir) => fs.makeDirectory(dir, { recursive: true }), { discard: true }).pipe(
           Effect.mapError(failWith("write"))
         )
+        const briefVideos = c.sources.map((s, i) => ({
+          title: s.source.title,
+          channel: s.source.channel,
+          seconds: s.seconds,
+          transcript: Option.getOrNull(s.transcript),
+          excluded: s.ads,
+          sheets: overviews[i]!.sheets
+        }))
         const brief = buildSectionsBrief({
           creatorBrief: c.project.brief,
           title: c.source.title,
           channel: c.source.channel,
-          angle: Option.match(proposal, { onNone: () => null, onSome: ({ title, hook, why }) => ({ title, hook, why }) }),
+          angle: shortStory !== null
+            ? shortStory.angle
+            : Option.match(proposal, { onNone: () => null, onSome: ({ title, hook, why }) => ({ title, hook, why }) }),
           story: Option.getOrNull(story),
           excluded: c.sectionContext.excluded,
           sourceSeconds: c.sectionContext.seconds,
-          sheets,
-          transcript: transcripts.timedText(c.transcript)
+          sheets: overviews[0]!.sheets,
+          transcript: transcripts.timedText(c.transcript),
+          ...(several ? { videos: briefVideos, beats: shortStory?.beats ?? [] } : {})
         })
+        // long transcripts come as outlines, read further with the transcript tools
+        const readers = several && !fitsInline(briefVideos) ? transcriptTools(briefVideos, "short") : []
         const draft = yield* runChecked(agent, ctx, {
           stage: "sections",
           instructions: SECTIONS_PROMPT,
           skills: ["story-arc", approachSkill(c.project.approach)],
           brief,
-          output: { tool: "propose_sections", description: "Submit the whole cut-down plan.", schema: SectionsProposal },
+          output: { tool: "propose_sections", description: "Submit the whole cut-down plan.", schema: ProposedSections },
           tools: [
-            detailSheetTool(contactSheets, path, c.video, c.sectionContext.seconds, detailRoot),
-            previewTool(c.video, c.sources, previewRoot, ctx.attempt)
+            detailSheetTool(contactSheets, path, c.sources.map((s, i) => ({ video: c.videos[i]!, seconds: s.seconds })), c.sectionContext.seconds, detailRoot),
+            previewTool(c.videos, c.sources, previewRoot, ctx.attempt),
+            ...readers
           ],
           defaultModel: null,
-          readDirs: [...Option.toArray(sheetsDir), detailRoot, previewRoot],
+          readDirs: [...overviews.flatMap((o) => Option.toArray(o.dir)), detailRoot, previewRoot],
           maxTurns: 60
-        }, (proposed) => Effect.succeed(checkSections(proposed, c.sources))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
-        yield* record(ctx, c.video, draft)
+        }, (proposed) => Effect.succeed(checkSections(fromProposedSections(proposed), c.sources))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        yield* record(ctx, c.videos, draft)
       })
 
       // An edit sends back the hook text and sections; they're snapped and checked again.
@@ -207,7 +250,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
         const c = yield* context(ctx)
         const checked = checkSections(proposal, c.sources)
         if (checked.problems.length > 0) return yield* fail("invalid-edit", checked.problems.join("; "))
-        yield* record(ctx, c.video, checked.value)
+        yield* record(ctx, c.videos, checked.value)
       })
 
       const stage: StageDefinition = {
@@ -230,6 +273,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
     Artifacts.layer,
     Transcripts.layer,
     ContactSheets.layer,
+    VideoSets.layer,
     ScriptRunner.layer,
     ViralHome.layer,
     NodeServices.layer

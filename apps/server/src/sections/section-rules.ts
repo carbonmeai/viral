@@ -1,4 +1,4 @@
-import type { CutPlan, SectionsProposal, TranscriptWord } from "@viral/contracts"
+import type { CutPlan, ProposedSections, SectionsProposal, SourceIndex, TranscriptWord } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 import { clipSource, type SourceContext, sourceField } from "../projects/source-context.ts"
 
@@ -44,6 +44,15 @@ export const snapSection = (start: number, end: number, words: ReadonlyArray<Tra
   }
 }
 
+// The agent's plan (each section's video by its V number) as it's checked and stored (by position; V1 left out).
+export const fromProposedSections = (proposed: ProposedSections): SectionsProposal => ({
+  hookText: proposed.hookText,
+  sections: proposed.sections.map(({ video, ...section }) => ({
+    ...section,
+    ...sourceField(video === undefined ? undefined : (video - 1) as SourceIndex)
+  }))
+})
+
 const fmt = (t: number) => t.toFixed(1)
 const countWords = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length
 
@@ -56,8 +65,9 @@ export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray
     problems.push("the first section must be the hook: the creator's strongest line")
   }
 
+  const several = sources.length > 1
   const sections = proposal.sections.map(({ source, ...section }, k) => {
-    const name = `section ${k + 1} (${section.beat} ${fmt(section.start)}–${fmt(section.end)}s)`
+    const name = `section ${k + 1} (${section.beat} ${several ? `V${(source ?? 0) + 1} ` : ""}${fmt(section.start)}–${fmt(section.end)}s)`
     const video = clipSource(sources, source, name)
     if (video.problem !== null) {
       problems.push(video.problem)
@@ -66,7 +76,7 @@ export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray
     const ctx = video.source
     if (!(section.end > section.start)) problems.push(`${name} ends before it starts`)
     if (section.start < 0 || section.end > ctx.seconds) {
-      problems.push(`${name} is outside the video (0–${fmt(ctx.seconds)}s)`)
+      problems.push(`${name} is outside ${several ? `V${(source ?? 0) + 1}` : "the video"} (0–${fmt(ctx.seconds)}s)`)
     }
     if (section.cropX !== undefined && (section.cropX < 0 || section.cropX > 1)) problems.push(`${name}: cropX must be 0–1`)
     const snapped = snapSection(section.start, section.end, ctx.words, ctx.seconds)
@@ -75,7 +85,7 @@ export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray
     }
     if (snapped.words.length === 0) problems.push(`${name} has no speech; a cut-down short is the creator's own words`)
     const ad = ctx.excluded.find((r) => snapped.start < r.end && snapped.end > r.start)
-    if (ad !== undefined) problems.push(`${name} touches an excluded range (${fmt(ad.start)}–${fmt(ad.end)}s)`)
+    if (ad !== undefined) problems.push(`${name} touches an excluded range${several ? ` of V${(source ?? 0) + 1}` : ""} (${fmt(ad.start)}–${fmt(ad.end)}s)`)
     return { ...section, ...sourceField(source), start: snapped.start, end: snapped.end, text: snapped.words.map((w) => w.w).join(" ") }
   })
 
@@ -83,7 +93,7 @@ export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray
   sections.forEach((a, i) =>
     sections.slice(i + 1).forEach((b, j) => {
       const same = (a.source ?? 0) === (b.source ?? 0)
-      if (same && a.start < b.end && b.start < a.end) problems.push(`sections ${i + 1} and ${i + j + 2} overlap in the video`)
+      if (same && a.start < b.end && b.start < a.end) problems.push(`sections ${i + 1} and ${i + j + 2} overlap in ${several ? `V${(a.source ?? 0) + 1}` : "the video"}`)
     })
   )
 

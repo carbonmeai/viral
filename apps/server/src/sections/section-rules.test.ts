@@ -1,7 +1,7 @@
 import type { SectionsProposal } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { checkSections, snapSection } from "./section-rules.ts"
+import { checkSections, fromProposedSections, snapSection } from "./section-rules.ts"
 
 // a word every half second from 0 to 100s: "w0 w1 …"
 const words = Array.from({ length: 200 }, (_, i) => ({ w: `w${i}`, s: i * 0.5, e: i * 0.5 + 0.4 }))
@@ -77,5 +77,23 @@ test("sections come from their own video, and only the same video's moments can 
   assert.equal(value.sections[1]!.text, "Second video talking")
   assert.ok(!("source" in value.sections[0]!))
   assert.ok(!problems.some((p) => p.includes("overlap")), "the same seconds in two videos aren't the same moment")
-  assert.ok(problems.includes("section 3 (payoff 1.0–3.0s): V3 isn't one of this short's videos (V1–V2)"))
+  assert.ok(problems.includes("section 3 (payoff V3 1.0–3.0s): V3 isn't one of this short's videos (V1–V2)"))
+})
+
+test("the agent's V numbers become positions, and a V2 section is checked against V2's ads and length", () => {
+  const other = [{ w: "Second", s: 1, e: 1.6 }, { w: "video", s: 1.6, e: 2.2 }, { w: "talking", s: 2.2, e: 3 }]
+  const two = [...ctx, { words: other, seconds: 30, excluded: [{ start: 2, end: 4 }] }]
+  const proposal = fromProposedSections({
+    hookText: null,
+    sections: [
+      { beat: "hook", start: 1, end: 3, video: 1, note: "a" },
+      { beat: "payoff", start: 1, end: 3, video: 2, note: "b" },
+      { beat: "payoff", start: 25, end: 40, video: 2, note: "c" }
+    ]
+  })
+  assert.ok(!("source" in proposal.sections[0]!), "V1 is left out")
+  assert.equal(proposal.sections[1]!.source, 1)
+  const text = checkSections(proposal, two).problems.join("\n")
+  assert.match(text, /section 2 \(payoff V2 1\.0–3\.0s\) touches an excluded range of V2 \(2\.0–4\.0s\)/)
+  assert.match(text, /section 3 \(payoff V2 25\.0–40\.0s\) is outside V2 \(0–30\.0s\)/)
 })

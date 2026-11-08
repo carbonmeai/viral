@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { SourceIndex } from "./sources.ts"
+import { SourceIndex, VideoNumber } from "./sources.ts"
 
 // The story beat a section of a cut-down short plays (story-arc skill).
 export const CutBeat = Schema.Literals(["hook", "rising_action", "conflict", "comeback", "payoff"])
@@ -29,6 +29,23 @@ export const SectionsProposal = Schema.Struct({
 })
 export type SectionsProposal = typeof SectionsProposal.Type
 
+// What the sections agent sends: the same plan, with each section's video numbered as the agent reads it (V2 = 2;
+// absent = V1). The server checks it and keeps a SectionsProposal, whose `source` is the position (V2 = 1).
+const { beat, start, end, cropX, framing, note } = CutSection.fields
+export const ProposedSection = Schema.Struct({
+  beat,
+  start,
+  end,
+  // which video the section is from, by its V number; leave it out when the short has one video
+  video: Schema.optionalKey(VideoNumber),
+  cropX,
+  framing,
+  note
+})
+export type ProposedSection = typeof ProposedSection.Type
+export const ProposedSections = Schema.Struct({ hookText: SectionsProposal.fields.hookText, sections: Schema.Array(ProposedSection) })
+export type ProposedSections = typeof ProposedSections.Type
+
 // The approved cut plan: sections snapped to word boundaries, each with the words it says and its own frame
 // (a jpg next to the plan, e.g. "frames/section-01.jpg"; null when the frames couldn't be drawn).
 export const CutPlan = Schema.Struct({
@@ -49,6 +66,8 @@ export const CutRenderPlan = Schema.Struct({
   title: Schema.optionalKey(Schema.String),
   source: Schema.String,
   transcript: Schema.String,
+  // the short's other videos (V2…), each with its transcript; absent for a short from one video
+  sources: Schema.optionalKey(Schema.Array(Schema.Struct({ path: Schema.String, transcript: Schema.optionalKey(Schema.String) }))),
   framing: Schema.Literals(["crop", "blur"]),
   crop_x: Schema.optionalKey(Schema.Finite),
   captions: Schema.optionalKey(Schema.Boolean),
@@ -62,6 +81,8 @@ export const CutRenderPlan = Schema.Struct({
   credit: Schema.optionalKey(Schema.String),
   // sponsor/ad/end-screen source ranges; the renderer fails if a section touches one
   exclude: Schema.optionalKey(Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite]))),
+  // the same for the other videos, by their index in the plan's videos as a string ("1" = V2); `exclude` is V1's
+  exclude_by_source: Schema.optionalKey(Schema.Record(Schema.String, Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite])))),
   // false when the sections are already snapped to words (the server's plans); absent or true, the renderer
   // snaps them outward itself, as the skill's plans expect
   snap: Schema.optionalKey(Schema.Boolean),
@@ -69,6 +90,8 @@ export const CutRenderPlan = Schema.Struct({
     beat: CutBeat,
     start: Schema.Finite,
     end: Schema.Finite,
+    // which video it plays from: 0 = `source` (V1), 1 = `sources[0]` (V2)…; absent = V1
+    source: Schema.optionalKey(SourceIndex),
     crop_x: Schema.optionalKey(Schema.Finite),
     framing: Schema.optionalKey(Schema.Literals(["crop", "blur"]))
   })),

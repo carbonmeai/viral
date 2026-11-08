@@ -12,7 +12,9 @@ the plan file's folder.
 
 Ported from the viral-shorts skill's render_short.py. The rendering is unchanged (word-snapped cuts, crop or
 blurred-fit framing, 3-word captions with the active word highlighted, a hook title card); added are a credit
-line, excluded ranges, caption colour/case and loudness. Reporting changed: stdout carries one JSON object per
+line, excluded ranges, caption colour/case and loudness, and several videos: `sources` lists V2… (each with its
+transcript), `exclude_by_source` their excluded ranges ({"1": [[a, b]]} = V2's), and a section's `source` picks its
+video (0 = `source`, absent = V1), so a single-video plan renders exactly as before. Reporting changed: stdout carries one JSON object per
 line for the server to decode:
   {"type": "progress", "step": "sections", "done": 3, "total": 7}
   {"type": "error", "code": "excluded-range", "message": "..."}   (then exit 1)
@@ -280,24 +282,47 @@ def main() -> None:
     plan_path = Path(args.plan).resolve()
     base = plan_path.parent
     plan = json.loads(plan_path.read_text())
-    src = resolve(base, plan["source"])
-    words = load_words(resolve(base, plan["transcript"]) if plan.get("transcript") else None)
+    # the plan's videos: V1 is `source`, V2… are `sources`; each section plays from srcs[section.source]
+    srcs = [resolve(base, plan["source"])] + [resolve(base, s["path"]) for s in plan.get("sources", [])]
+    transcripts = [plan.get("transcript")] + [s.get("transcript") for s in plan.get("sources", [])]
+    excluded = [plan.get("exclude", [])] + [plan.get("exclude_by_source", {}).get(str(i), []) for i in range(1, len(srcs))]
     slug = plan.get("slug", plan_path.stem)
     out = Path(args.out).resolve() if args.out else base / "shorts" / f"{slug}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
-    src_w, src_h, src_dur = probe(src)
     if not plan.get("sections"):
         fail("no-sections", "the plan has no sections")
+    for sec in plan["sections"]:
+        if not 0 <= int(sec.get("source", 0)) < len(srcs):
+            fail("unknown-source", f"section {sec['start']}–{sec['end']}s plays from video {int(sec.get('source', 0)) + 1}, "
+                 f"but the plan has {len(srcs)}")
+
+    # each video's size, length and words, read the first time a section uses it
+    probed: dict[int, tuple[int, int, float]] = {}
+    word_lists: dict[int, list[dict]] = {}
+
+    def probe_of(i: int) -> tuple[int, int, float]:
+        if i not in probed:
+            probed[i] = probe(srcs[i])
+        return probed[i]
+
+    def words_of(i: int) -> list[dict]:
+        if i not in word_lists:
+            word_lists[i] = load_words(resolve(base, transcripts[i]) if transcripts[i] else None)
+        return word_lists[i]
+
+    probe_of(0)
 
     tmp = out.parent / f".{slug}_tmp"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
 
-    # sponsor reads / ads / end screens must never appear in a short
+    # sponsor reads / ads / end screens must never appear in a short; each section is checked against its own video's
     for sec in plan["sections"]:
-        for a, b in plan.get("exclude", []):
+        i = int(sec.get("source", 0))
+        for a, b in excluded[i]:
             if float(sec["start"]) < float(b) and float(sec["end"]) > float(a):
-                fail("excluded-range", f"section {sec['start']}–{sec['end']}s overlaps the excluded range {a}–{b}s")
+                where = "" if i == 0 else f"video {i + 1} "
+                fail("excluded-range", f"{where}section {sec['start']}–{sec['end']}s overlaps the excluded range {a}–{b}s")
 
     framing = plan.get("framing", "crop")
     timed_words: list[dict] = []
@@ -307,13 +332,16 @@ def main() -> None:
     total_sections = len(plan["sections"])
     progress("sections", 0, total_sections)
     for i, sec in enumerate(plan["sections"]):
+        video = int(sec.get("source", 0))
+        src_w, src_h, src_dur = probe_of(video)
+        words = words_of(video)
         start, end = float(sec["start"]), float(sec["end"])
         if plan.get("snap", True):
             start, end = snap(start, end, words, src_dur)
         end = min(end, src_dur)
         vf = reframe_filter(sec.get("framing", framing), float(sec.get("crop_x", plan.get("crop_x", 0.5))), src_w, src_h)
         part = tmp / f"part_{i:02d}.mp4"
-        cut_section(src, start, end, vf, part)
+        cut_section(srcs[video], start, end, vf, part)
         parts.append(part)
         for w in words:
             if w["s"] >= start - 0.01 and w["e"] <= end + 0.01:

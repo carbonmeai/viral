@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { AdRanges, type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan, MusicArrangement, NarratedPlan, type ProjectId, Script, ShotPlan, Transcript } from "@viral/contracts"
+import { type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan, MusicArrangement, NarratedPlan, type ProjectId, Script, ShotPlan, Transcript } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
@@ -10,12 +10,11 @@ import { MusicLibrary } from "../music-library/music-library.ts"
 import { Presets } from "../presets/presets.ts"
 import { creditLine } from "../projects/credits.ts"
 import { ProjectSources } from "../projects/project-sources.ts"
-import { Projects, sourcesOf } from "../projects/projects.ts"
+import { Projects } from "../projects/projects.ts"
 import { sourceLabel } from "../projects/source-context.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Settings } from "../settings/settings.ts"
 import { narrationEnds } from "../shots/shot-rules.ts"
-import { Sources } from "../sources/sources.ts"
 import { assembleCut } from "./assemble-cut.ts"
 import { assembleNarrated } from "./assemble-narrated.ts"
 
@@ -42,7 +41,6 @@ export class AssembleStage extends Context.Service<AssembleStage, {
     Effect.gen(function*() {
       const projects = yield* Projects
       const projectSources = yield* ProjectSources
-      const sources = yield* Sources
       const presets = yield* Presets
       const music = yield* MusicLibrary
       const artifacts = yield* Artifacts
@@ -64,13 +62,12 @@ export class AssembleStage extends Context.Service<AssembleStage, {
             Effect.mapError(() => fail("not-ready", `no ${kind} yet`))
           ))
 
-      // The cut-down renderer plays one video until multi-video cut-downs land; a section from another stops the run
-      // here rather than playing the wrong footage.
-      const oneVideo = (clips: ReadonlyArray<{ readonly source?: number }>) => {
-        const other = clips.find((c) => (c.source ?? 0) !== 0)
-        return other === undefined
+      // A clip pointing at a video the short no longer has would play the wrong footage.
+      const lostVideo = (clips: ReadonlyArray<{ readonly source?: number }>, count: number, what: string) => {
+        const lost = clips.find((c) => (c.source ?? 0) >= count)
+        return lost === undefined
           ? Effect.void
-          : Effect.fail(fail("multi-video", `a section comes from ${sourceLabel(other.source!)}; cut-down shorts render from one video for now`))
+          : Effect.fail(fail("missing-video", `${what} comes from ${sourceLabel(lost.source!)}, which isn't one of this short's videos`))
       }
 
       const runNarrated = Effect.fn("AssembleStage.narrated")(function*(ctx: StageContext) {
@@ -84,11 +81,7 @@ export class AssembleStage extends Context.Service<AssembleStage, {
 
         const script = yield* dataOf(ctx.owner, "script", Script)
         const shots = yield* dataOf(ctx.owner, "shot-plan", ShotPlan)
-        // a clip pointing at a video the short no longer has would play the wrong footage
-        const lost = [...shots.shots, ...shots.inserts, ...shots.outro].find((c) => (c.source ?? 0) >= videos.length)
-        if (lost !== undefined) {
-          return yield* fail("missing-video", `a clip comes from ${sourceLabel(lost.source!)}, which isn't one of this short's videos`)
-        }
+        yield* lostVideo([...shots.shots, ...shots.inserts, ...shots.outro], videos.length, "a clip")
         const voiceoverTranscript = yield* fileOf(ctx.owner, "voiceover-transcript")
         const words = yield* fs.readFileString(voiceoverTranscript).pipe(
           Effect.flatMap(Schema.decodeEffect(TranscriptJson)),
@@ -178,17 +171,20 @@ export class AssembleStage extends Context.Service<AssembleStage, {
       // A cut-down short has no voiceover or music: the sections and the style make the whole plan.
       const runCut = Effect.fn("AssembleStage.cut")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const sourceOwner = { _tag: "Source", id: sourcesOf(project)[0] } as const
-        const source = yield* sources.get(sourceOwner.id).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        // every video the short draws from, V1 first: its file, transcript and excluded ranges
+        const videos = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        const sourceOwner = videos[0].owner
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
         const cutPlan = yield* dataOf(ctx.owner, "cut-plan", CutPlan)
-        yield* oneVideo(cutPlan.sections)
-        const excluded = Option.match(
-          Option.flatMap(yield* artifacts.latest(sourceOwner, "ad-ranges"), (a) => Schema.decodeUnknownOption(AdRanges)(a.data)),
-          { onNone: () => [], onSome: (a) => a.ranges }
-        )
+        yield* lostVideo(cutPlan.sections, videos.length, "a section")
+        const others = yield* Effect.forEach(videos.slice(1), (v) =>
+          Effect.all({
+            source: fileOf(v.owner, "source-video"),
+            sourceTranscript: fileOf(v.owner, "transcript"),
+            excluded: Effect.succeed(v.excluded)
+          }))
         const plan = assembleCut({
           slug: project.slug,
           title: project.title,
@@ -196,8 +192,9 @@ export class AssembleStage extends Context.Service<AssembleStage, {
           sourceTranscript: yield* fileOf(sourceOwner, "transcript"),
           preset: preset.config,
           plan: cutPlan,
-          excluded,
-          credit: creditLine([source])
+          excluded: videos[0].excluded,
+          others,
+          credit: creditLine(videos.map((v) => v.source))
         })
         if (project.musicTrackId !== null) yield* ctx.progress(null, "cut-down shorts keep the creator's own audio, so the music track isn't used")
         const slot = yield* artifacts.allocate(ctx.owner, "cut-render-plan")
@@ -216,7 +213,6 @@ export class AssembleStage extends Context.Service<AssembleStage, {
   ).pipe(Layer.provide([
     Projects.layer,
     ProjectSources.layer,
-    Sources.layer,
     Presets.layer,
     MusicLibrary.layer,
     MusicBedFitter.layer,
