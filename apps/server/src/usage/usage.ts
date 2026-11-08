@@ -27,9 +27,16 @@ const EvalRow = Schema.Struct({
   created_at: Schema.String
 })
 
+const PreviewRow = Schema.Struct({
+  model: Schema.String,
+  characters: Schema.Number,
+  created_at: Schema.String
+})
+
 const DAY_MS = 86_400_000
 
-// What agents and voices cost over the last few days, from the stage runs' recorded costs.
+// What agents and voices cost over the last few days, from the stage runs' recorded costs, eval runs and voice
+// previews.
 export class UsageReport extends Context.Service<UsageReport, {
   get(days: number): Effect.Effect<Usage>
 }>()("@viral/server/usage/usage/UsageReport") {
@@ -57,6 +64,12 @@ export class UsageReport extends Context.Service<UsageReport, {
         `
       })
 
+      const previewsSince = SqlSchema.findAll({
+        Request: Schema.String,
+        Result: PreviewRow,
+        execute: (from) => sql`SELECT model, characters, created_at FROM voice_previews WHERE created_at >= ${from}`
+      })
+
       const get = Effect.fn("UsageReport.get")(function*(days: number) {
         const period = Math.min(366, Math.max(1, Math.round(days)))
         const now = DateTime.toEpochMillis(yield* DateTime.now)
@@ -64,6 +77,7 @@ export class UsageReport extends Context.Service<UsageReport, {
         const from = DateTime.formatIso(DateTime.makeUnsafe(Date.parse(`${today}T00:00:00Z`) - (period - 1) * DAY_MS))
         const rows = yield* since(from).pipe(Effect.orDie)
         const evalRows = yield* evalsSince(from).pipe(Effect.orDie)
+        const previewRows = yield* previewsSince(from).pipe(Effect.orDie)
         return summarizeUsage(rows.map((r) => ({
           stage: r.stage,
           status: r.status,
@@ -83,7 +97,7 @@ export class UsageReport extends Context.Service<UsageReport, {
           billing: r.billing,
           costUsd: r.cost_usd,
           createdAt: r.created_at
-        })))
+        })), previewRows.map((r) => ({ model: r.model, characters: r.characters, createdAt: r.created_at })))
       })
 
       return UsageReport.of({ get })

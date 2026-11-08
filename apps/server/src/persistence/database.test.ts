@@ -33,10 +33,10 @@ test("creates every table from the design", async () => {
     tables.map((t) => t.name).filter((name) => name !== "effect_sql_migrations"),
     [
       "artifacts", "eval_runs", "music_tracks", "presets", "project_sources", "projects", "reference_videos", "requests",
-      "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_sets", "sources", "stage_runs"
+      "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_sets", "sources", "stage_runs", "voice_previews"
     ]
   )
-  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video"])
+  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews"])
 })
 
 test("enforces foreign keys and the one-owner rule on artifacts", async () => {

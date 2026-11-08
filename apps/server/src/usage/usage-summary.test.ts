@@ -99,3 +99,31 @@ test("usage splits real money from a CLI plan's value, by provider and model, an
   })
   assert.equal(usage.totals.costUsd, 0.51)
 })
+
+test("ElevenLabs characters add up by day, model and short, with previews counted apart from any short", () => {
+  const voice: ReadonlyArray<UsageRow> = [
+    row({ stage: "voice", model: "eleven_v4", provider: "elevenlabs", ttsCharacters: 300, projectId: "a", projectTitle: "Every taste", startedAt: "2026-11-05T10:00:00.000Z" }),
+    row({ stage: "voice", model: "eleven_v4", provider: "elevenlabs", ttsCharacters: 280, projectId: "a", projectTitle: "Every taste" }),
+    row({ stage: "voice", model: "eleven_multilingual_v2", provider: "elevenlabs", ttsCharacters: 500, projectId: "b", projectTitle: "What if" }),
+    // a reused take spoke nothing new
+    row({ stage: "voice", status: "reused", model: "eleven_v4", ttsCharacters: 999, projectId: "a", projectTitle: "Every taste" }),
+    // outside the period
+    row({ stage: "voice", model: "eleven_v4", ttsCharacters: 5000, projectId: "a", projectTitle: "Every taste", startedAt: "2026-10-01T10:00:00.000Z" })
+  ]
+  const previews = [
+    { model: "eleven_v4", characters: 74, createdAt: "2026-11-06T08:00:00.000Z" },
+    { model: "eleven_v4", characters: 20, createdAt: "2026-09-01T08:00:00.000Z" }
+  ]
+  const { elevenLabs } = summarizeUsage(voice, 7, "2026-11-06", [], previews)
+  assert.equal(elevenLabs.characters, 300 + 280 + 500 + 74)
+  assert.deepEqual([elevenLabs.takes, elevenLabs.previews, elevenLabs.previewCharacters], [3, 1, 74])
+  assert.deepEqual(elevenLabs.byDay.slice(-2), [{ day: "2026-11-05", characters: 300 }, { day: "2026-11-06", characters: 854 }])
+  assert.deepEqual(elevenLabs.byModel, [
+    { model: "eleven_v4", characters: 654, takes: 2, previews: 1 },
+    { model: "eleven_multilingual_v2", characters: 500, takes: 1, previews: 0 }
+  ])
+  assert.deepEqual(elevenLabs.byShort, [
+    { projectId: "a", title: "Every taste", characters: 580, takes: 2 },
+    { projectId: "b", title: "What if", characters: 500, takes: 1 }
+  ])
+})

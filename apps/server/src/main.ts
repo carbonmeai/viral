@@ -33,6 +33,7 @@ import { SourceOverviews } from "./sources/source-overview.ts"
 import { SourceOverviewRpcLive } from "./sources/source-overview-rpc.ts"
 import { Transcriber } from "./transcribe/transcriber.ts"
 import { ElevenLabs } from "./voice/eleven-labs.ts"
+import { VoicePreviews } from "./voice/voice-previews.ts"
 import { VoicesRpcLive } from "./voice/voices-rpc.ts"
 import { ViralHome } from "./home/viral-home.ts"
 import { HealthRouteLive, MediaRouteLive } from "./media/media-route.ts"
@@ -62,6 +63,7 @@ const DomainsLive = Layer.mergeAll(
   References.layer,
   RunStore.layer,
   ElevenLabs.layer,
+  VoicePreviews.layer,
   Transcriber.layer,
   ViralHome.layer,
   Tools.layer,

@@ -169,7 +169,11 @@ apps/server/src/
                        for Settings › Usage (Evals) and Settings › Agents (how each model did)
   settings/            app preferences as JSON under keys; app-settings.ts is the typed view: agents.default and
                        stage.<name>.provider/.model (Settings › Agents), transcription.provider
-  usage/               Settings › Usage: spend by day, provider (billed vs plan), model, short, step, and evals
+  usage/               Settings › Usage: spend by day, provider (billed vs plan), model, short, step, and evals; ElevenLabs
+                       in characters (voice takes + "Try a line" previews, recorded in voice_previews) by day, model and
+                       short, and the plan's characters used/left and reset date (GetElevenLabsPlan: GET /v1/user/subscription,
+                       read-only, cached a minute; needs the key's User › Read permission). A cost estimate shows only when
+                       the plan's price is known (its next invoice, in USD)
   render/              the render stage (gated; a rejection goes back to the shots, or the sections for a
                        cut-down short, with your note, via the stage's `rejectTo`) + render engine + its Python
                        scripts (render-short.py is the skill's cut-down renderer: word-snapped sections, crop or

@@ -1,5 +1,5 @@
-import { type ExploreVoicesQuery, type ExploreVoicesResult, type LibraryVoice, type Voice, VoiceError } from "@viral/contracts"
-import { Config, Context, Duration, Effect, Layer, Option, Redacted, Schema } from "effect"
+import { type ElevenLabsPlan, type ExploreVoicesQuery, type ExploreVoicesResult, type LibraryVoice, type Voice, VoiceError } from "@viral/contracts"
+import { Config, Context, DateTime, Duration, Effect, Exit, Layer, Option, Redacted, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import { Secrets } from "../secrets/secrets.ts"
 
@@ -46,6 +46,27 @@ const VoicesResponse = Schema.Struct({
   }))
 })
 
+// GET /v1/user/subscription, the parts the usage page shows. The key needs the User › Read permission.
+const SubscriptionResponse = Schema.Struct({
+  tier: Schema.String,
+  character_count: Schema.Finite,
+  character_limit: Schema.Finite,
+  next_character_count_reset_unix: Schema.optionalKey(Schema.NullOr(Schema.Finite)),
+  currency: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  billing_period: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  next_invoice: Schema.optionalKey(Schema.NullOr(Schema.Struct({ amount_due_cents: Schema.optionalKey(Schema.NullOr(Schema.Finite)) })))
+})
+
+// What a character costs on the plan, from its next invoice: a monthly price over the month's characters (an annual
+// price is spread over twelve months). Unknown (null) without an invoice, in another currency, or on a free plan.
+export const usdPerCharacter = (sub: typeof SubscriptionResponse.Type): number | null => {
+  const cents = sub.next_invoice?.amount_due_cents ?? null
+  const currency = (sub.currency ?? "usd").toLowerCase()
+  if (cents === null || cents <= 0 || currency !== "usd" || sub.character_limit <= 0) return null
+  const monthly = sub.billing_period === "annual_period" ? cents / 12 : cents
+  return monthly / 100 / sub.character_limit
+}
+
 export interface SpeechRequest {
   readonly voiceId: string
   readonly model: string
@@ -70,6 +91,8 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
   addShared(publicOwnerId: string, voiceId: string, name: string | null): Effect.Effect<Voice, VoiceError>
   // removes a voice you added; ElevenLabs' premade voices fail with "not-removable"
   remove(voiceId: string): Effect.Effect<boolean, VoiceError>
+  // the plan's characters used and left this period, read-only; kept for a minute (a few seconds when unavailable)
+  readonly plan: Effect.Effect<ElevenLabsPlan>
 }>()("@viral/server/voice/eleven-labs/ElevenLabs") {
   static readonly layer = Layer.effect(
     ElevenLabs,
@@ -210,7 +233,35 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
         return true
       })
 
-      return ElevenLabs.of({ voices, speak, explore, addShared, remove })
+      const readPlan = Effect.gen(function*() {
+        const res = yield* call(HttpClientRequest.get(`${api}/v1/user/subscription`))
+        const sub = yield* res.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(SubscriptionResponse)), Effect.mapError(fail("response")))
+        const reset = sub.next_character_count_reset_unix ?? null
+        return {
+          _tag: "Plan",
+          tier: sub.tier,
+          charactersUsed: Math.round(sub.character_count),
+          characterLimit: Math.round(sub.character_limit),
+          resetsAt: reset === null ? null : DateTime.formatIso(DateTime.makeUnsafe(reset * 1000)),
+          usdPerCharacter: usdPerCharacter(sub),
+          checkedAt: DateTime.formatIso(yield* DateTime.now)
+        } satisfies ElevenLabsPlan
+      }).pipe(
+        Effect.catch((error: VoiceError): Effect.Effect<ElevenLabsPlan> =>
+          Effect.succeed({
+            _tag: "Unavailable",
+            reason: error.code === "no-key" ? "no-key" : /permission|user_read/i.test(error.message) ? "no-permission" : "failed",
+            message: error.message
+          })
+        ),
+        Effect.withSpan("ElevenLabs.plan")
+      )
+      const plan = yield* Effect.cachedWithTTL(
+        readPlan,
+        (exit: Exit.Exit<ElevenLabsPlan>) => Exit.isSuccess(exit) && exit.value._tag === "Plan" ? Duration.minutes(1) : Duration.seconds(5)
+      )
+
+      return ElevenLabs.of({ voices, speak, explore, addShared, remove, plan })
     })
   ).pipe(Layer.provide([Secrets.layer, FetchHttpClient.layer]))
 
@@ -225,6 +276,7 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
         Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" }))
       ),
       remove: Effect.fn("ElevenLabs.replay.remove")(() => Effect.succeed(false)),
+      plan: Effect.succeed({ _tag: "Unavailable", reason: "failed", message: "no ElevenLabs in this test" }),
       speak: Effect.fn("ElevenLabs.replay")((request: SpeechRequest) =>
         Effect.sync(() => ({ audio: answer(request), characters: request.text.length }))
       )

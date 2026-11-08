@@ -4,11 +4,13 @@ import { SqlClient } from "effect/sql"
 import { ViralHome } from "../home/viral-home.ts"
 import initialSchema from "./migrations/0001-initial-schema.ts"
 import multiVideo from "./migrations/0002-multi-video.ts"
+import voicePreviews from "./migrations/0003-voice-previews.ts"
 
 // Migrations run once, in id order, keyed `<id>_<name>`. Never edit one that has shipped; add a new one.
 const migrations = SqliteMigrator.fromRecord({
   "0001_initial_schema": initialSchema,
-  "0002_multi_video": multiVideo
+  "0002_multi_video": multiVideo,
+  "0003_voice_previews": voicePreviews
 })
 
 // Foreign keys are off while migrations run, as SQLite's table rebuild needs (dropping a table would otherwise

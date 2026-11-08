@@ -189,6 +189,18 @@ export const Usage = Schema.Struct({
     inputTokens: Schema.Int,
     outputTokens: Schema.Int
   })),
+  // ElevenLabs characters in the period: the voice stage's takes plus "Try a line" previews (which belong to no
+  // short). Characters, not dollars: a plan's price is only known from GetElevenLabsPlan.
+  elevenLabs: Schema.Struct({
+    characters: Schema.Int,
+    takes: Schema.Int,
+    previews: Schema.Int,
+    previewCharacters: Schema.Int,
+    // one entry per day in the period, oldest first, including empty days
+    byDay: Schema.Array(Schema.Struct({ day: Schema.String, characters: Schema.Int })),
+    byModel: Schema.Array(Schema.Struct({ model: Schema.String, characters: Schema.Int, takes: Schema.Int, previews: Schema.Int })),
+    byShort: Schema.Array(Schema.Struct({ projectId: Schema.String, title: Schema.String, characters: Schema.Int, takes: Schema.Int }))
+  }),
   // what model evals spent in the period, kept apart from making shorts
   evals: Schema.Struct({
     costUsd: Schema.Number,
@@ -204,6 +216,26 @@ export const Usage = Schema.Struct({
   })
 })
 export type Usage = typeof Usage.Type
+
+// Your ElevenLabs plan's characters this billing period, read from ElevenLabs (cached for a minute). Unavailable
+// without a key, when the key lacks the User read permission, or when ElevenLabs can't be reached.
+export const ElevenLabsPlan = Schema.Union([
+  Schema.TaggedStruct("Plan", {
+    tier: Schema.String,
+    charactersUsed: Schema.Int,
+    characterLimit: Schema.Int,
+    // ISO time the count resets
+    resetsAt: Schema.NullOr(Schema.String),
+    // the plan's price per character, from its next invoice in USD; null when the price isn't known
+    usdPerCharacter: Schema.NullOr(Schema.Number),
+    checkedAt: Schema.String
+  }),
+  Schema.TaggedStruct("Unavailable", {
+    reason: Schema.Literals(["no-key", "no-permission", "failed"]),
+    message: Schema.String
+  })
+])
+export type ElevenLabsPlan = typeof ElevenLabsPlan.Type
 
 // A model's record across your evals.
 export const ModelEval = Schema.Struct({
@@ -248,5 +280,6 @@ export class SettingsRpcs extends RpcGroup.make(
     error: PresetNotFound
   }),
   Rpc.make("GetStorage", { success: Storage }),
-  Rpc.make("GetUsage", { payload: { days: Schema.Int }, success: Usage })
+  Rpc.make("GetUsage", { payload: { days: Schema.Int }, success: Usage }),
+  Rpc.make("GetElevenLabsPlan", { success: ElevenLabsPlan })
 ) {}

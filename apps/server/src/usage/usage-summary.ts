@@ -29,6 +29,14 @@ export interface EvalUsageRow {
   readonly createdAt: string
 }
 
+// One "Try a line" preview: ElevenLabs characters spoken outside any short.
+export interface PreviewUsageRow {
+  readonly model: string
+  readonly characters: number
+  // ISO time it was spoken
+  readonly createdAt: string
+}
+
 const DAY_MS = 86_400_000
 // the UTC day (YYYY-MM-DD) of an epoch millisecond
 export const dayKey = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms)).slice(0, 10)
@@ -36,12 +44,14 @@ const dayOf = (iso: string) => iso.slice(0, 10)
 const round = (usd: number) => Math.round(usd * 1e6) / 1e6
 
 // Adds up the stage runs of the last `days` days (ending `today`, a YYYY-MM-DD) for Settings › Usage: totals,
-// every day of the period (empty days too), the shorts that cost most, and what each step cost.
+// every day of the period (empty days too), the shorts that cost most, what each step cost, and ElevenLabs'
+// characters (voice takes and previews) by day, model and short.
 export const summarizeUsage = (
   rows: ReadonlyArray<UsageRow>,
   days: number,
   today: string,
-  evalRows: ReadonlyArray<EvalUsageRow> = []
+  evalRows: ReadonlyArray<EvalUsageRow> = [],
+  previewRows: ReadonlyArray<PreviewUsageRow> = []
 ): Usage => {
   const end = Date.parse(`${today}T00:00:00Z`)
   const dayKeys = Array.from({ length: days }, (_, i) => dayKey(end - (days - 1 - i) * DAY_MS))
@@ -140,6 +150,41 @@ export const summarizeUsage = (
       .sort((a, b) => b.costUsd - a.costUsd)
   }
 
+  // ElevenLabs: every take that spoke (reused stages spoke nothing) plus the previews, in characters
+  const takes = inPeriod.filter((r) => r.status !== "reused" && chars(r) > 0)
+  const previews = previewRows.filter((p) => dayKeys.includes(dayOf(p.createdAt)))
+  const previewChars = previews.reduce((n, p) => n + p.characters, 0)
+  const ttsModels = new Map<string, { characters: number; takes: number; previews: number }>()
+  const addModel = (model: string, characters: number, take: boolean) => {
+    const entry = ttsModels.get(model) ?? { characters: 0, takes: 0, previews: 0 }
+    ttsModels.set(model, {
+      characters: entry.characters + characters,
+      takes: entry.takes + (take ? 1 : 0),
+      previews: entry.previews + (take ? 0 : 1)
+    })
+  }
+  for (const r of takes) addModel(r.model ?? "unknown", chars(r), true)
+  for (const p of previews) addModel(p.model, p.characters, false)
+  const ttsShorts = new Map<string, { title: string; characters: number; takes: number }>()
+  for (const r of takes) {
+    if (r.projectId === null) continue
+    const entry = ttsShorts.get(r.projectId) ?? { title: r.projectTitle ?? "Untitled short", characters: 0, takes: 0 }
+    ttsShorts.set(r.projectId, { title: entry.title, characters: entry.characters + chars(r), takes: entry.takes + 1 })
+  }
+  const elevenLabs = {
+    characters: sum(takes, chars) + previewChars,
+    takes: takes.length,
+    previews: previews.length,
+    previewCharacters: previewChars,
+    byDay: dayKeys.map((day) => ({
+      day,
+      characters: sum(takes.filter((r) => dayOf(r.startedAt) === day), chars) +
+        previews.filter((p) => dayOf(p.createdAt) === day).reduce((n, p) => n + p.characters, 0)
+    })),
+    byModel: [...ttsModels.entries()].map(([model, m]) => ({ model, ...m })).sort((a, b) => b.characters - a.characters),
+    byShort: [...ttsShorts.entries()].map(([projectId, s]) => ({ projectId, ...s })).sort((a, b) => b.characters - a.characters)
+  }
+
   return {
     days,
     totals: {
@@ -156,6 +201,7 @@ export const summarizeUsage = (
     billing,
     byProvider,
     byModel,
+    elevenLabs,
     evals
   }
 }

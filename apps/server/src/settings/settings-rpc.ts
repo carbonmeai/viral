@@ -8,6 +8,7 @@ import { Secrets } from "../secrets/secrets.ts"
 import { StorageReport } from "../storage/storage.ts"
 import { EvalRecords } from "../eval/eval-records.ts"
 import { UsageReport } from "../usage/usage.ts"
+import { ElevenLabs } from "../voice/eleven-labs.ts"
 import { AppSettingsStore } from "./app-settings.ts"
 
 export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
@@ -17,6 +18,7 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
   const storage = yield* StorageReport
   const usage = yield* UsageReport
   const evals = yield* EvalRecords
+  const eleven = yield* ElevenLabs
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
   // The Claude CLI is usable when it's on the PATH; its version is what we can learn without changing anything.
@@ -99,6 +101,7 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
     SetTranscriber: ({ choice }) => store.setTranscriber(choice),
     SetDefaultVoice: ({ voiceId, wordsPerSecond }) => setDefaultVoice(voiceId, wordsPerSecond),
     GetStorage: () => storage.get,
-    GetUsage: ({ days }) => usage.get(days)
+    GetUsage: ({ days }) => usage.get(days),
+    GetElevenLabsPlan: () => eleven.plan
   })
 }))
