@@ -9,9 +9,14 @@ export const EVAL_USAGE = `  eval <stages|all> --models <provider:model,…> [--
                                gateway:anthropic/claude-haiku-4.5; --budget caps priced runs (default $5),
                                --plan-runs caps runs on a plan per CLI (default 8); writes
                                ~/.viral/evals/<date>-<stages>/; --include puts earlier evals' runs on the same page)
+  eval set-story --models <provider:model,…> [--runs N] [--budget USD] [--plan-runs N] [--fixture <dir>]
+                              (the set-story stage alone, on a set fixture: default ~/.viral/fixtures/sets/candy-heidi)
   eval record <eval dir>      (records an earlier eval's runs and spend in your library)
   eval export --from <library> --source <id> --project <id> [--name candy]
-                              (copies a processed source and its approved short into ~/.viral/fixtures/<name>/eval)`
+                              (copies a processed source and its approved short into ~/.viral/fixtures/<name>/eval)
+  eval export-set --from <library> --set <id> [--name candy-heidi] [--names "Candy,Heidi Klum"]
+                              (copies a video set whose videos are read, and its set story, into
+                               ~/.viral/fixtures/sets/<name>; --names sets the videos' short names, in set order)`
 
 // The eval runs in its own server process, not through the running server: its agent sessions and settings go to
 // a scratch library (~/.viral/evals/.home), so no server is needed. Only each run's result and spend are recorded
@@ -45,6 +50,17 @@ export const evalCommand = Effect.fn("evalCommand")(function*() {
       "export", "--source", source, "--project", project, "--name", name, "--out", path.join(home, "fixtures", name, "eval")
     ])
   }
+  if (sub === "export-set") {
+    const from = option("--from")
+    const set = option("--set")
+    if (from === undefined || set === undefined) return yield* Console.error(EVAL_USAGE)
+    const name = option("--name") ?? "candy-heidi"
+    const names = option("--names")
+    return yield* spawn({ VIRAL_HOME: from }, [
+      "export-set", "--set", set, "--name", name, "--out", path.join(home, "fixtures", "sets", name),
+      ...(names === undefined ? [] : ["--names", names])
+    ])
+  }
   if (sub === "record") {
     const dir = positionals[2]
     if (dir === undefined) return yield* Console.error(EVAL_USAGE)
@@ -60,7 +76,7 @@ export const evalCommand = Effect.fn("evalCommand")(function*() {
     "--runs", option("--runs") ?? "1",
     "--budget", option("--budget") ?? "5",
     "--plan-runs", option("--plan-runs") ?? "8",
-    "--fixture", option("--fixture") ?? path.join(home, "fixtures", "candy", "eval"),
+    "--fixture", path.resolve(option("--fixture") ?? (sub === "set-story" ? path.join(home, "fixtures", "sets", "candy-heidi") : path.join(home, "fixtures", "candy", "eval"))),
     "--out", path.join(home, "evals"),
     "--record", home,
     ...(include === undefined ? [] : ["--include", include.split(",").map((d) => path.resolve(d.trim())).join(",")])

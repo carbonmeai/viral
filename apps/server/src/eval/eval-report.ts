@@ -1,7 +1,7 @@
-import { AdRanges, AgentProvider, Script, ShortMetadata, StoryMap } from "@viral/contracts"
+import { AdRanges, AgentProvider, Script, SetStory, ShortMetadata, StoryMap } from "@viral/contracts"
 import { Option, Schema } from "effect"
 import type { EvalRunResult } from "./eval-runner.ts"
-import type { EvalStageName } from "./eval-stages.ts"
+import { EvalStageName } from "./eval-stages.ts"
 
 // What an eval wrote: every run, plus the approved outputs of the fixture to compare against.
 export interface EvalReport {
@@ -13,21 +13,23 @@ export interface EvalReport {
   readonly budgetUsd: number
   readonly spentUsd: number
   readonly results: ReadonlyArray<EvalRunResult>
-  // the fixture's approved output per stage (the short's script, the source's story and ads)
+  // the fixture's approved output per stage (the short's script, the source's story and ads, the set's story)
   readonly reference: Partial<Record<EvalStageName, unknown>>
+  // a set fixture's videos, V1 first: how the page names them (a colour dot and a short name, never "V1")
+  readonly videos?: ReadonlyArray<{ readonly name: string }>
 }
 
 // A report.json as read back (for --include and `eval record`): the fields the summary and recording use.
 export const StoredEvalReport = Schema.fromJsonString(Schema.Struct({
   createdAt: Schema.String,
   fixture: Schema.String,
-  stages: Schema.Array(Schema.Literals(["ads", "story", "script", "metadata"])),
+  stages: Schema.Array(EvalStageName),
   models: Schema.Array(Schema.String),
   runs: Schema.Int,
   budgetUsd: Schema.Number,
   spentUsd: Schema.Number,
   results: Schema.Array(Schema.Struct({
-    stage: Schema.Literals(["ads", "story", "script", "metadata"]),
+    stage: EvalStageName,
     model: Schema.String,
     provider: AgentProvider,
     // reports from before Codex and OpenCode have no billing: the gateway's runs were billed, the CLI's on a plan
@@ -45,12 +47,14 @@ export const StoredEvalReport = Schema.fromJsonString(Schema.Struct({
     fixRounds: Schema.Int,
     result: Schema.Unknown
   })),
-  reference: Schema.Record(Schema.String, Schema.Unknown)
+  reference: Schema.Record(Schema.String, Schema.Unknown),
+  videos: Schema.optional(Schema.Array(Schema.Struct({ name: Schema.String })))
 }))
 
 // Adds earlier reports' runs to this one, numbering them first, so one page and one table compare every run.
 export const combineReports = (report: EvalReport, earlier: ReadonlyArray<EvalReport>): EvalReport => {
   if (earlier.length === 0) return report
+  const videos = report.videos ?? earlier.find((r) => r.videos !== undefined)?.videos
   const all = [...earlier, report]
   const results: Array<EvalRunResult> = []
   const offset = new Map<string, number>()
@@ -71,7 +75,8 @@ export const combineReports = (report: EvalReport, earlier: ReadonlyArray<EvalRe
     runs: all.reduce((n, r) => n + r.runs, 0),
     budgetUsd: all.reduce((n, r) => n + r.budgetUsd, 0),
     spentUsd: all.reduce((n, r) => n + r.spentUsd, 0),
-    results
+    results,
+    ...(videos === undefined ? {} : { videos })
   }
 }
 
@@ -139,8 +144,46 @@ export const reportMarkdown = (report: EvalReport): string =>
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 const clock = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`
 
+// Each video's colour, by position: the same hues as the app's set page and timeline (light values).
+const VIDEO_COLOURS = ["#4f7fe0", "#e07b32", "#1aa39a", "#8b5cf6", "#d6409f", "#2f9e44", "#c99a06", "#e5484d", "#0e9ad6", "#9c6644"]
+type Videos = ReadonlyArray<{ readonly name: string }>
+
+// A video as the page names it: its colour dot and short name ("Video 2" when the report has no names).
+const videoChip = (videos: Videos, index: number) =>
+  `<span class=video><i style="background:${VIDEO_COLOURS[index % VIDEO_COLOURS.length]}"></i>${escape(videos[index]?.name ?? `Video ${index + 1}`)}</span>`
+
+// An agent's or a check's text with its V labels ("V2's transcript") put as the videos' short names, so the page
+// never says V1.
+const named = (videos: Videos, text: string) =>
+  videos.length === 0 ? text : text.replace(/\bV(\d{1,2})\b/g, (label, n: string) => videos[Number(n) - 1]?.name ?? label)
+
+const SCORE_NAMES: Record<string, string> = {
+  openLoop: "open loop",
+  completionCompulsion: "completion",
+  universalRelatability: "relatable",
+  shareability: "shareable"
+}
+
+// A set story as you'd judge it: what joins the videos, each video's part, the three proposals side by side with
+// the videos each uses, and the beats per video.
+const renderSetStory = (s: SetStory, videos: Videos) => {
+  const text = (t: string) => escape(named(videos, t))
+  return `<p>${text(s.summary)}</p>` +
+  `<ul class=parts>${s.videos.map((v) => `<li>${videoChip(videos, v.source)} ${text(v.summary)}${v.missing === undefined ? "" : ` <span class=muted>(missing: ${text(v.missing)})</span>`}</li>`).join("")}</ul>` +
+  `<div class=proposals>${s.proposals.map((p, i) =>
+    `<div class=proposal><div class=muted>${i + 1} · <span class=tag>${escape(p.approach)}</span></div>` +
+    `<p class=headline>${text(p.title)}</p><p>“${text(p.hook)}”</p>` +
+    `<div class=uses>${p.sources.map((source) => videoChip(videos, source)).join("")}</div>` +
+    `<p class=muted>${text(p.why)}</p>` +
+    `<p class=scores>${Object.entries(p.scores).map(([axis, score]) => `${SCORE_NAMES[axis] ?? axis} <b>${score}</b>`).join(" · ")}</p></div>`
+  ).join("")}</div>` +
+  `<details><summary>${s.beats.length} beats</summary><ul>${s.beats.map((b) =>
+    `<li>${videoChip(videos, b.source)} <b>${escape(b.beat)}</b> ${clock(b.start)}–${clock(b.end)}: ${text(b.summary)}${b.quotes.map((q) => `<br><q>${escape(q.text)}</q>`).join("")}</li>`
+  ).join("")}</ul></details>`
+}
+
 // A stage's output as you'd read it: the parts to judge, not the JSON.
-const renderOutput = (stage: EvalStageName, value: unknown): string => {
+const renderOutput = (stage: EvalStageName, value: unknown, videos: Videos = []): string => {
   const as = <A>(schema: Schema.Decoder<A>) => Schema.decodeUnknownOption(schema)(value)
   const json = () => `<pre>${escape(JSON.stringify(value, null, 2))}</pre>`
   switch (stage) {
@@ -182,19 +225,22 @@ const renderOutput = (stage: EvalStageName, value: unknown): string => {
           `<p class=headline>${escape(m.title)}</p><ul>${m.alternates.map((a) => `<li>${escape(a)}</li>`).join("")}</ul>` +
           `<p>${escape(m.description)}</p><p class=muted>${m.hashtags.map(escape).join(" ")}</p>`
       })
+    case "set-story":
+      return Option.match(as(SetStory), { onNone: json, onSome: (s) => renderSetStory(s, videos) })
   }
 }
 
-const renderRun = (r: EvalRunResult): string => {
+const renderRun = (r: EvalRunResult, videos: Videos, label?: string): string => {
   const status = r.status === "passed"
     ? r.firstTryPass === true ? "passed first try" : `passed after ${r.fixRounds} fix round${r.fixRounds === 1 ? "" : "s"}`
     : r.status
   const facts = r.status === "skipped" ? "" : ` · ${costText(r.costUsd, r.inputTokens + r.outputTokens, r.billing === "subscription")} · ${r.seconds.toFixed(1)}s${r.reportedModel === null ? "" : ` · ${escape(r.reportedModel)}`}`
   const problems = r.firstTryProblems.length === 0 || r.firstTryPass === true
     ? ""
-    : `<details><summary>first try: ${r.firstTryProblems.length} problem(s)</summary><ul>${r.firstTryProblems.map((p) => `<li>${escape(p)}</li>`).join("")}</ul></details>`
-  const body = r.status === "passed" ? renderOutput(r.stage, r.result) : `<p class=error>${escape(r.error ?? "")}</p>`
-  return `<div class="run ${r.status}"><div class=facts><b>Run ${r.run}</b> · ${status}${facts}</div>${problems}${body}</div>`
+    : `<details><summary>first try: ${r.firstTryProblems.length} problem(s)</summary><ul>${r.firstTryProblems.map((p) => `<li>${escape(named(videos, p))}</li>`).join("")}</ul></details>`
+  const body = r.status === "passed" ? renderOutput(r.stage, r.result, videos) : `<p class=error>${escape(r.error ?? "")}</p>`
+  const name = label === undefined ? "" : `${escape(label)} · `
+  return `<div class="run ${r.status}"><div class=facts><b>${name}Run ${r.run}</b> · ${status}${facts}</div>${problems}${body}</div>`
 }
 
 // The side-by-side page: per stage, one column per model (and the approved output where the fixture has one),
@@ -206,12 +252,22 @@ export const reportHtml = (report: EvalReport): string => {
       `<tr><td>${r.stage}</td><td>${escape(r.model)}</td><td>${r.passed}/${r.runs}</td><td>${r.firstTryPassed}/${r.runs}</td><td>${r.fixRounds}</td><td>${costText(r.avgCostUsd, r.avgTokens, r.onPlan)}</td><td>${r.avgSeconds.toFixed(1)}s</td><td>${r.skipped}</td></tr>`
     ).join("")
   }</tbody></table>`
+  const videos = report.videos ?? []
   const sections = report.stages.map((stage) => {
     const reference = report.reference[stage]
+    // a set story is wide (three proposals side by side), so each run gets its own row instead of a column
+    if (stage === "set-story") {
+      const legend = videos.length === 0 ? "" : `<p class=legend>${videos.map((_, i) => videoChip(videos, i)).join("")}</p>`
+      const rows = [
+        ...(reference === undefined || reference === null ? [] : [`<div class="run reference"><div class=facts><b>Approved</b></div>${renderOutput(stage, reference, videos)}</div>`]),
+        ...report.models.flatMap((model) => report.results.filter((r) => r.stage === stage && r.model === model).map((r) => renderRun(r, videos, model)))
+      ]
+      return `<section><h2>${stage}</h2>${legend}${rows.join("")}</section>`
+    }
     const columns = [
-      ...(reference === undefined ? [] : [`<div class="col reference"><h3>Approved</h3><div class=run>${renderOutput(stage, reference)}</div></div>`]),
+      ...(reference === undefined ? [] : [`<div class="col reference"><h3>Approved</h3><div class=run>${renderOutput(stage, reference, videos)}</div></div>`]),
       ...report.models.map((model) =>
-        `<div class=col><h3>${escape(model)}</h3>${report.results.filter((r) => r.stage === stage && r.model === model).map(renderRun).join("")}</div>`
+        `<div class=col><h3>${escape(model)}</h3>${report.results.filter((r) => r.stage === stage && r.model === model).map((r) => renderRun(r, videos)).join("")}</div>`
       )
     ]
     return `<section><h2>${stage}</h2><div class=cols style="--n:${columns.length}">${columns.join("")}</div></section>`
@@ -234,6 +290,13 @@ th,td{text-align:left;padding:4px 10px;border-bottom:1px solid var(--line);white
 .headline{font-weight:700;font-size:16px}.tag{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 4px}
 ol,ul{padding-left:20px;margin:6px 0}li{margin:4px 0}.real q{font-style:italic}.narration{}
 pre{white-space:pre-wrap;font-size:12px}details{margin:6px 0}summary{cursor:pointer;color:var(--muted)}
+.run.reference{background:var(--accent)}
+.video{display:inline-flex;align-items:center;gap:5px;margin-right:10px;white-space:nowrap;font-size:12px}
+.video i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.parts{list-style:none;padding:0}.legend{margin:0 0 10px}
+.proposals{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:10px;margin:10px 0;overflow-x:auto}
+.proposal{border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}.proposal p{margin:6px 0}
+.uses{margin:6px 0}.scores{font-size:12px;color:var(--muted)}
 </style></head><body>
 <h1>Viral eval · ${escape(report.fixture)}</h1>
 <p class=muted>${escape(report.createdAt)} · ${report.runs} run(s) each · budget $${report.budgetUsd.toFixed(2)} for priced runs · spent ${usd(report.spentUsd)}</p>

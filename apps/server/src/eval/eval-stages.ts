@@ -11,10 +11,17 @@ import { scriptTask } from "../script/script-task.ts"
 import { checkStory } from "../story/story-rules.ts"
 import { storyTask } from "../story/story-task.ts"
 import { timedText } from "../transcribe/transcripts.ts"
+import { checkSetStory } from "../set-story/set-story-rules.ts"
+import { setStoryTask } from "../set-story/set-story-task.ts"
+import { transcriptTools } from "../set-story/transcript-tools.ts"
 import type { EvalFixture } from "./eval-fixture.ts"
+import { type SetEvalFixture, sheetsDirOf } from "./eval-set-fixture.ts"
 
-// The agent stages an eval can run: the text stages (shots and thumbnail need gateway vision, not built yet).
-export const EvalStageName = Schema.Literals(["ads", "story", "script", "metadata"])
+// The agent stages an eval can run: the text stages (shots and thumbnail need gateway vision, not built yet). The
+// first four run on one video's fixture; set-story runs on its own, on a set fixture (several videos).
+export const VideoStageName = Schema.Literals(["ads", "story", "script", "metadata"])
+export type VideoStageName = typeof VideoStageName.Type
+export const EvalStageName = Schema.Literals([...VideoStageName.literals, "set-story"])
 export type EvalStageName = typeof EvalStageName.Type
 
 // One stage, ready to run on any route: the production task and check, built from the fixture.
@@ -47,7 +54,7 @@ const evalStage = <S extends Schema.Codec<unknown, unknown>, A>(
       }))
 })
 
-export const evalStages = (fixture: EvalFixture, fixtureDir: string, path: Path.Path): Record<EvalStageName, EvalStage> => {
+export const evalStages = (fixture: EvalFixture, fixtureDir: string, path: Path.Path): Record<VideoStageName, EvalStage> => {
   const transcript = timedText(fixture.transcript)
   const words = fixture.transcript.segments.flatMap((s) => s.words)
   const excluded = fixture.adRanges.ranges
@@ -91,4 +98,37 @@ export const evalStages = (fixture: EvalFixture, fixtureDir: string, path: Path.
       checkMetadata
     )
   }
+}
+
+// The set-story stage on a set fixture: the production task (with its transcript tools and every video's contact
+// sheets) and the production check, each video's words and ads from the fixture.
+export const setStoryEvalStage = (fixture: SetEvalFixture, fixtureDir: string, path: Path.Path): EvalStage => {
+  const videos = fixture.videos.map((v, i) => {
+    const sheetsDir = sheetsDirOf(path, fixtureDir, i + 1)
+    return {
+      title: v.title,
+      channel: v.channel,
+      seconds: v.durationS,
+      transcript: v.transcript,
+      excluded: v.adRanges.ranges,
+      sheets: v.sheets.map((s) => ({ ...s, file: path.join(sheetsDir, s.file) })),
+      sheetsDir,
+      storySummary: v.storySummary
+    }
+  })
+  const contexts = fixture.videos.map((v) => ({
+    words: v.transcript.segments.flatMap((s) => s.words),
+    seconds: v.durationS,
+    excluded: v.adRanges.ranges
+  }))
+  return evalStage(
+    "set-story",
+    setStoryTask({
+      brief: fixture.brief,
+      videos,
+      readDirs: videos.filter((v) => v.sheets.length > 0).map((v) => v.sheetsDir),
+      tools: transcriptTools(videos)
+    }),
+    (p) => checkSetStory(p, contexts)
+  )
 }

@@ -204,7 +204,12 @@ apps/server/src/
                        report.json/report.md + a side-by-side eval.html
                        (--include puts earlier evals' runs on the same page). Each run's result and spend is also
                        recorded in your library's eval_runs (eval-records.ts; `eval record <dir>` for an old one),
-                       for Settings › Usage (Evals) and Settings › Agents (how each model did)
+                       for Settings › Usage (Evals) and Settings › Agents (how each model did).
+                       `eval set-story` runs the set-story stage alone on a set fixture (eval-set-fixture.ts:
+                       ~/.viral/fixtures/sets/candy-heidi, made by `eval export-set` from a set whose videos are read:
+                       each video's short name, transcript, ads and contact sheets, the brief, the set story as
+                       reference); eval.html shows each run's 3 proposals side by side, its videos as a colour dot and
+                       short name (V labels in the text are put as names too)
   settings/            app preferences as JSON under keys; app-settings.ts is the typed view: agents.default and
                        stage.<name>.provider/.model (Settings › Agents), transcription.provider
   usage/               Settings › Usage: spend by day, provider (billed vs plan), model, short, step, and evals; ElevenLabs
@@ -377,6 +382,9 @@ bun run test          # node --test over apps and packages
 bun run cli eval all --models claude-cli,codex,gateway:openai/gpt-6-luna --runs 2 --budget 3 --plan-runs 8
                       # agent-stage eval vs the CLI baseline → ~/.viral/evals/<date>-<stages>/eval.html
                       # (spend recorded in your library; --include <earlier eval dirs> combines the pages)
+bun run cli eval set-story --models claude-cli,codex,gateway:anthropic/claude-haiku-5.5 --runs 1 --budget 1.5 --plan-runs 4
+                      # set-story across 2 videos (fixture: ~/.viral/fixtures/sets/candy-heidi; make another with
+                      #   eval export-set --from <library> --set <id> --name <name> [--names "Candy,Heidi Klum"])
 bun run test:golden   # candy render vs the original short + transcription per provider (slow; needs fixtures:sync)
 bun run test:live     # each agent provider on its real CLI (Claude, Codex, OpenCode; a cent or so); skips any not set up
 bun run fixtures:sync # copy the candy project (plans, media, golden outputs) into ~/.viral/fixtures (not in git)

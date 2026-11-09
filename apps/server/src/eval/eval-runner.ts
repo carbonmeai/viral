@@ -65,7 +65,8 @@ const ESTIMATE_USD: Record<EvalStageName, { readonly cli: number; readonly api: 
   ads: { cli: 0.15, api: 0.1 },
   story: { cli: 0.6, api: 0.25 },
   script: { cli: 0.45, api: 0.15 },
-  metadata: { cli: 0.08, api: 0.03 }
+  metadata: { cli: 0.08, api: 0.03 },
+  "set-story": { cli: 0.6, api: 0.3 }
 }
 
 export interface EvalInput {

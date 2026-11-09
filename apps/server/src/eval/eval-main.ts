@@ -1,17 +1,20 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { ProjectId, SourceId } from "@viral/contracts"
+import { ProjectId, SourceId, SourceSetId } from "@viral/contracts"
 import { Config, Console, DateTime, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
+import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects } from "../projects/projects.ts"
 import { Sources } from "../sources/sources.ts"
 import { Transcripts } from "../transcribe/transcripts.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
 import { EvalFixtureError, exportFixture, loadFixture } from "./eval-fixture.ts"
+import { exportSetFixture, loadSetFixture } from "./eval-set-fixture.ts"
 import { databaseAt } from "../persistence/database.ts"
 import { evalBilling, EvalRecords } from "./eval-records.ts"
 import { combineReports, type EvalReport, reportHtml, reportMarkdown, StoredEvalReport } from "./eval-report.ts"
 import { type EvalModel, parseModel, runEval } from "./eval-runner.ts"
-import { EvalStageName, evalStages } from "./eval-stages.ts"
+import { type EvalStage, EvalStageName, evalStages, setStoryEvalStage } from "./eval-stages.ts"
 
 // The eval's own process, started by `bun run cli eval`. VIRAL_HOME is the library it works in: a scratch
 // one for `run` (agent sessions and settings land there, never in yours), the library to copy from for `export`.
@@ -19,7 +22,9 @@ import { EvalStageName, evalStages } from "./eval-stages.ts"
 //   eval-main.ts run --stages ads,story --models claude-cli,codex,gateway:openai/gpt-6-luna --runs 2 --budget 5
 //                    [--plan-runs 8] --fixture <dir> --out <dir> [--record <library>] [--include <earlier report folders>]
 //   eval-main.ts record --dir <report folder> --record <library>
+//   eval-main.ts run --stages set-story --models … --fixture <set fixture dir> --out <dir> …   (set-story runs alone)
 //   eval-main.ts export --source <id> --project <id> --out <dir> [--name candy]
+//   eval-main.ts export-set --set <id> --out <dir> [--name candy-heidi] [--names "Candy,Heidi Klum"]
 //
 // --record writes every run's result and spend into that library's database (eval_runs), so Settings › Usage
 // counts eval spend and Settings › Agents shows how each model did; `record` does it for an earlier report.
@@ -50,8 +55,10 @@ const readReport = Effect.fn("readReport")(function*(dir: string) {
   const json = yield* fs.readFileString(`${dir}/report.json`).pipe(Effect.mapError((e) => fail(`can't read ${dir}/report.json: ${e.message}`)))
   const stored = yield* Schema.decodeEffect(StoredEvalReport)(json).pipe(Effect.mapError((e) => fail(`${dir}/report.json: ${e.message}`)))
   const billed = yield* cliBilled
+  const { videos, ...rest } = stored
   return {
-    ...stored,
+    ...rest,
+    ...(videos === undefined ? {} : { videos }),
     results: stored.results.map((r) => ({ ...r, billing: r.billing ?? evalBilling(r.provider, billed) }))
   } satisfies EvalReport
 })
@@ -81,9 +88,26 @@ const run = Effect.gen(function*() {
   if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) return yield* fail("--budget takes a dollar amount above 0")
   if (!Number.isInteger(planRuns) || planRuns < 0) return yield* fail("--plan-runs takes a whole number from 0")
 
-  const fixture = yield* loadFixture(fixtureDir)
-  const all = evalStages(fixture, fixtureDir, path)
-  const stages = stageNames.map((name) => all[name])
+  // set-story runs on a set fixture (several videos); the other stages on one video's fixture
+  const onSet = stageNames.includes("set-story")
+  if (onSet && stageNames.length > 1) return yield* fail("set-story runs on its own (it takes a set fixture): run it separately")
+  const loaded = onSet
+    ? yield* Effect.map(loadSetFixture(fixtureDir), (fixture) => ({
+      name: fixture.name,
+      stages: [setStoryEvalStage(fixture, fixtureDir, path)] as ReadonlyArray<EvalStage>,
+      reference: fixture.reference === null ? {} : { "set-story": fixture.reference },
+      videos: fixture.videos.map((v) => ({ name: v.name }))
+    }))
+    : yield* Effect.map(loadFixture(fixtureDir), (fixture) => {
+      const all = evalStages(fixture, fixtureDir, path)
+      return {
+        name: fixture.name,
+        stages: stageNames.flatMap((name) => name === "set-story" ? [] : [all[name]]),
+        reference: { ads: fixture.adRanges, story: fixture.story, script: fixture.short.script },
+        videos: undefined
+      }
+    })
+  const stages = loaded.stages
   const now = yield* DateTime.now
   const stamp = DateTime.formatIso(now).slice(0, 16).replace(/[:T]/g, "-")
   const out = path.join(outRoot, `${stamp}-${stageNames.join("-")}`)
@@ -118,14 +142,15 @@ const run = Effect.gen(function*() {
   })
   const thisRun: EvalReport = {
     createdAt,
-    fixture: fixture.name,
+    fixture: loaded.name,
     stages: stageNames,
     models: models.map((m) => m.label),
     runs,
     budgetUsd,
     spentUsd,
     results,
-    reference: { ads: fixture.adRanges, story: fixture.story, script: fixture.short.script }
+    reference: loaded.reference,
+    ...(loaded.videos === undefined ? {} : { videos: loaded.videos })
   }
   // with --include, the page and table compare these runs together with the earlier ones
   const report = combineReports(thisRun, earlier)
@@ -156,11 +181,24 @@ const exportCommand = Effect.gen(function*() {
   yield* Console.log(`exported "${fixture.source.title}" with the ${fixture.short.approach} short "${fixture.short.title}" to ${option("out")}`)
 }).pipe(Effect.provide(Layer.mergeAll(Sources.layer, Projects.layer, Artifacts.layer, Transcripts.layer)))
 
+const exportSetCommand = Effect.gen(function*() {
+  const fixture = yield* exportSetFixture({
+    setId: SourceSetId.make(yield* required("set")),
+    out: yield* required("out"),
+    name: option("name") ?? "set",
+    names: list(option("names") ?? "")
+  })
+  yield* Console.log(
+    `exported the set "${fixture.name}" (${fixture.videos.map((v) => v.name).join(", ")})${fixture.reference === null ? " with no set story" : " and its set story"} to ${option("out")}`
+  )
+}).pipe(Effect.provide(Layer.mergeAll(VideoSets.layer, ProjectSources.layer, Artifacts.layer)))
+
 const program = Effect.gen(function*() {
   if (argv[0] === "export") return yield* exportCommand
+  if (argv[0] === "export-set") return yield* exportSetCommand
   if (argv[0] === "run") return yield* run
   if (argv[0] === "record") return yield* recordCommand
-  return yield* fail("usage: eval-main.ts run|record|export …")
+  return yield* fail("usage: eval-main.ts run|record|export|export-set …")
 }).pipe(
   Effect.catchTag("EvalFixtureError", (e) => Console.error(e.message).pipe(Effect.andThen(Effect.sync(() => void (process.exitCode = 1))))),
   Effect.provide(NodeServices.layer)
