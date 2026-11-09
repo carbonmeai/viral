@@ -146,7 +146,11 @@ apps/server/src/
   sections/            the sections stage (cut-down shorts): an agent picks the creator's best stretches of
                        speech by story beat, hook first (`contact_sheet`, `preview_sections`); the server snaps
                        them to the nearest whole words, checks length/order/overlaps/excluded ranges, and draws a
-                       storyboard with a frame per section. A cut-down run is sections → assemble → render → metadata
+                       storyboard with a frame per section. A cut-down run is sections → assemble → render → metadata.
+                       A short from several videos: the agent sees every video (V1, V2… labels, whole transcripts or
+                       outlines + `search_transcript`/`read_transcript`), answers with each section's `video` (V number;
+                       stored as the 0-based `source`), and each section is snapped and checked in its own video; each
+                       storyboard frame comes from its own video
   shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
                        asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
                        script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate.
@@ -185,7 +189,9 @@ apps/server/src/
   render/              the render stage (gated; a rejection goes back to the shots, or the sections for a
                        cut-down short, with your note, via the stage's `rejectTo`) + render engine + its Python
                        scripts (render-short.py is the skill's cut-down renderer: word-snapped sections, crop or
-                       blurred fill, 3-word captions, hook title card, credit; render-narrated.py is the viral-shorts renderer;
+                       blurred fill, 3-word captions, hook title card, credit; it plays each section from its own
+                       video (`sources` V2…, `exclude_by_source`, a section's `source`), single-video plans unchanged;
+                       render-narrated.py is the viral-shorts renderer;
                        music_bed.py is its music-bed math, shared with fit-music.py,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
                        headline, chunk/quote captions, labels, credit). render-narrated.py plays each clip from its
@@ -241,7 +247,11 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        the short with SetPostText), "Publish again" with what it will update, the files, and a
                        rights reminder. thumbnail/: the
                        thumbnail in a phone frame, its moments, and word edits checked with CheckThumbnailEdit.
-                       The Sections step of a cut-down short has no view yet
+                       sections/: the Sections step of a cut-down short (preview or storyboard of the sections in
+                       order, each playable from its own video; inspector: words, beat, start/end snapped to that
+                       video's words, framing, order, remove, add a line found in any video; edits checked with
+                       CheckSectionsEdit). Several videos: each section carries its video's dot + short name, the
+                       timeline tints sections by video with one "from" row per video
                        library/: Styles (cards with a CSS 9:16 preview of each style; the editor at ?edit=<id>, whose
                        Voice group holds the style's voice and pace), Music (songs with a decoded waveform and drop,
                        kind and rights, add songs or a folder; "Used by" opens each short's editor) and Voices (free
