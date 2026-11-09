@@ -1,6 +1,6 @@
-import type { BackdropColor, FrameCrop, ThumbConfig, ThumbnailColor, ThumbnailProposal } from "@viral/contracts"
+import type { BackdropColor, FrameCrop, ProposedThumbnail, SourceIndex, ThumbConfig, ThumbnailColor, ThumbnailProposal } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
-import { clipSource, sourceField } from "../projects/source-context.ts"
+import { clipSource, sourceField, sourceLabel } from "../projects/source-context.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
@@ -58,6 +58,8 @@ const LAYOUT = {
 } as const
 
 const fmt = (t: number) => t.toFixed(1)
+// "the face (V2)" in a short from several videos; plain "the face" in a single-video one
+const named = (name: string, source: number | undefined, several: boolean) => several ? `${name} (${sourceLabel(source ?? 0)})` : name
 const countWords = (text: string) => text.split(/\s+/).filter((w) => w !== "").length
 
 // Checks a proposed thumbnail against the videos it can draw from (V1 first; each layer's `source` picks one):
@@ -88,15 +90,17 @@ export const checkThumbnail = (proposal: ThumbnailProposal, sources: ReadonlyArr
     }
   }
 
+  const several = sources.length > 1
   const bold = proposal.layout !== "classic"
   if (!bold) {
     const background = videoOf("the background", proposal.background.source)
-    if (background !== null) moment("the background", proposal.background.src, background)
+    if (background !== null) moment(named("the background", proposal.background.source, several), proposal.background.src, background)
   }
   const hero = videoOf("the hero", proposal.hero.source)
   if (hero !== null) {
-    moment("the hero", proposal.hero.src, hero)
-    crop("the hero", proposal.hero.crop, bold ? BOLD_HERO_ASPECT : HERO_ASPECT, hero)
+    const name = named("the hero", proposal.hero.source, several)
+    moment(name, proposal.hero.src, hero)
+    crop(name, proposal.hero.crop, bold ? BOLD_HERO_ASPECT : HERO_ASPECT, hero)
   }
   const circle = proposal.hero.circle
   if (circle !== null && !(circle.x >= 0 && circle.x <= 1 && circle.y >= 0 && circle.y <= 1 && circle.r >= 0.1 && circle.r <= 0.5)) {
@@ -105,8 +109,9 @@ export const checkThumbnail = (proposal: ThumbnailProposal, sources: ReadonlyArr
   if (proposal.face !== null) {
     const face = videoOf("the face", proposal.face.source)
     if (face !== null) {
-      moment("the face", proposal.face.src, face)
-      crop("the face", proposal.face.crop, bold ? BOLD_FACE_ASPECT : FACE_ASPECT, face)
+      const name = named("the face", proposal.face.source, several)
+      moment(name, proposal.face.src, face)
+      crop(name, proposal.face.crop, bold ? BOLD_FACE_ASPECT : FACE_ASPECT, face)
     }
   } else if (bold) {
     problems.push("a bold thumbnail needs the video's strongest reaction face; use layout \"classic\" if it has none")
@@ -140,28 +145,61 @@ export const checkThumbnail = (proposal: ThumbnailProposal, sources: ReadonlyArr
   }
 }
 
-const box = (crop: FrameCrop, width: number, height: number): readonly [number, number, number, number] => [
-  Math.round(crop[0] * width),
-  Math.round(crop[1] * height),
-  Math.round(crop[2] * width),
-  Math.round(crop[3] * height)
+// What the agent sent, as it's stored: each layer's V number (`video`, 1-based) becomes its position (`source`), left
+// out for V1.
+export const fromProposedThumbnail = (proposed: ProposedThumbnail): ThumbnailProposal => {
+  const at = (video: number | undefined) => sourceField(video === undefined ? undefined : (video - 1) as SourceIndex)
+  const { video: backgroundVideo, ...background } = proposed.background
+  const { video: heroVideo, ...hero } = proposed.hero
+  return {
+    ...proposed,
+    background: { ...background, ...at(backgroundVideo) },
+    hero: { ...hero, ...at(heroVideo) },
+    face: proposed.face === null ? null : (({ video, ...face }) => ({ ...face, ...at(video) }))(proposed.face)
+  }
+}
+
+// One of the short's videos as the renderer draws from it: its file and frame size.
+export interface ThumbnailVideo {
+  readonly path: string
+  readonly width: number
+  readonly height: number
+}
+
+const box = (crop: FrameCrop, video: Pick<ThumbnailVideo, "width" | "height">): readonly [number, number, number, number] => [
+  Math.round(crop[0] * video.width),
+  Math.round(crop[1] * video.height),
+  Math.round(crop[2] * video.width),
+  Math.round(crop[3] * video.height)
 ]
 
-// The renderer's config for a checked proposal: the bold layout unless it asks for classic.
-export const thumbConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<ThumbnailContext, "width" | "height">): ThumbConfig =>
-  proposal.layout === "classic" ? classicConfig(proposal, source, ctx) : boldConfig(proposal, source, ctx)
+// The videos a config draws from: `source` is V1's file, `sources` the others' (V2 first), only for a short from
+// several videos, so a single-video config is written exactly as before.
+export const configSources = (videos: ReadonlyArray<Pick<ThumbnailVideo, "path">>): Pick<ThumbConfig, "source" | "sources"> => ({
+  source: videos[0]!.path,
+  ...(videos.length > 1 ? { sources: videos.slice(1).map((v) => v.path) } : {})
+})
 
-const boldConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<ThumbnailContext, "width" | "height">): ThumbConfig => {
+// The renderer's config for a checked proposal: the bold layout unless it asks for classic. Each layer's crop is in
+// the pixels of its own video (V1 first; a layer whose video is missing falls back to V1's size).
+export const thumbConfig = (proposal: ThumbnailProposal, videos: ReadonlyArray<ThumbnailVideo>): ThumbConfig =>
+  proposal.layout === "classic" ? classicConfig(proposal, videos) : boldConfig(proposal, videos)
+
+const sizeOf = (videos: ReadonlyArray<ThumbnailVideo>, source: number | undefined) => videos[source ?? 0] ?? videos[0]!
+
+const boldConfig = (proposal: ThumbnailProposal, videos: ReadonlyArray<ThumbnailVideo>): ThumbConfig => {
   const side = proposal.face?.side ?? "right"
   const emoji = proposal.emoji ?? null
+  const hero = sourceField(proposal.hero.source)
   return {
     layout: "bold",
-    source,
-    background: { src: proposal.hero.src },
+    ...configSources(videos),
+    background: { src: proposal.hero.src, ...hero },
     backdrop: { colors: [...BACKDROPS[proposal.background.color ?? "red"]], burst: true },
     hero: {
       src: proposal.hero.src,
-      box: box(proposal.hero.crop, ctx.width, ctx.height),
+      ...hero,
+      box: box(proposal.hero.crop, sizeOf(videos, proposal.hero.source)),
       x: 0.5,
       ...BOLD.hero,
       ...(proposal.hero.circle === null
@@ -169,7 +207,15 @@ const boldConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<Thumb
         : { circle: true, circle_x: proposal.hero.circle.x, circle_y: proposal.hero.circle.y, circle_r: proposal.hero.circle.r })
     },
     ...(proposal.face === null ? {} : {
-      inset: { src: proposal.face.src, box: box(proposal.face.crop, ctx.width, ctx.height), y: 1, ...BOLD.face, side, x: BOLD.faceX[side] }
+      inset: {
+        src: proposal.face.src,
+        ...sourceField(proposal.face.source),
+        box: box(proposal.face.crop, sizeOf(videos, proposal.face.source)),
+        y: 1,
+        ...BOLD.face,
+        side,
+        x: BOLD.faceX[side]
+      }
     }),
     lines: proposal.lines.map((line, i) => ({ text: line.text, color: COLORS[line.color], size: BOLD.sizes[Math.min(i, 1)]! })),
     text_y: 0.025,
@@ -178,36 +224,51 @@ const boldConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<Thumb
   }
 }
 
-const classicConfig = (proposal: ThumbnailProposal, source: string, ctx: Pick<ThumbnailContext, "width" | "height">): ThumbConfig => ({
-  source,
-  background: { src: proposal.background.src },
+const classicConfig = (proposal: ThumbnailProposal, videos: ReadonlyArray<ThumbnailVideo>): ThumbConfig => ({
+  ...configSources(videos),
+  background: { src: proposal.background.src, ...sourceField(proposal.background.source) },
   hero: {
     src: proposal.hero.src,
-    box: box(proposal.hero.crop, ctx.width, ctx.height),
+    ...sourceField(proposal.hero.source),
+    box: box(proposal.hero.crop, sizeOf(videos, proposal.hero.source)),
     ...LAYOUT.hero,
     ...(proposal.hero.circle === null
       ? { circle: false }
       : { circle: true, circle_x: proposal.hero.circle.x, circle_y: proposal.hero.circle.y, circle_r: proposal.hero.circle.r })
   },
   ...(proposal.face === null ? {} : {
-    inset: { src: proposal.face.src, box: box(proposal.face.crop, ctx.width, ctx.height), ...LAYOUT.face }
+    inset: {
+      src: proposal.face.src,
+      ...sourceField(proposal.face.source),
+      box: box(proposal.face.crop, sizeOf(videos, proposal.face.source)),
+      ...LAYOUT.face
+    }
   }),
   lines: proposal.lines.map((line, i) => ({ text: line.text, color: COLORS[line.color], size: LAYOUT.sizes[Math.min(i, 1)]! })),
   arrow: false
 })
 
-// Checks a config you edited at the gate: real moments outside the ads, pixel crops inside the frame, and
-// 2–4 words of text.
-export const checkConfig = (config: ThumbConfig, ctx: ThumbnailContext): ReadonlyArray<string> => {
+// Checks a config you edited at the gate against the short's videos (V1 first; each layer's `source` picks one):
+// real moments outside that video's ads, pixel crops inside its frame, and 2–4 words of text (2–5 for bold).
+export const checkConfig = (config: ThumbConfig, videos: ReadonlyArray<ThumbnailContext>): ReadonlyArray<string> => {
   const problems: Array<string> = []
-  const moments: Array<readonly [string, number]> = [["the background", config.background.src], ["the hero", config.hero.src]]
-  if (config.inset !== undefined) moments.push(["the face", config.inset.src])
-  for (const [name, src] of moments) {
+  const several = videos.length > 1
+  // bold draws a gradient, so its background frame isn't drawn or checked
+  const layers: Array<readonly [string, { readonly src: number; readonly source?: number; readonly box?: readonly [number, number, number, number] }]> = [
+    ...(config.layout === "bold" ? [] : [["the background", config.background] as const]),
+    ["the hero", config.hero],
+    ...(config.inset === undefined ? [] : [["the face", config.inset] as const])
+  ]
+  for (const [layer, { src, source, box: b }] of layers) {
+    const video = clipSource(videos, source, layer)
+    if (video.problem !== null) {
+      problems.push(video.problem)
+      continue
+    }
+    const ctx = video.source
+    const name = named(layer, source, several)
     if (!(src >= 0 && src < ctx.sourceSeconds)) problems.push(`${name} at ${fmt(src)}s is outside the video (0–${fmt(ctx.sourceSeconds)}s)`)
     if (ctx.excluded.some((r) => src >= r.start && src <= r.end)) problems.push(`${name} at ${fmt(src)}s is inside an excluded range`)
-  }
-  const boxes: Array<readonly [string, readonly [number, number, number, number] | undefined]> = [["the hero", config.hero.box], ["the face", config.inset?.box]]
-  for (const [name, b] of boxes) {
     if (b !== undefined && !(b[0] >= 0 && b[1] >= 0 && b[2] <= ctx.width && b[3] <= ctx.height && b[0] < b[2] && b[1] < b[3])) {
       problems.push(`${name} box [${b.join(", ")}] must be inside the ${ctx.width}×${ctx.height} frame`)
     }

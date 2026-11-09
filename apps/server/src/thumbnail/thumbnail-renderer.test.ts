@@ -147,3 +147,31 @@ test("bold cut-outs: Apple's first, rembg only when its models are on disk, a fr
     }
   }
 })
+
+// The pixel at (x, y) of a jpg, as [r, g, b].
+const pixel = (image: string, x: number, y: number) => {
+  const raw = execFileSync("ffmpeg", ["-v", "error", "-i", image, "-vf", `crop=2:2:${x}:${y}`, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+  return [raw[0]!, raw[1]!, raw[2]!] as const
+}
+
+test("a short from several videos: each layer is cut from its own video", async () => {
+  const red = join(dir, "red.mp4")
+  const blue = join(dir, "blue.mp4")
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:d=5:s=854x480:r=10", red])
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:d=5:s=640x360:r=10", blue])
+  const two = {
+    ...config,
+    source: red,
+    sources: [blue],
+    // the face from V2, in V2's pixels; the hero and the background from V1
+    inset: { ...config.inset, source: 1, box: [100, 0, 540, 360] as const }
+  }
+  const drawn = await run((r) => r.render(two, join(dir, "two.jpg")))
+  const [hr, , hb] = pixel(drawn.image, 540, Math.round(1920 * 0.45))
+  const [fr, , fb] = pixel(drawn.image, Math.round(1080 * 0.64), Math.round(1920 * 0.79))
+  assert.ok(hr > 180 && hb < 80, `the hero is V1's red, got ${hr},${hb}`)
+  assert.ok(fb > 180 && fr < 80, `the face is V2's blue, got ${fr},${fb}`)
+
+  const unknown = await run((r) => Effect.flip(r.render({ ...two, hero: { ...two.hero, source: 2 } }, join(dir, "unknown.jpg"))))
+  assert.equal(unknown.code, "unknown-source")
+})

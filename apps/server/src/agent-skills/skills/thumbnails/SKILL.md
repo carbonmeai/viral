@@ -52,3 +52,13 @@ text at the top, the hero object big in the middle, and a reaction face.
 
 - **A busy, colourful frame** from the same moment as the hero (it's blurred and darkened), so the colours
   match; never a frame from an ad or the end screen.
+
+## Shorts from several videos
+
+- **Look at every video.** Each one's overview contact sheets are listed under its own V label. The best hero
+  and the strongest face may be in different videos; the thumbnail can mix them.
+- **Every layer names its video** (`video`: its V number; leave it out for V1) and uses that video's own seconds
+  and frame. `contact_sheet` and `preview_thumbnail` take the same `video`.
+- **Each video's excluded ranges are its own.** Keep each moment clear of the ranges listed for its video.
+- **The face should belong to the story the short tells.** A reaction from a video the short barely uses misleads
+  the viewer; prefer the video whose moment the hero shows, unless another reaction is clearly stronger and fits.

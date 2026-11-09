@@ -10,6 +10,9 @@ Usage:
 Config schema: ThumbConfig in packages/contracts/src/thumb-config.ts. `source` resolves against the config
 file's folder; `box` is a crop in source pixels [x0, y0, x1, y1]; x/y are centre fractions of the canvas.
 
+A short from several videos: `sources` lists the other videos (V2 first) and a layer's `source` index picks its
+video (0 = `source`, 1 = `sources[0]`…; absent = 0), so the hero and the face can come from different videos.
+
 Ported from the viral-shorts skill's thumbnail.py; the layout is unchanged (blurred, darkened full-bleed
 background; the hero object big in the middle with a red circle; a tilted, white-bordered reaction inset;
 2-4 words of huge outlined text at the top) and is still the `classic` layout.
@@ -383,13 +386,21 @@ def text_block(canvas: Image.Image, lines: list[dict], top: float) -> int:
     return y
 
 
-def bold(cfg: dict, src: str, out: Path) -> None:
+def video_of(srcs: list[str], layer: dict) -> str:
+    """The video a layer is cut from, by its `source` index (absent = the first)."""
+    i = layer.get("source", 0)
+    if not (isinstance(i, int) and 0 <= i < len(srcs)):
+        fail("unknown-source", f"a layer's source {i} isn't one of the config's {len(srcs)} videos")
+    return srcs[i]
+
+
+def bold(cfg: dict, srcs: list[str], out: Path) -> None:
     emit({"type": "progress", "step": "background"})
     canvas = backdrop(cfg.get("backdrop", {}))
 
     hero_cfg, face_cfg = cfg["hero"], cfg.get("inset")
-    hero_img = boost(crop_box(frame(src, hero_cfg["src"]), hero_cfg))
-    face_img = boost(crop_box(frame(src, face_cfg["src"]), face_cfg)) if face_cfg else None
+    hero_img = boost(crop_box(frame(video_of(srcs, hero_cfg), hero_cfg["src"]), hero_cfg))
+    face_img = boost(crop_box(frame(video_of(srcs, face_cfg), face_cfg["src"]), face_cfg)) if face_cfg else None
     emit({"type": "progress", "step": "cutout"})
     jobs = [(hero_img, "isnet-general-use")] + ([(face_img, "u2net_human_seg")] if face_img is not None else [])
     cuts = cutouts(jobs)
@@ -482,17 +493,18 @@ def main() -> None:
     args = ap.parse_args()
     cfgp = Path(args.config).resolve()
     cfg = json.loads(cfgp.read_text())
-    src = str((cfgp.parent / cfg["source"]).resolve())
-    if not Path(src).exists():
-        fail("source", f"no video at {src}")
+    srcs = [str((cfgp.parent / s).resolve()) for s in [cfg["source"], *cfg.get("sources", [])]]
+    for src in srcs:
+        if not Path(src).exists():
+            fail("source", f"no video at {src}")
     out = Path(args.out) if args.out else cfgp.with_suffix(".jpg")
     if cfg.get("layout") == "bold":
-        bold(cfg, src, out)
+        bold(cfg, srcs, out)
         return
 
     # background
     emit({"type": "progress", "step": "background"})
-    bg = frame(src, cfg["background"]["src"])
+    bg = frame(video_of(srcs, cfg["background"]), cfg["background"]["src"])
     s = max(W / bg.width, H / bg.height)
     bg = bg.resize((int(bg.width * s) + 1, int(bg.height * s) + 1), Image.LANCZOS)
     bg = bg.crop(((bg.width - W) // 2, (bg.height - H) // 2, (bg.width - W) // 2 + W, (bg.height - H) // 2 + H))
@@ -501,7 +513,7 @@ def main() -> None:
 
     # hero object
     emit({"type": "progress", "step": "hero"})
-    hero, hx, hy = placed(frame(src, cfg["hero"]["src"]), cfg["hero"])
+    hero, hx, hy = placed(frame(video_of(srcs, cfg["hero"]), cfg["hero"]["src"]), cfg["hero"])
     hero_l = rounded(hero, 36, 10)
     shadow(canvas, hero_l, hx - 10, hy - 10)
     d = ImageDraw.Draw(canvas)
@@ -515,7 +527,7 @@ def main() -> None:
     # reaction inset
     if cfg.get("inset"):
         emit({"type": "progress", "step": "inset"})
-        ins, ix, iy = placed(frame(src, cfg["inset"]["src"]), cfg["inset"])
+        ins, ix, iy = placed(frame(video_of(srcs, cfg["inset"]), cfg["inset"]["src"]), cfg["inset"])
         ins_l = rounded(ins, 28, 12).rotate(cfg["inset"].get("tilt", 0), expand=True, resample=Image.BICUBIC)
         ix -= (ins_l.width - ins.width) // 2
         iy -= (ins_l.height - ins.height) // 2

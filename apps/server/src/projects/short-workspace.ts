@@ -234,21 +234,21 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         return checkSectionsRules(proposal, sources.value).problems
       })
 
-      // Checked against the long video's frame size and length and its ads, exactly as the thumbnail gate checks
-      // an edit.
+      // Checked against each layer's video (its frame size, length and ads), exactly as the thumbnail gate checks an
+      // edit.
       const checkThumbnail = Effect.fn("ShortWorkspaces.checkThumbnail")(function*(projectId: ProjectId, config: ThumbConfig) {
         const project = yield* projects.get(projectId)
-        // drawn from V1 until thumbnails can mix videos
-        const [v1] = yield* sourcesFor(project)
-        if (Option.isNone(v1.video)) return ["the video hasn't been fetched, so the thumbnail can't be checked"]
-        const probed = yield* thumbnails.probe(v1.video.value).pipe(Effect.option)
-        if (Option.isNone(probed)) return ["the video's frames can't be read to check the thumbnail"]
-        return checkConfig(config, {
-          width: probed.value.width,
-          height: probed.value.height,
-          sourceSeconds: v1.source.durationS ?? probed.value.durationS,
-          excluded: v1.excluded
-        })
+        const sources = yield* sourcesFor(project)
+        const contexts = yield* Effect.forEach(sources, (s) =>
+          Effect.gen(function*() {
+            if (Option.isNone(s.video)) return null
+            const probed = yield* thumbnails.probe(s.video.value).pipe(Effect.option)
+            if (Option.isNone(probed)) return null
+            return { width: probed.value.width, height: probed.value.height, sourceSeconds: s.source.durationS ?? probed.value.durationS, excluded: s.excluded }
+          }))
+        const ready = contexts.filter((c) => c !== null)
+        if (ready.length < contexts.length) return ["a video's frames can't be read, so the thumbnail can't be checked"]
+        return checkConfig(config, ready)
       })
 
       return ShortWorkspaces.of({ get, checkScript, checkShots, checkSections, checkThumbnail })

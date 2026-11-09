@@ -59,8 +59,10 @@ const describePayload = (payload: GatePayload | null): string => {
     case "ThumbnailGate": {
       const c = payload.config
       const text = c.lines.map((l) => l.text).join(" / ")
-      return `  ${payload.image ?? "(no image)"}\n  "${text}" · hero at ${c.hero.src.toFixed(1)}s` +
-        `${c.inset === undefined ? "" : ` · face at ${c.inset.src.toFixed(1)}s`}\n` +
+      // a config from several videos lists the others in `sources`
+      const video = (source: number | undefined) => c.sources === undefined ? "" : `Video ${(source ?? 0) + 1} · `
+      return `  ${payload.image ?? "(no image)"}\n  "${text}" · hero at ${video(c.hero.source)}${c.hero.src.toFixed(1)}s` +
+        `${c.inset === undefined ? "" : ` · face at ${video(c.inset.source)}${c.inset.src.toFixed(1)}s`}\n` +
         `  rejecting redraws it with your note; edit <id> <config.json> re-renders your changes\n`
     }
     case "ArtifactGate":

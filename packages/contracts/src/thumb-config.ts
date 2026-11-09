@@ -5,8 +5,13 @@ import { Schema } from "effect"
 // Pixel crop box in the source frame: [left, top, right, bottom].
 const CropBox = Schema.Tuple([Schema.Int, Schema.Int, Schema.Int, Schema.Int])
 
+// Which of the config's videos a layer is cut from: 0 = `source` (V1), 1 = `sources[0]` (V2)… Absent = V1, so a
+// single-video config is written exactly as before.
+const LayerSource = { source: Schema.optionalKey(Schema.Int) }
+
 const Layer = {
   src: Schema.Finite,
+  ...LayerSource,
   box: Schema.optionalKey(CropBox),
   // placement as fractions of the canvas
   x: Schema.optionalKey(Schema.Finite),
@@ -23,7 +28,9 @@ export const ThumbConfig = Schema.Struct({
   // absent = classic, the original layout
   layout: Schema.optionalKey(ThumbLayout),
   source: Schema.String,
-  background: Schema.Struct({ src: Schema.Finite }),
+  // a short's other videos, V2 first: a layer with `source: 1` is cut from the first of these
+  sources: Schema.optionalKey(Schema.Array(Schema.String)),
+  background: Schema.Struct({ src: Schema.Finite, ...LayerSource }),
   // bold: the gradient behind everything, centre colour then edge colour, with an optional burst of rays
   backdrop: Schema.optionalKey(Schema.Struct({
     colors: Schema.Tuple([Schema.String, Schema.String]),
