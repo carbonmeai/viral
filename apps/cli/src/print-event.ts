@@ -54,7 +54,7 @@ const describePayload = (payload: GatePayload | null): string => {
     case "RenderGate": {
       const r = payload.render
       return `  ${r.video}\n  ${r.durationS.toFixed(1)}s · ${r.shots} shots · captions ${r.captions}\n` +
-        `  check sheet ${r.checkSheet ?? "(none)"}\n  rejecting goes back to the shots with your note\n`
+        `  check sheet ${r.checkSheet ?? "(none)"}\n  rejecting goes back to the shots (the sections, for a cut-down short) with your note\n`
     }
     case "ThumbnailGate": {
       const c = payload.config
