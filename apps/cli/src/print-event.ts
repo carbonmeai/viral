@@ -45,8 +45,9 @@ const describePayload = (payload: GatePayload | null): string => {
       const { plan, storyboard } = payload
       const seconds = plan.sections.reduce((n, s) => n + s.end - s.start, 0)
       const hook = plan.hookText === null ? "" : `  HOOK TEXT  ${plan.hookText}\n`
+      const video = videoLabels(plan.sections)
       const sections = plan.sections.map((s, k) =>
-        `  ${String(k + 1).padStart(2)}  ${s.beat.padEnd(13)} ${s.start.toFixed(1).padStart(7)}–${s.end.toFixed(1)}s  "${s.text}"`
+        `  ${String(k + 1).padStart(2)}  ${s.beat.padEnd(13)} ${video(s.source)}${s.start.toFixed(1).padStart(7)}–${s.end.toFixed(1)}s  "${s.text}"`
       ).join("\n")
       return `${hook}${sections}\n  ${plan.sections.length} sections · ${seconds.toFixed(1)}s · storyboard ${storyboard ?? "(none)"}\n`
     }
