@@ -29,9 +29,11 @@ export const checkPost = (post: PostText): Checked<PostText> => {
 }
 
 // The credit line in the description: every channel whose footage the short uses and isn't yours ("NileBlue ·
-// Mark Rober"), or null.
-export const postCredit = (sources: ReadonlyArray<{ readonly rights: string; readonly channel: string | null }>) =>
-  creditedChannels(sources).join(" · ") || null
+// Mark Rober"), in the order it first appears (`order`, as the credit drawn on the video), or null.
+export const postCredit = (
+  sources: ReadonlyArray<{ readonly rights: string; readonly channel: string | null }>,
+  order: ReadonlyArray<number> | null = null
+) => creditedChannels(sources, order).join(" · ") || null
 
 // The agent's post text, as the metadata stage wrote it.
 export const agentPost = (metadata: PostText): PostText => ({

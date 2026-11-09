@@ -16,7 +16,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Presets } from "../presets/presets.ts"
-import { creditLine } from "../projects/credits.ts"
+import { creditLine, loadAppearanceOrder } from "../projects/credits.ts"
 import { Projects, sourcesOf } from "../projects/projects.ts"
 import { RunManager } from "../runs/run-manager.ts"
 import { RunStore } from "../runs/run-store.ts"
@@ -77,7 +77,9 @@ export class Publishing extends Context.Service<Publishing, {
         const names = publishedNames(project.slug)
         const present = yield* Effect.forEach(names, (n) => fs.exists(path.join(home.renders, n)).pipe(Effect.orElseSucceed(() => false)))
         const going = (yield* store.listRuns(owner)).some((r) => r.status === "running" || r.status === "waiting")
-        const credit = postCredit(videos)
+        // the channels whose footage plays, in the order it first appears, as the video credits them
+        const order = yield* loadAppearanceOrder(project, artifacts)
+        const credit = postCredit(videos, order)
         const outcome = publishChanges({
           published: published.value,
           saved: Option.getOrNull(saved),
@@ -85,7 +87,7 @@ export class Publishing extends Context.Service<Publishing, {
           // a short assembled before plans recorded their credit can't tell, so it isn't re-rendered for it
           drawnCredit: Option.match(planned, {
             onNone: () => null,
-            onSome: (p) => ({ now: preset.config.credit ? creditLine(videos) : null, planned: p.credit ?? null })
+            onSome: (p) => ({ now: preset.config.credit ? creditLine(videos, order) : null, planned: p.credit ?? null })
           }),
           // older versions didn't record which render they copied: a render made after them is newer
           newerRender: Option.match(renderArtifact, {

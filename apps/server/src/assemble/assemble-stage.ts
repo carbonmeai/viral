@@ -8,7 +8,7 @@ import { checkArrangement, planArrangement, wordStartsInShort } from "../music-b
 import { arrangementKey, dropWordKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { Presets } from "../presets/presets.ts"
-import { creditLine } from "../projects/credits.ts"
+import { appearanceOrder, creditLine } from "../projects/credits.ts"
 import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects } from "../projects/projects.ts"
 import { sourceLabel } from "../projects/source-context.ts"
@@ -115,7 +115,8 @@ export class AssembleStage extends Context.Service<AssembleStage, {
           shots,
           excluded: videos[0].excluded,
           others,
-          credit: creditLine(videos.map((v) => v.source)),
+          // every channel whose footage plays, in the order it first appears
+          credit: creditLine(videos.map((v) => v.source), appearanceOrder({ _tag: "Narrated", plan: shots })),
           music: track === null ? null : { track, file: path.join(home.music, track.path) },
           dropWord
         })
@@ -194,7 +195,7 @@ export class AssembleStage extends Context.Service<AssembleStage, {
           plan: cutPlan,
           excluded: videos[0].excluded,
           others,
-          credit: creditLine(videos.map((v) => v.source))
+          credit: creditLine(videos.map((v) => v.source), appearanceOrder({ _tag: "Cut", plan: cutPlan }))
         })
         if (project.musicTrackId !== null) yield* ctx.progress(null, "cut-down shorts keep the creator's own audio, so the music track isn't used")
         const slot = yield* artifacts.allocate(ctx.owner, "cut-render-plan")

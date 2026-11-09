@@ -14,6 +14,7 @@ import { Settings } from "../settings/settings.ts"
 import { checkMetadata } from "./metadata-rules.ts"
 import { metadataTask } from "./metadata-task.ts"
 import { writePublished } from "./publish-files.ts"
+import { loadAppearanceOrder } from "../projects/credits.ts"
 import { agentPost, postCredit, postKey } from "./publish-rules.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "metadata", code, message })
@@ -116,8 +117,8 @@ export class MetadataStage extends Context.Service<MetadataStage, {
           renderArtifact,
           metadata,
           post: agentPost(metadata),
-          // every channel whose footage isn't yours ("NileBlue · Mark Rober")
-          credit: postCredit(videos),
+          // every channel whose footage plays and isn't yours ("NileBlue · Mark Rober"), as the video credits them
+          credit: postCredit(videos, yield* loadAppearanceOrder(project, artifacts)),
           approach: project.approach,
           style: preset.name,
           previous: Option.getOrNull(previous)
