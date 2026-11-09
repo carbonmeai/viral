@@ -3,6 +3,8 @@
 // "projects/<id>/shot-plan/v2/frames/shot-01.jpg".
 export const MEDIA_FOLDERS: ReadonlySet<string> = new Set([
   "sources",
+  // a video set's own files (a research's thumbnails)
+  "sets",
   "projects",
   "references",
   "music",

@@ -47,7 +47,8 @@ export const checkSetStory = (proposed: ProposedSetStory, videos: ReadonlyArray<
   if (proposed.beats.length === 0) problems.push("the story has no beats")
 
   const summaries = proposed.videos.flatMap((v) => {
-    if (known(v.video)) return [{ source: toIndex(v.video), summary: v.summary }]
+    const missing = v.missing?.trim() ?? ""
+    if (known(v.video)) return [{ source: toIndex(v.video), summary: v.summary, ...(missing === "" ? {} : { missing }) }]
     problems.push(`there's no V${v.video} to summarise; the set's videos are ${range}`)
     return []
   })

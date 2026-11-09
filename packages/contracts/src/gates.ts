@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import { Artifact } from "./artifacts.ts"
 import { CutPlan } from "./cut-plan.ts"
 import { RenderedShort } from "./render.ts"
+import { Shortlist } from "./research.ts"
 import { Script } from "./script.ts"
 import { ShotPlan } from "./shot-plan.ts"
 import { ThumbConfig } from "./thumb-config.ts"
@@ -20,6 +21,9 @@ export const GatePayload = Schema.Union([
   Schema.TaggedStruct("RenderGate", { render: RenderedShort }),
   // `image`: the rendered jpg; rejecting redraws it with your note, editing re-renders your changed config
   Schema.TaggedStruct("ThumbnailGate", { config: ThumbConfig, image: Schema.NullOr(Schema.String) }),
+  // a research's shortlist: approve to download the videos, edit to approve your changed list, reject to ask the agent
+  // for a new list (or another video in one spot) with your note
+  Schema.TaggedStruct("ShortlistGate", { shortlist: Shortlist }),
   // a stage with no view of its own: the artifact as stored
   Schema.TaggedStruct("ArtifactGate", { artifact: Artifact })
 ])

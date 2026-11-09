@@ -253,8 +253,15 @@ export class RunManager extends Context.Service<RunManager, {
         })
 
         yield* Effect.gen(function*() {
-          const needs = registry.prerequisites === undefined ? [] : yield* registry.prerequisites(run.owner)
-          yield* Effect.forEach(needs, fulfil, { concurrency: 2, discard: true })
+          // the prerequisites are worked out when the first stage that needs them comes up (a research set has its
+          // videos only once its shortlist is approved)
+          let fulfilled = false
+          const fulfilPrerequisites = Effect.gen(function*() {
+            if (fulfilled) return
+            fulfilled = true
+            const needs = registry.prerequisites === undefined ? [] : yield* registry.prerequisites(run.owner)
+            yield* Effect.forEach(needs, fulfil, { concurrency: 2, discard: true })
+          })
           const stages = yield* stagesUpTo(run.owner, through)
           let forcedFrom = run.fromStage === null ? stages.length : Option.getOrElse(findStage(stages, run.fromStage), () => 0)
           const forcedTo = options.forceThrough === undefined
@@ -264,6 +271,7 @@ export class RunManager extends Context.Service<RunManager, {
           const sentBack: { current: { readonly index: number; readonly note: string } | null } = { current: null }
           for (let i = 0; i < stages.length;) {
             const stage = stages[i]!
+            if (stage.beforePrerequisites !== true) yield* fulfilPrerequisites
             if (options.forceThrough !== undefined && i > forcedTo && !(yield* isApproved(run.owner, stage))) break
             const back: Option.Option<SentBack> = yield* runStage(run, stage, i >= forcedFrom && i <= forcedTo, current, sessions, sentBack.current?.index === i ? sentBack.current : null)
             if (Option.isNone(back)) {
@@ -279,6 +287,7 @@ export class RunManager extends Context.Service<RunManager, {
             forcedFrom = i
             sentBack.current = { index: i, note: back.value.note }
           }
+          yield* fulfilPrerequisites
           if (options.andThen !== undefined) yield* options.andThen
           yield* finish("completed", null)
         }).pipe(

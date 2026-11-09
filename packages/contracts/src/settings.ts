@@ -27,7 +27,7 @@ export const Account = Schema.Struct({
 export type Account = typeof Account.Type
 
 // The agent stages whose model you can choose.
-export const AgentStage = Schema.Literals(["ads", "story", "set-story", "script", "shots", "sections", "metadata", "thumbnail"])
+export const AgentStage = Schema.Literals(["research", "ads", "story", "set-story", "script", "shots", "sections", "metadata", "thumbnail"])
 export type AgentStage = typeof AgentStage.Type
 
 // Who runs an agent stage. The Claude CLI is the out-of-the-box default; Codex runs on your ChatGPT plan (or OpenAI
@@ -109,6 +109,7 @@ export const resolveAgentRoute = (
 
 const perStage = <S extends Schema.Top>(value: S) =>
   Schema.Struct({
+    research: value,
     ads: value,
     story: value,
     "set-story": value,

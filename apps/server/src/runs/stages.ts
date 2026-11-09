@@ -31,6 +31,9 @@ export interface StageDefinition {
   readonly artifact: ArtifactKind
   // the approval question, or null when the stage needs no approval
   readonly gate: string | null
+  // runs before the run's prerequisites (a research finds the set's videos before they can be read); the
+  // prerequisites are worked out and fulfilled just before the first stage without this
+  readonly beforePrerequisites?: boolean
   run(ctx: StageContext): Effect.Effect<void, StageFailure>
   // Records your edited version of the artifact as a new version (gated stages only).
   applyEdit?(ctx: StageContext, artifact: unknown): Effect.Effect<void, StageFailure>

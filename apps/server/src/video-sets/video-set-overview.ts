@@ -1,4 +1,4 @@
-import { AdRanges, SetStory, type SourceSetId, type VideoSetNotFound, type VideoSetOverview } from "@viral/contracts"
+import { AdRanges, SetStory, Shortlist, type SourceSetId, type VideoSetNotFound, type VideoSetOverview } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { Projects } from "../projects/projects.ts"
@@ -28,6 +28,13 @@ export class VideoSetOverviews extends Context.Service<VideoSetOverviews, {
 
       const get = Effect.fn("VideoSetOverviews.get")(function*(id: SourceSetId) {
         const set = yield* sets.get(id)
+        const owner = { _tag: "Set", id } as const
+        const story = Option.flatMap(yield* artifacts.latest(owner, "set-story"), (a) => Schema.decodeUnknownOption(SetStory)(a.data))
+        const shortlist = set.research === null
+          ? Option.none()
+          : Option.flatMap(yield* artifacts.latest(owner, "shortlist"), (a) => Schema.decodeUnknownOption(Shortlist)(a.data))
+        const missingOf = (position: number) =>
+          Option.match(story, { onNone: () => null, onSome: (s) => s.videos.find((v) => v.source === position)?.missing ?? null })
         const members = yield* Effect.forEach(set.sourceIds, (sourceId, position) =>
           Effect.gen(function*() {
             const owner = { _tag: "Source", id: sourceId } as const
@@ -44,13 +51,12 @@ export class VideoSetOverviews extends Context.Service<VideoSetOverviews, {
               stages,
               ready: Option.isSome(transcript) && Option.isSome(sheets) && Option.isSome(ads),
               words: Option.getOrNull(Option.map(transcript, (t) => t.segments.reduce((n, s) => n + s.words.length, 0))),
-              ads: Option.match(ads, { onNone: () => [], onSome: (a) => a.ranges })
+              ads: Option.match(ads, { onNone: () => [], onSome: (a) => a.ranges }),
+              missing: missingOf(position)
             }
           }))
-        const owner = { _tag: "Set", id } as const
         const run = newest(yield* store.listRuns(owner))
         const stages = run === null ? [] : yield* store.listStageRuns(run.id)
-        const story = Option.flatMap(yield* artifacts.latest(owner, "set-story"), (a) => Schema.decodeUnknownOption(SetStory)(a.data))
         const made = (yield* projects.list(null)).filter((p) => p.setId === id)
         return {
           set,
@@ -58,7 +64,8 @@ export class VideoSetOverviews extends Context.Service<VideoSetOverviews, {
           run,
           stages,
           story: Option.getOrNull(story),
-          shorts: matchProposals(made, Option.match(story, { onNone: () => [], onSome: (s) => s.proposals }))
+          shorts: matchProposals(made, Option.match(story, { onNone: () => [], onSome: (s) => s.proposals })),
+          shortlist: Option.getOrNull(shortlist)
         } satisfies VideoSetOverview
       })
 

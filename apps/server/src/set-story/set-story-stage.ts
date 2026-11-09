@@ -71,6 +71,7 @@ export class SetStoryStage extends Context.Service<SetStoryStage, {
 
         const story = yield* runChecked(agent, ctx, setStoryTask({
           brief: set.brief,
+          fromIdea: set.research !== null,
           videos,
           readDirs: videos.flatMap((v) => v.sheetsDir === null ? [] : [v.sheetsDir]),
           tools: transcriptTools(videos)

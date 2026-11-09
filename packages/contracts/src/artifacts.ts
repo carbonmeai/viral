@@ -33,8 +33,9 @@ export const ProjectArtifactKind = Schema.Literals([
 ])
 export type ProjectArtifactKind = typeof ProjectArtifactKind.Type
 
-// A video set's own work: the story and proposals across its videos.
-export const SetArtifactKind = Schema.Literals(["set-story"])
+// A video set's own work: the shortlist a research found (a set from an idea), and the story and proposals across
+// its videos.
+export const SetArtifactKind = Schema.Literals(["shortlist", "set-story"])
 export type SetArtifactKind = typeof SetArtifactKind.Type
 
 // A reference video's own download and its analysis.

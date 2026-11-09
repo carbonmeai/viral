@@ -51,6 +51,7 @@ import { DatabaseLive } from "./persistence/database.ts"
 import { VideoSetOverviews } from "./video-sets/video-set-overview.ts"
 import { VideoSets } from "./video-sets/video-sets.ts"
 import { VideoSetsRpcLive } from "./video-sets/video-sets-rpc.ts"
+import { Researches } from "./research/researches.ts"
 
 // The port clients connect to; VIRAL_PORT moves it (the desktop app passes its own).
 const PORT = 3410
@@ -79,6 +80,7 @@ const DomainsLive = Layer.mergeAll(
   FramesAround.layer,
   VideoSets.layer,
   VideoSetOverviews.layer,
+  Researches.layer,
   NodeServices.layer
 )
 

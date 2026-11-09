@@ -2,6 +2,9 @@ import { NodeServices } from "@effect/platform-node"
 import {
   MAX_SHORT_SOURCES,
   MIN_SET_SOURCES,
+  type Research,
+  ResearchInvalid,
+  ResearchLength,
   SourceId,
   type SourceNotFound,
   SourceSetId,
@@ -52,6 +55,10 @@ const SetRow = Schema.Struct({
   brief: Schema.NullOr(Schema.String),
   // its videos in order, from source_set_members (a JSON array)
   source_ids: Schema.fromJsonString(Schema.Array(SourceId)),
+  // a set found from an idea (source_set_research)
+  research_idea: Schema.NullOr(Schema.String),
+  research_videos: Schema.NullOr(Schema.Literals([3, 5, 7, 10])),
+  research_length: Schema.NullOr(ResearchLength),
   created_at: Schema.DateTimeUtcFromString,
   updated_at: Schema.DateTimeUtcFromString
 })
@@ -60,15 +67,33 @@ const toSet = (row: typeof SetRow.Type): VideoSet => ({
   title: row.title,
   brief: row.brief ?? "",
   sourceIds: row.source_ids,
+  research: row.research_idea === null || row.research_videos === null || row.research_length === null
+    ? null
+    : { idea: row.research_idea, videos: row.research_videos, length: row.research_length },
   createdAt: row.created_at,
   updatedAt: row.updated_at
 })
 
+// Why a research set's videos (in order) can't be its videos, or null when they can: a research set has 0 videos
+// until you approve its shortlist, then 2–10.
+export const researchVideosProblem = (sourceIds: ReadonlyArray<SourceId>): string | null => {
+  if (sourceIds.length === 0) return null
+  if (sourceIds.length < MIN_SET_SOURCES) return `a video set needs at least ${MIN_SET_SOURCES} videos`
+  if (sourceIds.length > MAX_SHORT_SOURCES) return `a video set can have up to ${MAX_SHORT_SOURCES} videos, not ${sourceIds.length}`
+  if (new Set(sourceIds).size !== sourceIds.length) return "each video can be in a set once"
+  return null
+}
+
 // Video sets: 2–10 of your videos (source_set_members, V1 first) with a brief, plus ~/.viral/sets/<id>/ for the
 // set's own work (the set story). A set never owns its videos: deleting it leaves them, and a video in a set
-// can't be deleted.
+// can't be deleted. A set found from an idea (source_set_research) starts with none; approving its shortlist gives
+// it its videos (setVideos).
 export class VideoSets extends Context.Service<VideoSets, {
   create(input: CreateVideoSetInput): Effect.Effect<VideoSet, VideoSetInvalid | SourceNotFound>
+  // a set from an idea, named from it, with the idea as its brief and no videos yet
+  createResearch(research: Research): Effect.Effect<VideoSet, ResearchInvalid>
+  // replaces a research set's videos, in order (the approved shortlist, or a replacement)
+  setVideos(id: SourceSetId, sourceIds: ReadonlyArray<SourceId>): Effect.Effect<VideoSet, VideoSetNotFound | VideoSetInvalid>
   readonly list: Effect.Effect<ReadonlyArray<VideoSet>>
   get(id: SourceSetId): Effect.Effect<VideoSet, VideoSetNotFound>
   rename(id: SourceSetId, title: string): Effect.Effect<VideoSet, VideoSetNotFound | VideoSetInvalid>
@@ -88,8 +113,9 @@ export class VideoSets extends Context.Service<VideoSets, {
       const withMembers = sql`
         SELECT s.*, (SELECT json_group_array(source_id) FROM (
           SELECT source_id FROM source_set_members m WHERE m.set_id = s.id ORDER BY position
-        )) AS source_ids
-        FROM source_sets s`
+        )) AS source_ids,
+        r.idea AS research_idea, r.videos AS research_videos, r.length AS research_length
+        FROM source_sets s LEFT JOIN source_set_research r ON r.set_id = s.id`
       const findAll = SqlSchema.findAll({
         Request: Schema.Void,
         Result: SetRow,
@@ -126,6 +152,37 @@ export class VideoSets extends Context.Service<VideoSets, {
         return yield* get(id).pipe(Effect.orDie)
       })
 
+      const createResearch = Effect.fn("VideoSets.createResearch")(function*(research: Research) {
+        const idea = research.idea.trim()
+        if (idea === "") return yield* new ResearchInvalid({ message: "write the idea: what should the short be about?" })
+        const id = SourceSetId.make(yield* random.uuidV7())
+        const at = yield* now
+        yield* sql.withTransaction(Effect.gen(function*() {
+          yield* sql`
+            INSERT INTO source_sets (id, title, brief, created_at, updated_at)
+            VALUES (${id}, ${titleFromBrief(idea)}, ${idea}, ${at}, ${at})
+          `
+          yield* sql`
+            INSERT INTO source_set_research (set_id, idea, videos, length, created_at)
+            VALUES (${id}, ${idea}, ${research.videos}, ${research.length}, ${at})
+          `
+        })).pipe(Effect.orDie)
+        return yield* get(id).pipe(Effect.orDie)
+      })
+
+      const setVideos = Effect.fn("VideoSets.setVideos")(function*(id: SourceSetId, sourceIds: ReadonlyArray<SourceId>) {
+        yield* get(id)
+        const problem = researchVideosProblem(sourceIds)
+        if (problem !== null) return yield* new VideoSetInvalid({ message: problem })
+        yield* sql.withTransaction(Effect.gen(function*() {
+          yield* sql`DELETE FROM source_set_members WHERE set_id = ${id}`
+          yield* Effect.forEach(sourceIds, (sourceId, position) =>
+            sql`INSERT INTO source_set_members (set_id, source_id, position) VALUES (${id}, ${sourceId}, ${position})`)
+          yield* sql`UPDATE source_sets SET updated_at = ${yield* now} WHERE id = ${id}`
+        })).pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const list = findAll().pipe(Effect.map((rows) => rows.map(toSet)), Effect.orDie)
 
       const rename = Effect.fn("VideoSets.rename")(function*(id: SourceSetId, title: string) {
@@ -150,7 +207,7 @@ export class VideoSets extends Context.Service<VideoSets, {
         return true
       })
 
-      return VideoSets.of({ create, list, get, rename, remove })
+      return VideoSets.of({ create, createResearch, setVideos, list, get, rename, remove })
     })
   ).pipe(
     Layer.provide(Sources.layer),

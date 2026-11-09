@@ -35,7 +35,13 @@ export const RunsRpcLive = RunsRpcs.toLayer(Effect.gen(function*() {
     ListRuns: ({ owner }) => store.listRuns(owner),
     SubscribeRun: ({ runId, afterSeq }) => runs.subscribe(runId, afterSeq),
     ListPendingRequests: () => store.listPendingRequests,
-    ListWaiting: () => listWaiting().pipe(Effect.provideService(RunStore, store), Effect.provideService(Sources, sources), Effect.provideService(Projects, projects)),
+    ListWaiting: () =>
+      listWaiting().pipe(
+        Effect.provideService(RunStore, store),
+        Effect.provideService(Sources, sources),
+        Effect.provideService(Projects, projects),
+        Effect.provideService(VideoSets, sets)
+      ),
     RespondToRequest: ({ requestId, response }) => runs.respond(requestId, response)
   })
 }))

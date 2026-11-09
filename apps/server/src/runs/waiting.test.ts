@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { after, before, test } from "node:test"
 import { Projects } from "../projects/projects.ts"
 import { Sources } from "../sources/sources.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
 import { RunStore } from "./run-store.ts"
 import { listWaiting } from "./waiting.ts"
 
@@ -17,7 +18,7 @@ before(() => {
 after(() => rmSync(home, { recursive: true, force: true }))
 
 test("waiting gates carry their video and short, so they can be listed globally or per video", async () => {
-  const rt = ManagedRuntime.make(Layer.mergeAll(RunStore.layer, Sources.layer, Projects.layer))
+  const rt = ManagedRuntime.make(Layer.mergeAll(RunStore.layer, Sources.layer, Projects.layer, VideoSets.layer))
   const items = await rt.runPromise(Effect.gen(function*() {
     const sources = yield* Sources
     const store = yield* RunStore
@@ -30,11 +31,19 @@ test("waiting gates carry their video and short, so they can be listed globally 
     yield* store.createRequest(yield* store.createStageRun(shortRun.id, "shots", 1, "waiting"), "Approve the shots?", null)
     const sourceRun = yield* store.createRun({ _tag: "Source", id: other.id }, null)
     yield* store.createRequest(yield* store.createStageRun(sourceRun.id, "story", 1, "waiting"), "Pick a short", null)
-    return { items: yield* listWaiting(), candy, other, short }
+    // a research set's shortlist: no video yet, listed under the set
+    const set = yield* (yield* VideoSets).createResearch({ idea: "Top 5 animal rescue comebacks", videos: 5, length: "60" })
+    const setRun = yield* store.createRun({ _tag: "Set", id: set.id }, null)
+    yield* store.createRequest(yield* store.createStageRun(setRun.id, "research", 1, "waiting"), "Download these videos?", null)
+    return { items: yield* listWaiting(), candy, other, short, set }
   }))
   await rt.dispose()
 
-  assert.equal(items.items.length, 2)
+  assert.equal(items.items.length, 3)
+  const research = items.items.find((i) => i.request.stage === "research")!
+  assert.equal(research.sourceId, null)
+  assert.equal(research.setId, items.set.id)
+  assert.equal(research.setTitle, "Top 5 animal rescue comebacks")
   const [shots, story] = [items.items.find((i) => i.request.stage === "shots")!, items.items.find((i) => i.request.stage === "story")!]
   assert.equal(shots.sourceId, items.candy.id)
   assert.equal(shots.projectId, items.short.id)

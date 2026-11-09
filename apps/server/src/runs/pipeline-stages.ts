@@ -5,6 +5,7 @@ import { AssembleStage } from "../assemble/assemble-stage.ts"
 import { MetadataStage } from "../metadata/metadata-stage.ts"
 import { Projects } from "../projects/projects.ts"
 import { RenderStage } from "../render/render-stage.ts"
+import { ResearchStage } from "../research/research-stage.ts"
 import { ScriptStage } from "../script/script-stage.ts"
 import { SectionsStage } from "../sections/sections-stage.ts"
 import { ShotsStage } from "../shots/shots-stage.ts"
@@ -18,7 +19,8 @@ import { VoiceStage } from "../voice/voice-stage.ts"
 import { StageFailure, StageRegistry } from "./stages.ts"
 
 // The real stage lists. A source run is source → transcribe → contact-sheet → ads → story; a video set's run reads
-// each of its videos first (their own source runs, through ads), then runs set-story; a short's run first reads any
+// each of its videos first (their own source runs, through ads), then runs set-story (a set found from an idea first
+// researches its videos and waits for you to approve them, before any is read); a short's run first reads any
 // of its videos after the first that haven't been (a video added to it);
 // a narrated short's run is script → voice → shots → assemble → render → metadata → thumbnail; a cut-down
 // short's is sections → assemble → render → metadata → thumbnail.
@@ -36,6 +38,7 @@ export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(functio
   const thumbnail = yield* ThumbnailStage
   const projects = yield* Projects
   const setStory = yield* SetStoryStage
+  const research = yield* ResearchStage
   const sets = yield* VideoSets
   const sources = yield* Sources
   // each video read (its own source run, through ads) before a video set's story, and before a short's own stages
@@ -62,7 +65,12 @@ export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(functio
   })
   const stagesFor = Effect.fn("StageRegistry.stagesFor")(function*(owner: RunOwner) {
     if (owner._tag === "Source") return [...source.stages, ads.stage, story.stage]
-    if (owner._tag === "Set") return [setStory.stage]
+    if (owner._tag === "Set") {
+      const set = yield* sets.get(owner.id).pipe(
+        Effect.mapError(() => new StageFailure({ stage: "set-story", code: "not-found", message: `no video set ${owner.id}` }))
+      )
+      return set.research === null ? [setStory.stage] : [research.stage, setStory.stage]
+    }
     const project = yield* projects.get(owner.id).pipe(
       Effect.mapError(() => new StageFailure({ stage: "script", code: "not-found", message: `no project ${owner.id}` }))
     )
@@ -70,4 +78,4 @@ export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(functio
     return [script.stage, voice.stage, shots.stage, assemble.narrated, render.narrated, metadata.stage, thumbnail.stage]
   })
   return StageRegistry.of({ stagesFor, prerequisites })
-})).pipe(Layer.provide([SourceStages.layer, AdsStage.layer, StoryStage.layer, ScriptStage.layer, VoiceStage.layer, ShotsStage.layer, AssembleStage.layer, RenderStage.layer, MetadataStage.layer, SectionsStage.layer, ThumbnailStage.layer, Projects.layer, SetStoryStage.layer, VideoSets.layer, Sources.layer]))
+})).pipe(Layer.provide([SourceStages.layer, AdsStage.layer, StoryStage.layer, ScriptStage.layer, VoiceStage.layer, ShotsStage.layer, AssembleStage.layer, RenderStage.layer, MetadataStage.layer, SectionsStage.layer, ThumbnailStage.layer, Projects.layer, SetStoryStage.layer, ResearchStage.layer, VideoSets.layer, Sources.layer]))

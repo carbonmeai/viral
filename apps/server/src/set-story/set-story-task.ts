@@ -41,6 +41,8 @@ export interface SetStoryVideo {
 export interface SetStoryInput {
   // why the videos belong together; required for a set
   readonly brief: string
+  // a set found from an idea: the videos were picked from YouTube for it, so say which lack what it needs
+  readonly fromIdea?: boolean
   readonly videos: ReadonlyArray<SetStoryVideo>
   // folders the agent may read (each video's contact sheets)
   readonly readDirs: ReadonlyArray<string>
@@ -74,10 +76,13 @@ export const setStoryTask = (input: SetStoryInput): CheckedTask<typeof ProposedS
   })
   const brief = [
     `The creator's brief for these videos: ${input.brief.trim()}`,
+    input.fromIdea === true
+      ? "These videos were found on YouTube for that idea. For each video, if it doesn't show what the idea needs (for a before/after idea: the before, the care or the after; otherwise the moment it was picked for), say what's missing in a few words in that video's `missing` (\"no after: it ends at the vet\"); leave `missing` out when the video has it all."
+      : "",
     `Videos:\n${input.videos.map((v, i) => `- ${videoLabel(i + 1, v)}`).join("\n")}`,
     `Approach catalog:\n${catalog}`,
     ...perVideo
-  ].join("\n\n")
+  ].filter((part) => part !== "").join("\n\n")
   return {
     stage: "set-story",
     instructions: SET_STORY_PROMPT,

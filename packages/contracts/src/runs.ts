@@ -19,7 +19,9 @@ export const StageName = Schema.Literals([
   "contact-sheet",
   "ads",
   "story",
-  // video set run (after each video's source run, up to ads)
+  // video set run: a set found from an idea first researches its videos (the shortlist gate), then, after each
+  // video's source run up to ads, the set story
+  "research",
   "set-story",
   // short run
   "script",
@@ -155,9 +157,12 @@ export type RunUpdate = typeof RunUpdate.Type
 export const WaitingItem = Schema.Struct({
   request: RunRequest,
   owner: RunOwner,
-  // the video it's for: the source itself, or the source of the short
-  sourceId: SourceId,
+  // the video it's for: the source itself, or the source of the short; null for a video set's gate (a shortlist)
+  sourceId: Schema.NullOr(SourceId),
   sourceTitle: Schema.NullOr(Schema.String),
+  // the video set, for a set's gate
+  setId: Schema.NullOr(SourceSetId).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  setTitle: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   // the short, for a short's gate
   projectId: Schema.NullOr(ProjectId),
   projectTitle: Schema.NullOr(Schema.String),
