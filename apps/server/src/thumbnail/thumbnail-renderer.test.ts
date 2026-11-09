@@ -70,37 +70,12 @@ test("the bold layout draws, falling back to framed insets when cut-outs aren't 
   }
 })
 
-// Fake cut-out scripts, so every path runs without Vision or rembg: FAKE_CUT=ok keeps an ellipse (about half the
-// image), "empty" keeps almost nothing, "fail" writes nothing.
-const fakeCutout = (argsPerImage: 2 | 3, skip: number) => `# /// script
-# requires-python = ">=3.10"
-# dependencies = ["pillow"]
-# ///
-import json, os, sys
-from PIL import Image, ImageDraw
-mode = os.environ.get("FAKE_CUT", "ok")
-args = sys.argv[1 + ${skip}:]
-for i in range(0, len(args), ${argsPerImage}):
-    src, out = args[i], args[i + 1]
-    if mode == "fail":
-        print(json.dumps({"type": "error", "code": "cutout", "message": "fake failure"}))
-        continue
-    img = Image.open(src).convert("RGBA")
-    mask = Image.new("L", img.size, 0)
-    w, h = img.size
-    if mode == "ok":
-        ImageDraw.Draw(mask).ellipse((w * 0.1, h * 0.1, w * 0.9, h * 0.9), fill=255)
-    img.putalpha(mask)
-    img.save(out)
-    kept = sum(1 for a in mask.getdata() if a > 127) / (w * h)
-    print(json.dumps({"type": "cutout", "out": out, "coverage": round(kept, 3)}))
-`
+// The fake cut-out script (testing/fake-cutout.py) stands in for both Apple's and rembg's, so every path runs without
+// Vision or rembg: FAKE_CUT=ok keeps an ellipse (about half the image), "empty" keeps almost nothing, "fail" writes
+// nothing; FAKE_CUT_APPLE overrides it for Apple's.
+const FAKE_CUTOUT = join(import.meta.dirname, "testing", "fake-cutout.py")
 
 test("bold cut-outs: Apple's first, rembg only when its models are on disk, a framed inset otherwise", async () => {
-  const fakes = join(dir, "fakes")
-  mkdirSync(fakes, { recursive: true })
-  writeFileSync(join(fakes, "apple.py"), fakeCutout(2, 0))
-  writeFileSync(join(fakes, "rembg.py"), fakeCutout(3, 1))
   const withModels = join(dir, "models-in")
   const withoutModels = join(dir, "models-out")
   mkdirSync(withModels, { recursive: true })
@@ -115,11 +90,11 @@ test("bold cut-outs: Apple's first, rembg only when its models are on disk, a fr
     inset: { src: 3, box: [300, 0, 600, 480] as const, y: 1, height: 0.5, side: "right" as const, x: 0.74 },
     arrow: false
   }
-  const keys = ["VIRAL_CUTOUT", "VIRAL_CUTOUT_APPLE", "VIRAL_CUTOUT_APPLE_SCRIPT", "VIRAL_CUTOUT_REMBG_SCRIPT", "VIRAL_MODELS_DIR", "FAKE_CUT"]
+  const keys = ["VIRAL_CUTOUT", "VIRAL_CUTOUT_APPLE", "VIRAL_CUTOUT_APPLE_SCRIPT", "VIRAL_CUTOUT_REMBG_SCRIPT", "VIRAL_MODELS_DIR", "FAKE_CUT", "FAKE_CUT_APPLE"]
   const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]))
   const cutoutsWith = async (env: Record<string, string>, name: string) => {
     for (const k of keys) delete process.env[k]
-    Object.assign(process.env, { VIRAL_CUTOUT_APPLE_SCRIPT: join(fakes, "apple.py"), VIRAL_CUTOUT_REMBG_SCRIPT: join(fakes, "rembg.py") }, env)
+    Object.assign(process.env, { VIRAL_CUTOUT_APPLE_SCRIPT: FAKE_CUTOUT, VIRAL_CUTOUT_REMBG_SCRIPT: FAKE_CUTOUT }, env)
     const drawn = await run((r) => r.render(bold, join(dir, `${name}.jpg`)))
     return drawn.cutouts
   }
@@ -127,9 +102,8 @@ test("bold cut-outs: Apple's first, rembg only when its models are on disk, a fr
     assert.deepEqual(await cutoutsWith({ VIRAL_CUTOUT_APPLE: "on", VIRAL_MODELS_DIR: withoutModels, FAKE_CUT: "ok" }, "apple"),
       { hero: "apple", face: "apple" }, "Apple's cut-out needs no models")
 
-    // Apple fails; rembg's fake runs from the same FAKE_CUT, so point Apple at a script that always fails
-    writeFileSync(join(fakes, "apple-fails.py"), fakeCutout(2, 0).replace('mode = os.environ.get("FAKE_CUT", "ok")', 'mode = "fail"'))
-    const appleFails = { VIRAL_CUTOUT_APPLE: "on", VIRAL_CUTOUT_APPLE_SCRIPT: join(fakes, "apple-fails.py") }
+    // Apple fails while rembg's fake follows FAKE_CUT
+    const appleFails = { VIRAL_CUTOUT_APPLE: "on", FAKE_CUT_APPLE: "fail" }
     assert.deepEqual(await cutoutsWith({ ...appleFails, VIRAL_MODELS_DIR: withModels, FAKE_CUT: "ok" }, "rembg"),
       { hero: "rembg", face: "rembg" }, "rembg takes over when its models are there")
     assert.deepEqual(await cutoutsWith({ ...appleFails, VIRAL_MODELS_DIR: withoutModels, FAKE_CUT: "ok" }, "needs"),
