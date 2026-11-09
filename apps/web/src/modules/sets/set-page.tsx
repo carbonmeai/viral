@@ -11,9 +11,11 @@ import { Segmented } from "@viral/ui/primitives/segmented"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Pencil, Play, Trash2 } from "lucide-react"
+import { Pencil, Play, Replace, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { serverUrl } from "../../config/server-url.ts"
 import { clock, plural } from "../../lib/format.ts"
+import { homeFileUrl } from "../../lib/media-url.ts"
 import { overviewAtom } from "../home/overview.ts"
 import { ServerState } from "../home/server-state.tsx"
 import { Page } from "../layout/page.tsx"
@@ -24,6 +26,9 @@ import { beatStyle } from "../videos/story-strip.tsx"
 import { VideoSkeleton } from "../videos/video-skeleton.tsx"
 import { runProgressAtom, startProjectRun } from "../videos/videos-api.ts"
 import { runSpend, shortForProposal, stageDetail } from "../videos/video-values.ts"
+import { ReplaceDialog, type ReplaceTarget } from "../research/replace-dialog.tsx"
+import { researchFacts } from "../research/research-values.ts"
+import { ShortlistGate, ShortlistSearching } from "../research/shortlist-view.tsx"
 import { SetProposalCard } from "./set-proposal-card.tsx"
 import { memberState, proposalMoment, proposalVideos, setPhase, videoNames } from "./set-values.ts"
 import { createProjectFromSetProposal, deleteVideoSet, renameVideoSet, startSetRun, videoSetOverviewAtom } from "./sets-api.ts"
@@ -95,6 +100,15 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
   const run = progress.run ?? data.run
   const stages = progress.stages.length > 0 ? progress.stages : data.stages
   const phase = setPhase(run, stages, story !== null)
+  // a set found from an idea: its page is the shortlist until you approve one (and again while a replacement waits)
+  const gate = progress.pending.find((r) => r.payload?._tag === "ShortlistGate") ?? null
+  const research = set.research
+  const researchPhase = research === null
+    ? null
+    : gate !== null ? "shortlist" as const
+    : members.length > 0 ? null
+    : isActive(run) ? "searching" as const : "stopped" as const
+  const [replacing, setReplacing] = useState<ReplaceTarget | null>(null)
   const current: SetTab = tab ?? (phase === "proposed" ? "proposals" : "videos")
   const titles = members.map((m) => m.source.title ?? "Untitled video")
   const names = videoNames(members.map((m) => m.source.title))
@@ -124,6 +138,63 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
     remove({ payload: { id: set.id } })
       .then(() => navigate({ to: "/" }))
       .catch(() => setError(data.shorts.length > 0 ? `Delete its ${plural(data.shorts.length, "short")} first.` : "Couldn't delete the set."))
+  }
+
+  if (research !== null && researchPhase !== null) {
+    const searching = progress.live.research?.message ?? null
+    const shortlist = gate?.payload?._tag === "ShortlistGate" ? gate.payload.shortlist : null
+    return (
+      <Page
+        title={set.title}
+        description={`${researchPhase === "shortlist" ? "Shortlist ready" : researchPhase === "searching" ? "Searching" : "Stopped"} · ${researchFacts(research)}`}
+        actions={
+          <>
+            {researchPhase === "searching" ? <Status tone="run">Searching YouTube</Status>
+              : researchPhase === "shortlist" ? <Status tone="wait">Waiting for you</Status>
+              : <Status tone="neutral">Stopped</Status>}
+            {researchPhase === "stopped" ? <Button variant="primary" size="md" onClick={() => runAgain(null)}><Play />Search again</Button> : null}
+            <Menu label={`More for ${set.title}`}>
+              <MenuItem onClick={() => setRenaming(true)}><Pencil />Rename</MenuItem>
+              <MenuItem tone="danger" onClick={() => setConfirmingDelete(true)}><Trash2 />Delete set</MenuItem>
+            </Menu>
+          </>
+        }
+      >
+        <div className="grid gap-2">
+          {error === null ? null : <div className="text-xs text-danger">{error}</div>}
+          {researchPhase === "stopped" ? (
+            <div className="rounded-panel bg-panel px-4 py-3.5 text-fg-1">
+              The search stopped before its shortlist{run?.error ? <span className="text-fg-2">: {run.error}</span> : "."}
+            </div>
+          ) : null}
+          {researchPhase === "shortlist" && gate !== null && shortlist !== null
+            ? <ShortlistGate setId={set.id} research={research} request={gate} shortlist={shortlist} onAnswered={refresh} />
+            : <ShortlistSearching research={research} message={searching} />}
+        </div>
+        <Dialog
+          open={confirmingDelete}
+          onOpenChange={setConfirmingDelete}
+          title={`Delete “${set.title}”?`}
+          description="The search and its shortlist go. Nothing was downloaded."
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setConfirmingDelete(false)}>Keep</Button>
+              <Button variant="primary" onClick={deleteSet}>Delete</Button>
+            </>
+          }
+        />
+        <RenameDialog open={renaming} setId={set.id} title={set.title} onDone={() => (setRenaming(false), refresh())} />
+      </Page>
+    )
+  }
+
+  // what "Replace this video" says about a member, or null when it doesn't need replacing
+  const replaceWhy = (member: VideoSetMember): string | null => {
+    if (research === null) return null
+    if (member.missing !== null) return `The story step found something missing: ${member.missing}.`
+    const state = memberState(member, member.run, member.stages)
+    if (state._tag !== "failed") return null
+    return /blocked|403|refused/i.test(state.error) ? "YouTube blocked the download." : `It couldn't be read: ${state.error}`
   }
 
   const sub = [
@@ -168,13 +239,23 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
 
         {current === "videos" ? (
           <>
-            <Panel title="The brief">
+            <Panel title={research === null ? "The brief" : "The idea"}>
               <p className="m-0 leading-relaxed text-fg-1">{set.brief}</p>
+              {research === null ? null : <p className="m-0 mt-1 text-xs text-fg-2">Found on YouTube: footage not yours, rights not confirmed. Each channel is kept for the credits.</p>}
             </Panel>
             <Panel title="Videos" count={`${read} of ${members.length} read`}>
-              {members.map((member) => (
-                <MemberRow key={member.source.id} member={member} thumb={thumbOf.get(member.source.id) ?? null} />
-              ))}
+              {members.map((member) => {
+                const why = replaceWhy(member)
+                const pick = data.shortlist?.picks.find((p) => p.sourceId === member.source.id) ?? null
+                return (
+                  <MemberRow
+                    key={member.source.id}
+                    member={member}
+                    thumb={thumbOf.get(member.source.id) ?? (pick?.thumbnail === null || pick === null ? null : homeFileUrl(serverUrl, pick.thumbnail))}
+                    onReplace={why === null ? null : () => setReplacing({ sourceId: member.source.id, title: member.source.title ?? "this video", why })}
+                  />
+                )
+              })}
               <ProposeRow phase={phase} progress={progress} stages={stages} />
             </Panel>
           </>
@@ -268,27 +349,30 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
         }
       />
       <RenameDialog open={renaming} setId={set.id} title={set.title} onDone={() => (setRenaming(false), refresh())} />
+      <ReplaceDialog setId={set.id} target={replacing} shortlist={data.shortlist} onClose={() => setReplacing(null)} onDone={() => (setReplacing(null), refresh())} />
     </Page>
   )
 }
 
 // One of the set's videos: its badge, still and title (opening its own page), and how far it has been read, live.
-function MemberRow({ member, thumb }: { readonly member: VideoSetMember; readonly thumb: string | null }) {
+// `onReplace`: "Replace this video", for a research set's video that couldn't be downloaded or lacks its moments.
+function MemberRow({ member, thumb, onReplace }: { readonly member: VideoSetMember; readonly thumb: string | null; readonly onReplace: (() => void) | null }) {
   return member.run !== null && isActive(member.run)
     ? <LiveMemberRow member={member} thumb={thumb} runId={member.run.id} />
-    : <MemberLine member={member} thumb={thumb} run={member.run} progress={null} />
+    : <MemberLine member={member} thumb={thumb} run={member.run} progress={null} onReplace={onReplace} />
 }
 
 function LiveMemberRow({ member, thumb, runId }: { readonly member: VideoSetMember; readonly thumb: string | null; readonly runId: RunId }) {
   const progress = Option.getOrElse(AsyncResult.value(useAtomValue(runProgressAtom(runId))), () => emptyProgress)
-  return <MemberLine member={member} thumb={thumb} run={progress.run ?? member.run} progress={progress} />
+  return <MemberLine member={member} thumb={thumb} run={progress.run ?? member.run} progress={progress} onReplace={null} />
 }
 
-function MemberLine({ member, thumb, run, progress }: {
+function MemberLine({ member, thumb, run, progress, onReplace }: {
   readonly member: VideoSetMember
   readonly thumb: string | null
   readonly run: Run | null
   readonly progress: RunProgress | null
+  readonly onReplace: (() => void) | null
 }) {
   const stages = progress !== null && progress.stages.length > 0 ? progress.stages : member.stages
   const state = memberState(member, run, stages)
@@ -316,8 +400,10 @@ function MemberLine({ member, thumb, run, progress }: {
         ) : (
           <div className="mt-0.5 truncate text-xs text-fg-2">{facts || (state._tag === "waiting" ? "Waits its turn" : "")}</div>
         )}
+        {member.missing === null ? null : <div className="mt-0.5 truncate text-xs text-wait">Missing: {member.missing}</div>}
       </div>
-      {state._tag === "ready" ? <Status tone="ok">Read</Status>
+      {onReplace !== null ? <Button onClick={onReplace}><Replace />Replace this video</Button>
+        : state._tag === "ready" ? <Status tone="ok">Read</Status>
         : state._tag === "reading" ? <Status tone="run">Reading</Status>
         : state._tag === "failed" ? <Status tone="neutral">Stopped</Status>
         : <Status tone="neutral">Waiting</Status>}

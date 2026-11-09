@@ -27,6 +27,7 @@ import { evalLabel, evalLine, modelLabel, providerName } from "./agents-values.t
 
 // Each agent step, and what it does.
 const STAGES: ReadonlyArray<{ readonly stage: AgentStage; readonly label: string; readonly sub: string }> = [
+  { stage: "research", label: "Research", sub: "Searches YouTube for the videos a short from an idea needs, and proposes a shortlist." },
   { stage: "ads", label: "Ads", sub: "Finds sponsor reads, ads and end screens to keep out of shorts." },
   { stage: "story", label: "Story", sub: "Maps the long video's story and proposes three shorts." },
   { stage: "set-story", label: "Video set story", sub: "Looks across a set of videos and proposes three shorts that use them together." },
@@ -118,7 +119,7 @@ function DefaultGroup({ settings, ready, catalog, evals }: {
       <SettingRow
         label="Model"
         sub={error ?? stat ?? (current.provider === "claude-cli"
-          ? "CLI default keeps each step’s own model (Haiku for ads and metadata)."
+          ? "CLI default keeps each step’s own model (Haiku for research, ads and metadata)."
           : "Steps that look at images (shots, sections, thumbnail) stay on the Claude CLI for now.")}
       >
         <ModelPicker

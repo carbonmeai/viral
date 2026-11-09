@@ -9,30 +9,36 @@ import { Check, FolderOpen } from "lucide-react"
 import { useState } from "react"
 import { desktop } from "../../config/server-url.ts"
 import { Page } from "../layout/page.tsx"
+import { ResearchForm } from "../research/research-form.tsx"
 import { NewSetForm } from "../sets/new-set-form.tsx"
 import { Detail } from "../system/detail.tsx"
 import { createSource, startSourceRun } from "./videos-api.ts"
 import { isVideoLink, RIGHTS_CHOICES } from "./video-values.ts"
 
-export type NewKind = "one" | "several"
+export type NewKind = "one" | "several" | "idea"
 
-// Something new to make shorts from: one video, or several videos as a set. The tab is in the URL (?kind=several).
+const DESCRIPTIONS: Record<NewKind, string> = {
+  one: "Paste a link or choose a file. Viral transcribes it, maps the story and suggests three shorts.",
+  several: "Pick 2 to 10 videos and say what their shorts should achieve. Viral reads each one and suggests three shorts that use them together.",
+  idea: "Type an idea. Viral searches YouTube and shows you a shortlist; nothing downloads until you approve it."
+}
+
+// Something new to make shorts from: one video, several videos as a set, or an idea Viral finds the videos for. The
+// tab is in the URL (?kind=several, ?kind=idea).
 export function NewSourcePage({ kind, onKind }: { readonly kind: NewKind; readonly onKind: (kind: NewKind) => void }) {
   return (
     <Page
       title="New"
-      description={kind === "one"
-        ? "Paste a link or choose a file. Viral transcribes it, maps the story and suggests three shorts."
-        : "Pick 2 to 10 videos and say what their shorts should achieve. Viral reads each one and suggests three shorts that use them together."}
+      description={DESCRIPTIONS[kind]}
     >
       <Segmented
-        label="How many videos"
+        label="What to start from"
         className="mb-3"
         value={kind}
         onChange={onKind}
-        options={[{ value: "one", label: "One video" }, { value: "several", label: "Several videos" }]}
+        options={[{ value: "one", label: "One video" }, { value: "several", label: "Several videos" }, { value: "idea", label: "From an idea" }]}
       />
-      {kind === "one" ? <OneVideoForm /> : <NewSetForm />}
+      {kind === "one" ? <OneVideoForm /> : kind === "several" ? <NewSetForm /> : <ResearchForm />}
     </Page>
   )
 }

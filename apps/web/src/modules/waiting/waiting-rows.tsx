@@ -6,7 +6,7 @@ import { Status } from "@viral/ui/primitives/status"
 import { Thumb } from "@viral/ui/primitives/thumb"
 import { ago } from "../../lib/format.ts"
 import { stepOfStage } from "../shorts/editor-values.ts"
-import { actionLabel, waitingSub, waitingTitle } from "./waiting.ts"
+import { actionLabel, waitingSub, waitingTarget, waitingTitle } from "./waiting.ts"
 
 export interface WaitingRowsProps {
   readonly items: ReadonlyArray<WaitingItem>
@@ -28,10 +28,13 @@ export function WaitingRows({ items, showVideo, thumbs, videos, now }: WaitingRo
     return <Row className="grid-cols-1"><span className="text-fg-2">Nothing is waiting for you.</span></Row>
   }
   return items.map((item) => {
-    const open = () =>
-      item.projectId === null
-        ? navigate({ to: "/videos/$sourceId", params: { sourceId: item.sourceId } })
-        : navigate({ to: "/shorts/$projectId", params: { projectId: item.projectId }, search: stepSearch(stepOfStage(item.request.stage)) })
+    const open = () => {
+      const target = waitingTarget(item)
+      if (target === null) return
+      if (target._tag === "Short") void navigate({ to: "/shorts/$projectId", params: { projectId: target.projectId }, search: stepSearch(stepOfStage(item.request.stage)) })
+      else if (target._tag === "Set") void navigate({ to: "/sets/$setId", params: { setId: target.setId } })
+      else void navigate({ to: "/videos/$sourceId", params: { sourceId: target.sourceId } })
+    }
     return (
       <Row key={item.request.id} onOpen={open} className="grid-cols-[minmax(0,1fr)_170px_90px_auto]">
         <RowTitle

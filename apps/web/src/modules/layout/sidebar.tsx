@@ -102,7 +102,9 @@ export function Sidebar() {
                 <Link key={set.id} to="/sets/$setId" params={{ setId: set.id }} {...nav}>
                   <Layers />
                   <span className="truncate">{set.title}</span>
-                  <span className="ml-auto text-xs text-fg-3">{set.sourceIds.length}</span>
+                  {waiting.some((w) => w.setId === set.id)
+                    ? <span className="ml-auto size-[7px] rounded-full bg-wait-dot" aria-label="Waiting for you" />
+                    : <span className="ml-auto text-xs text-fg-3">{set.sourceIds.length}</span>}
                 </Link>
               ))}
             </Group>
