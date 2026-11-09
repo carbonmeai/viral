@@ -155,6 +155,13 @@ export const listWhilePlaying = (draft: RankingDraft, rank: number) => {
 export const rankColor = (rank: number, count: number) =>
   rank === 1 ? "#F5C518" : rank === 2 ? "#E6E6E6" : rank === 3 ? "#E0954B" : rank === count ? "#E8202A" : "#FFFFFF"
 
+// The same colours as ink on the app's own surfaces (light and dark): silver darkened so it reads on white, and the
+// plain ranks in the text colour (undefined).
+export const rankInk = (rank: number, count: number): string | undefined => {
+  const colour = rankColor(rank, count)
+  return colour === "#FFFFFF" ? undefined : colour === "#E6E6E6" ? "#9A9AA3" : colour
+}
+
 export const ROLE_NAMES: Record<RankingRole, string> = { before: "Before", care: "Care", after: "After" }
 export const FRAMING_NAMES: Record<RankingFraming, string> = { window: "Window", fill: "Fill" }
 

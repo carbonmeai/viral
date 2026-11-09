@@ -14,6 +14,7 @@ import {
   plainWarning,
   planFrame,
   rankColor,
+  rankInk,
   removeEntry,
   shuffleAgain,
   shuffledOrder,
@@ -89,6 +90,8 @@ test("the list fills in for every entry played up to the selected one", () => {
   assert.equal(rankColor(1, 4), "#F5C518")
   assert.equal(rankColor(4, 4), "#E8202A")
   assert.equal(rankColor(4, 10), "#FFFFFF")
+  assert.equal(rankInk(2, 4), "#9A9AA3", "silver reads on a light surface")
+  assert.equal(rankInk(4, 10), undefined)
 })
 
 test("a picked frame moves the shot keeping its length, and drops the plan's frame", () => {

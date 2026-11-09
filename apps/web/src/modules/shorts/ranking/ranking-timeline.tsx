@@ -4,7 +4,7 @@ import { videoColor } from "../../sets/set-values.ts"
 import { clockOf } from "../editor-values.ts"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { Block, Lane, SourceStrip, TrackName } from "../timeline.tsx"
-import { entryBlocks, rankColor, type RankingDraft } from "./ranking-values.ts"
+import { entryBlocks, rankInk, type RankingDraft } from "./ranking-values.ts"
 
 // A ranking on one timeline: its entries end to end in play order (each tinted with its video's colour, #1 last),
 // which video plays when, and the audio (each clip's own; no music).
@@ -50,7 +50,7 @@ export function RankingTimeline({ draft, videos, selected, onSelect, head }: {
                 boxShadow: b.rank === selected ? undefined : `inset 0 -3px 0 ${videoColor(b.source)}`
               }}
             >
-              <span className="shrink-0 font-bold" style={{ color: rankColor(b.rank, blocks.length) === "#FFFFFF" ? undefined : rankColor(b.rank, blocks.length) }}>#{b.rank}</span>
+              <span className="shrink-0 font-bold" style={{ color: rankInk(b.rank, blocks.length) }}>#{b.rank}</span>
               <span className="truncate text-fg-1">{b.label} {b.emoji}</span>
             </button>
           ))}

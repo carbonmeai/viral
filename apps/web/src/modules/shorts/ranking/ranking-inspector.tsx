@@ -26,7 +26,7 @@ import {
   moveShotTo,
   nudgeShot,
   plainWarning,
-  rankColor,
+  rankInk,
   type RankingDraft,
   removeEntry,
   ROLE_NAMES,
@@ -163,7 +163,7 @@ function RanksTab(props: RankingInspectorProps) {
               )}
             >
               <div className="flex min-w-0 items-center gap-1.5">
-                <span className="w-6 shrink-0 font-[Arial_Black,Arial,sans-serif] text-sm font-black [paint-order:stroke] [-webkit-text-stroke:1px_#000]" style={{ color: rankColor(e.rank, ranked.length) }}>
+                <span className="w-6 shrink-0 font-[Arial_Black,Arial,sans-serif] text-sm font-black" style={{ color: rankInk(e.rank, ranked.length) }}>
                   {e.rank}.
                 </span>
                 <span className="min-w-0 truncate text-sm">{e.label} {e.emoji}</span>
@@ -304,7 +304,7 @@ function OrderTab({ draft, onDraft, gate, source }: RankingInspectorProps) {
             const e = byRankMap.get(rank)
             return (
               <span key={rank} className="inline-flex h-7 items-center gap-1 rounded-ctl bg-item px-2 text-xs">
-                <span className="font-bold" style={{ color: rankColor(rank, draft.entries.length) === "#FFFFFF" ? undefined : rankColor(rank, draft.entries.length) }}>#{rank}</span>
+                <span className="font-bold" style={{ color: rankInk(rank, draft.entries.length) }}>#{rank}</span>
                 <span className="max-w-[90px] truncate text-fg-2">{e?.label}</span>
                 <Detail>
                   <span className="flex">
