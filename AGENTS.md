@@ -25,7 +25,16 @@ apps/server/src/
   sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short that uses them;
                        source-stages.ts defines the video-level stages (source, transcribe, contact-sheet).
                        Links download at 1080p, else 720p, never higher; the size is kept in source-video. A video a
-                       short or video set uses can't be deleted (SourceInUse, "used by N shorts")
+                       short or video set uses can't be deleted (SourceInUse, "used by N shorts").
+                       Scans (R3): a link with `scan` (every video research adds) downloads 480p only, through Viral's
+                       own yt-dlp CLI (fetch-source.py --scan; source-video `scan: true`), and everything reads it.
+                       SourcePieces (source-pieces.ts, piece-ranges.ts, fetch-pieces.py) fetches the seconds a render
+                       plays in 1080p into sources/<id>/pieces/ (pieces.json): ±1 s padding, stretches <2 s apart
+                       merged, only what no piece covers, ONE `--download-sections` request per video, each piece's
+                       start checked by matching its sound to the scan; a 403 or a dropped connection retried once
+                       (youtube_download.py, shared with fetch-source.py; it runs Viral's own yt-dlp, never the uv
+                       script environment's copy, which lacks the JS challenge solver). It never fails a render: what couldn't be fetched plays from the scan and
+                       says why (`problem`). Your own files and plain links are never scans
   artifacts/           versioned stage outputs, one folder per version: <owner>/<kind>/v<N>/ (owners: a source, a
                        video set (~/.viral/sets/<id>/), a project, a reference)
   transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
@@ -64,8 +73,10 @@ apps/server/src/
                        them only after that. ReplaceResearchVideo: a backup takes the spot, or the shortlist records
                        `replacing` and the research searches again for that spot (keeping the others). Tests use
                        testing/fake-yt-dlp.ts (answers from the skill run's rescues search log; VIRAL_YT_DLP points
-                       YouTube at it, VIRAL_YT_THUMBNAILS=off, VIRAL_YT_SPACING_MS=0). A 403 download is retried once
-                       (fetch-source.py), then fails as "blocked"; Viral never works around a block
+                       YouTube at it, VIRAL_YT_THUMBNAILS=off, VIRAL_YT_SPACING_MS=0; it also downloads: a blue 480p
+                       stand-in scan, green pieces with a sound on the video's own clock, FAKE_YT_SECTIONS_403 refuses
+                       pieces; VIRAL_YT_RETRY_PAUSE_S=0). A 403 download is retried once (youtube_download.py), then
+                       fails as "blocked"; Viral never works around a block
                        `Projects.fromSetProposal` makes a short from a proposal's videos (set order) and the set's brief
   assemble/            the assemble stage: shot plan + preset (+ music with a known drop) → the renderer's
                        narrated plan, or a cut-down short's sections + preset → the cut-down renderer's plan;
@@ -261,6 +272,13 @@ apps/server/src/
                        optional "via <channel>" line); after the render it records `checks` (blackdetect, every shot's
                        first/last frame in checks/, measured LUFS) on the RenderedShort. render-ranking-videos.test.ts
                        renders generated videos (one with no audio) on a small canvas.
+                       Pieces (R3): before rendering, the stage asks SourcePieces for the stretches the plan plays
+                       (footage-ranges.ts) of every scanned video and adds `pieces_by_source` to the plan; every
+                       renderer (and render-thumbnail.py, whose `box` is scaled from scan to piece pixels) reads a clip
+                       from the piece covering it at (start − piece start) via source_pieces.py, else from the scan,
+                       and reports `footage` counts. The RenderedShort's `footage` rows (render gate, CLI, Render step
+                       "Footage") say per scanned video how many clips were 1080p and why any weren't; a fallback is
+                       also a progress warning. render-pieces.test.ts runs it end to end against the fake yt-dlp.
                        Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
