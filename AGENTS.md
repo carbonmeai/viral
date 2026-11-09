@@ -270,9 +270,10 @@ apps/server/src/
                        render-ranking.py is the skill's final ranking style (title with a red accent, the numbered list
                        1 gold / 2 silver / 3 bronze / last red filling in with label + emoji as each entry plays, each
                        clip's own sound to the style's LUFS, window or fill framing, the videos' own subtitles kept, an
-                       optional "via <channel>" line); after the render it records `checks` (blackdetect, every shot's
-                       first/last frame in checks/, measured LUFS) on the RenderedShort. render-ranking-videos.test.ts
-                       renders generated videos (one with no audio) on a small canvas.
+                       optional "via <channel>" line); after the render it records `checks` (blackdetect over the
+                       window's band only, since the darkened fill turns a night scene "black"; every shot's first/last
+                       frame in checks/, measured LUFS) on the RenderedShort. render-ranking-videos.test.ts renders
+                       generated videos (one with no audio) on a small canvas.
                        Pieces (R3): before rendering, the stage asks SourcePieces for the stretches the plan plays
                        (footage-ranges.ts) of every scanned video and adds `pieces_by_source` to the plan; every
                        renderer (and render-thumbnail.py, whose `box` is scaled from scan to piece pixels) reads a clip

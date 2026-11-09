@@ -198,3 +198,29 @@ test("a shot a piece covers plays from the piece at its own second of the video;
   assert.ok(isRed(grey(2.5)), "the uncovered shot plays from the scan (red)")
   assert.deepEqual(exit.value.footage, { "0": { pieces: 1, scan: 1 } })
 })
+
+// The black check looks at the footage, not the darkened blurred fill around the 4:3 window: a night scene (dark grey
+// with a lit subject, like the R3 live run's piglet at 41.1–41.4 s) is not black, though with the fill darkened it is
+// dark over most of the frame; a stretch of really black footage still is.
+test("a dark but visible scene isn't reported as black frames; really black footage is", { timeout: 120_000 }, async () => {
+  const night = join(work, "night.mp4")
+  // 0–3 s a near-black scene with a lit strip across the middle (a quarter of the window), then 3–6 s pure black: the
+  // whole frame is over 80% black once the fill is darkened (the old check flagged it), the window only 75%
+  ffmpeg("-f", "lavfi", "-i", "color=c=0x181818:s=320x180:d=3:r=25,drawbox=x=40:y=67:w=240:h=45:color=0xA0A0A0:t=fill",
+    "-f", "lavfi", "-i", "color=c=black:s=320x180:d=3:r=25", "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", night)
+  const exit = await render(plan({
+    order: [2, 1],
+    videos: [{ path: night }],
+    items: [
+      { rank: 1, label: "Black", emoji: "⬛", shots: [{ source: 0, src: 3.5, dur: 1.5, framing: "window" }] },
+      { rank: 2, label: "Night", emoji: "🌙", shots: [{ source: 0, src: 0.5, dur: 2, framing: "window" }] }
+    ],
+    exclude_by_source: {}
+  }))
+  assert.ok(Exit.isSuccess(exit), Exit.isFailure(exit) ? String(exit.cause) : "")
+  const black = exit.value.checks.black
+  assert.equal(black.length, 1, `only the black footage: ${JSON.stringify(black)}`)
+  const [s, e] = black[0]!
+  assert.ok(Math.abs(s - 2) < 0.1 && Math.abs(e - 3.5) < 0.1, `the black shot, 2–3.5 s: ${s}–${e}`)
+})

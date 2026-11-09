@@ -17,9 +17,9 @@ its red accent, the numbered list (1 gold, 2 silver, 3 bronze, the last red) who
 entry plays, landscape footage in a 4:3 window over a blurred fill, upright footage filling the screen, each clip's own
 sound evened out to -14 LUFS. Changed: the server has already moved every cut to whole sentences, so the shots play
 exactly as planned; a shot names its video by index; an optional "via <channel>" line; a canvas size; and checks of the
-finished mp4 (black frames, each shot's first and last frame, loudness). A video read from a 480p scan plays from
-its 1080p pieces (`pieces_by_source`, source_pieces.py) wherever they cover a shot. Reporting is one JSON object per
-stdout line:
+finished mp4 (black frames in the footage, each shot's first and last frame, loudness). A video read from a 480p scan
+plays from its 1080p pieces (`pieces_by_source`, source_pieces.py) wherever they cover a shot. Reporting is one JSON
+object per stdout line:
   {"type": "progress", "step": "shots" | "encode" | "checks", "done": 3, "total": 31}
   {"type": "error", "code": "excluded-range", "message": "..."}   (then exit 1)
   {"type": "done", "output": "...mp4", "captions": "...srt", "duration_s": 158.6, "shots": 31, "timeline": [...],
@@ -233,8 +233,14 @@ def fmt_ts(t: float) -> str:
 
 # ---------------------------------------------------------------- checks
 
-def black_ranges(path: Path) -> list[list[float]]:
-    r = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path), "-vf", "blackdetect=d=0.03:pic_th=0.80:pix_th=0.12",
+def black_ranges(path: Path, W: int, H: int, aspect: float) -> list[list[float]]:
+    """Black stretches of the footage: blackdetect over the band the 4:3 window fills (upright footage fills it too),
+    not the whole frame. The blurred fill around the window is darkened on purpose, so a dark but perfectly visible
+    scene (a night shot) used to count as black over the whole frame (the R3 live run's 41.1–41.4 s); footage that
+    is really black, or a frame the render left black, is black in the band as well."""
+    mh = min(even(W / aspect), H)
+    band = f"crop={W}:{mh}:0:{(H - mh) // 2},"
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path), "-vf", f"{band}blackdetect=d=0.03:pic_th=0.80:pix_th=0.12",
                         "-an", "-f", "null", "-"], capture_output=True, text=True)
     out = []
     for m in re.finditer(r"black_start:([\d.]+)\s+black_end:([\d.]+)", r.stderr):
@@ -369,7 +375,7 @@ def main() -> None:
     checks_dir.mkdir(parents=True)
     steps = len(shot_times) + 2
     progress("checks", 0, steps)
-    black = black_ranges(out)
+    black = black_ranges(out, W, H, aspect)
     progress("checks", 1, steps)
     frames = []
     for idx, (rank, k, s, e) in enumerate(shot_times):
