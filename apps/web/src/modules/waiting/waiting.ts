@@ -8,7 +8,8 @@ export const STEP_NAMES: Partial<Record<StageName, string>> = {
   render: "Render",
   metadata: "Publish",
   story: "Story",
-  research: "Shortlist"
+  research: "Shortlist",
+  moments: "Ranking"
 }
 
 const stepNoun = (stage: StageName) => (STEP_NAMES[stage] ?? stage).toLowerCase()

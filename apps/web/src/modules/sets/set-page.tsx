@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { Run, RunId, SourceSetId, VideoSetMember, VideoSetOverview } from "@viral/contracts"
+import type { ApproachName, Run, RunId, SourceSetId, VideoSetMember, VideoSetOverview } from "@viral/contracts"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { Button } from "@viral/ui/primitives/button"
 import { Dialog } from "@viral/ui/primitives/dialog"
@@ -20,7 +20,7 @@ import { overviewAtom } from "../home/overview.ts"
 import { ServerState } from "../home/server-state.tsx"
 import { Page } from "../layout/page.tsx"
 import { Detail } from "../system/detail.tsx"
-import { MakeShortDialog } from "../videos/make-short-dialog.tsx"
+import { MakeShortDialog, SET_APPROACHES } from "../videos/make-short-dialog.tsx"
 import { emptyProgress, isActive, type RunProgress } from "../videos/run-progress.ts"
 import { beatStyle } from "../videos/story-strip.tsx"
 import { VideoSkeleton } from "../videos/video-skeleton.tsx"
@@ -116,10 +116,10 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
   const statusOf = new Map((home?.shorts ?? []).map((s) => [s.project.id, s.status]))
   const read = members.filter((m) => m.ready).length
 
-  const make = (index: number, brief: string | null) => {
+  const make = (index: number, brief: string | null, approach: ApproachName | null) => {
     setMaking(index)
     setError(null)
-    create({ payload: { setId: set.id, proposal: index, brief } })
+    create({ payload: { setId: set.id, proposal: index, brief, ...(approach === null ? {} : { approach }) } })
       .then((project) => startShort({ payload: { projectId: project.id, from: null } }).then(() => project))
       .then((project) => navigate({ to: "/shorts/$projectId", params: { projectId: project.id } }))
       .catch(() => setError("Couldn't make that short. Is the server running?"))
@@ -330,9 +330,11 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
         busy={making !== null}
         initialBrief={set.brief}
         description="The set's brief comes along. Change it for this short if you like; every step reads it first."
+        approaches={SET_APPROACHES}
+        initialApproach={story?.proposals[asking ?? -1]?.approach === "ranking" ? "ranking" : null}
         onCancel={() => setAsking(null)}
-        onMake={(brief) => {
-          if (asking !== null) make(asking, brief)
+        onMake={(brief, approach) => {
+          if (asking !== null) make(asking, brief, approach)
         }}
       />
       <Dialog
