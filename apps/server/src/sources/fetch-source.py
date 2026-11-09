@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -80,11 +81,7 @@ def from_url(url: str, out: Path) -> dict:
         "no_warnings": True,
         "noprogress": True,
     }
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-    except Exception as error:  # yt-dlp raises DownloadError with a readable message
-        raise FetchFailure("download", str(error)) from error
+    info = download_with_retry(lambda: _download(yt_dlp, opts, url), time.sleep)
     if not (out / "source.mp4").exists():
         raise FetchFailure("download", "yt-dlp finished without producing source.mp4")
     return {
@@ -92,6 +89,38 @@ def from_url(url: str, out: Path) -> dict:
         "channel": info.get("channel") or info.get("uploader"),
         "url": info.get("webpage_url") or url,
     }
+
+
+def _download(yt_dlp, opts: dict, url: str) -> dict:
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        return ydl.extract_info(url, download=True)
+
+
+def is_refusal(message: str) -> bool:
+    """YouTube saying no (a 403), as opposed to a missing or broken video."""
+    return "HTTP Error 403" in message or "403: Forbidden" in message
+
+
+RETRY_PAUSE_S = 8
+
+
+def download_with_retry(download, sleep) -> dict:
+    """Downloads once, and once more after a short pause when YouTube answers 403. A second refusal is reported as
+    `blocked`, in plain words; Viral never works around it (no cookies, proxies or other tricks)."""
+    for attempt in (1, 2):
+        try:
+            return download()
+        except Exception as error:  # yt-dlp raises DownloadError with a readable message
+            message = str(error)
+            if is_refusal(message) and attempt == 1:
+                emit({"type": "log", "message": f"YouTube refused the download (403); trying once more in {RETRY_PAUSE_S}s"})
+                sleep(RETRY_PAUSE_S)
+                continue
+            if is_refusal(message):
+                raise FetchFailure("blocked", "YouTube refused the download twice (403). Viral doesn't work around a "
+                                              "block: try again later, or replace this video.") from error
+            raise FetchFailure("download", message) from error
+    raise FetchFailure("download", "unreachable")
 
 
 def from_file(path: Path, out: Path) -> dict:
