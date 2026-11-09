@@ -36,7 +36,7 @@ test("creates every table from the design", async () => {
       "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_set_research", "source_sets", "sources", "stage_runs", "voice_previews"
     ]
   )
-  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research"])
+  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking"])
 })
 
 test("enforces foreign keys and the one-owner rule on artifacts", async () => {
@@ -51,6 +51,18 @@ test("enforces foreign keys and the one-owner rule on artifacts", async () => {
   }))
   assert.ok(Exit.isFailure(results.orphanVideo), "a short's video must exist")
   assert.ok(Exit.isFailure(results.ownerlessArtifact), "artifact with no owner must be rejected")
+})
+
+test("a short can be a ranking, and the format stays checked", async () => {
+  const results = await run(Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient
+    const insert = (id: string, format: string) =>
+      sql`INSERT INTO projects (id, number, slug, title, approach, format, created_at, updated_at)
+          VALUES (${id}, 1, '01-x', 'X', 'ranking', ${format}, ${now}, ${now})`
+    return { ranking: yield* Effect.exit(insert("rk1", "ranking")), unknown: yield* Effect.exit(insert("rk2", "slideshow")) }
+  }))
+  assert.ok(Exit.isSuccess(results.ranking), "a ranking short is stored")
+  assert.ok(Exit.isFailure(results.unknown), "an unknown format is refused")
 })
 
 // A library made before multi-video: one source, a short from it with a run, a stage run, a gate and artifacts.

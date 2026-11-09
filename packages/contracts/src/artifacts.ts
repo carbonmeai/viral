@@ -21,6 +21,9 @@ export const ProjectArtifactKind = Schema.Literals([
   "narrated-plan",
   // a cut-down short's assembled plan, the renderer's input (render-short.py)
   "cut-render-plan",
+  // a ranking short's moments (the moments stage) and its assembled plan, the renderer's input (render-ranking.py)
+  "ranking-plan",
+  "ranking-render-plan",
   "music-config",
   // a short's own music, fitted from a library song (fit-music.py)
   "music-bed",

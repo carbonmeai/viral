@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { Artifact } from "./artifacts.ts"
 import { CutPlan } from "./cut-plan.ts"
+import { RankingPlan } from "./ranking-plan.ts"
 import { RenderedShort } from "./render.ts"
 import { Shortlist } from "./research.ts"
 import { Script } from "./script.ts"
@@ -17,6 +18,8 @@ export const GatePayload = Schema.Union([
   Schema.TaggedStruct("ShotsGate", { plan: ShotPlan, storyboard: Schema.NullOr(Schema.String) }),
   // a cut-down short's sections: `storyboard` is the stitched image; each section also carries its own frame
   Schema.TaggedStruct("SectionsGate", { plan: CutPlan, storyboard: Schema.NullOr(Schema.String) }),
+  // a ranking short's moments: `storyboard` is every shot's first and last frame; each shot carries its own two
+  Schema.TaggedStruct("RankingGate", { plan: RankingPlan, storyboard: Schema.NullOr(Schema.String) }),
   // rejecting a render goes back to the shots (or sections) with your note
   Schema.TaggedStruct("RenderGate", { render: RenderedShort }),
   // `image`: the rendered jpg; rejecting redraws it with your note, editing re-renders your changed config

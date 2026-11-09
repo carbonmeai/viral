@@ -8,9 +8,9 @@ import { MAX_SHORT_SOURCES, SourceId, SourceNotFound, SourceSetId, VideoSetNotFo
 export const ProjectId = Schema.String.pipe(Schema.brand("ProjectId"))
 export type ProjectId = typeof ProjectId.Type
 
-// narrated: new third-person voiceover over b-roll. cut-down: the creator's own speech, spliced by beat.
-// Always derived from the project's approach.
-export const ProjectFormat = Schema.Literals(["narrated", "cut-down"])
+// narrated: new third-person voiceover over b-roll. cut-down: the creator's own speech, spliced by beat. ranking: a
+// numbered list of clips from the short's videos, each with its own sound, #1 last. Always derived from the approach.
+export const ProjectFormat = Schema.Literals(["narrated", "cut-down", "ranking"])
 export type ProjectFormat = typeof ProjectFormat.Type
 
 // The videos a short draws from, in order (V1 first): one for most shorts, up to 10.
@@ -90,11 +90,17 @@ export class ProjectsRpcs extends RpcGroup.make(
     error: Schema.Union([SourceNotFound, ProposalNotFound])
   }),
   // Creates a short from one of a video set's proposals: its approach and title, the videos it uses (in set
-  // order), and the set's brief unless you give another.
+  // order), and the set's brief unless you give another. `approach` makes it another way instead ("ranking": a
+  // ranking of every video in the set).
   Rpc.make("CreateProjectFromSetProposal", {
-    payload: { setId: SourceSetId, proposal: Schema.Int, brief: Schema.optionalKey(Schema.NullOr(Schema.String)) },
+    payload: {
+      setId: SourceSetId,
+      proposal: Schema.Int,
+      brief: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      approach: Schema.optionalKey(ApproachName)
+    },
     success: Project,
-    error: Schema.Union([VideoSetNotFound, SetProposalNotFound])
+    error: Schema.Union([VideoSetNotFound, SetProposalNotFound, ProjectSourcesInvalid])
   }),
   // Sets what the short should achieve (null or blank clears it). It steers the agents from their next run.
   Rpc.make("SetProjectBrief", {

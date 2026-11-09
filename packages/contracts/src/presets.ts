@@ -47,6 +47,8 @@ export const PresetConfig = Schema.Struct({
   labels: Schema.Boolean,
   // "Video: <channel>" overlay when the footage isn't yours
   credit: Schema.Boolean,
+  // rankings: a small "via <channel>" line under each clip; absent = off (the channels are in the description)
+  rankingVia: Schema.optionalKey(Schema.Boolean),
   // target average shot length, a guide for the shots stage
   pace: Schema.Struct({ shotSeconds: Schema.Finite }),
   music: Schema.Struct({

@@ -26,6 +26,8 @@ export const StageName = Schema.Literals([
   // short run
   "script",
   "sections",
+  // a ranking short: each entry's before, care and after shots
+  "moments",
   "voice",
   "shots",
   "assemble",

@@ -4,6 +4,7 @@ import { CutPlan, SectionsProposal } from "./cut-plan.ts"
 import { PublishedShort } from "./metadata.ts"
 import { Preset } from "./presets.ts"
 import { Project, ProjectId, ProjectNotFound } from "./projects.ts"
+import { RankingFraming, RankingPlan, RankingProposal } from "./ranking-plan.ts"
 import { RenderedShort } from "./render.ts"
 import { Run, RunRequest, StageRun } from "./runs.ts"
 import { Script } from "./script.ts"
@@ -64,6 +65,8 @@ export const ShortWorkspace = Schema.Struct({
   })),
   shotPlan: Schema.NullOr(Schema.Struct({ ...at, plan: ShotPlan })),
   cutPlan: Schema.NullOr(Schema.Struct({ ...at, plan: CutPlan })),
+  // a ranking short's moments (its entries, shots and play order)
+  rankingPlan: Schema.optionalKey(Schema.NullOr(Schema.Struct({ ...at, plan: RankingPlan }))),
   render: Schema.NullOr(Schema.Struct({
     ...at,
     render: RenderedShort,
@@ -101,7 +104,20 @@ export const ShortWorkspace = Schema.Struct({
       total: Schema.Tuple([Schema.Finite, Schema.Finite]),
       hookWords: Schema.Int
     })
-  }))
+  })),
+  // what a ranking is cut from and checked against, for editing its moments: each video's words (cuts snap to whole
+  // sentences in them), its length, the ranges a shot may not touch and the framing Viral detected (V1 first, as
+  // `videos`), and the longest the ranking may be; null for other shorts
+  rankingSource: Schema.optionalKey(Schema.NullOr(Schema.Struct({
+    videos: Schema.Array(Schema.Struct({
+      words: Schema.Array(TranscriptWord),
+      sourceSeconds: Schema.Finite,
+      excluded: Schema.Array(Schema.Struct({ start: Schema.Finite, end: Schema.Finite })),
+      framing: Schema.NullOr(RankingFraming)
+    })),
+    maxSeconds: Schema.Finite,
+    labelChars: Schema.Int
+  })))
 })
 export type ShortWorkspace = typeof ShortWorkspace.Type
 
@@ -129,6 +145,13 @@ export class ShortWorkspaceRpcs extends RpcGroup.make(
   Rpc.make("CheckSectionsEdit", {
     payload: { projectId: ProjectId, proposal: SectionsProposal },
     success: Schema.Struct({ problems: Schema.Array(Schema.String) }),
+    error: ProjectNotFound
+  }),
+  // The same for a ranking's edited moments (ranks, labels, emoji, shots and play order): checked and snapped to
+  // whole sentences exactly as the moments gate will; `proposal` comes back snapped.
+  Rpc.make("CheckRankingEdit", {
+    payload: { projectId: ProjectId, proposal: RankingProposal },
+    success: Schema.Struct({ problems: Schema.Array(Schema.String), proposal: RankingProposal, durationS: Schema.Finite }),
     error: ProjectNotFound
   }),
   // The same for an edited thumbnail config (its words, mostly) before it's sent to the thumbnail gate.
