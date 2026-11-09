@@ -52,10 +52,34 @@ const describePayload = (payload: GatePayload | null): string => {
       ).join("\n")
       return `${hook}${sections}\n  ${plan.sections.length} sections · ${seconds.toFixed(1)}s · storyboard ${storyboard ?? "(none)"}\n`
     }
+    case "RankingGate": {
+      const { plan, storyboard } = payload
+      const several = plan.entries.some((e) => e.source !== undefined)
+      const byRank = new Map(plan.entries.map((e) => [e.rank, e]))
+      const entries = [...plan.entries].sort((a, b) => a.rank - b.rank).map((e) => {
+        const seconds = e.shots.reduce((n, s) => n + s.end - s.start, 0)
+        const shots = e.shots.map((s) =>
+          `        ${s.role.padEnd(6)} ${several ? `Video ${(e.source ?? 0) + 1} · ` : ""}${s.start.toFixed(1).padStart(7)}–${s.end.toFixed(1)}s ${s.framing.padEnd(6)} ${s.note}${
+            s.text === "" ? "" : `  "${s.text.length > 70 ? `${s.text.slice(0, 70)}…` : s.text}"`
+          }`
+        ).join("\n")
+        return `  #${String(e.rank).padEnd(3)}${e.label} ${e.emoji}  (${seconds.toFixed(1)}s)\n${shots}`
+      }).join("\n")
+      const order = plan.order.map((r) => `#${r}`).join(", ")
+      const warnings = plan.warnings.length === 0 ? "" : `  look at: ${plan.warnings.join("; ")}\n`
+      return `  TITLE  ${plan.title.lead}[${plan.title.accent}]\n${entries}\n  plays ${order} · ${plan.durationS.toFixed(1)}s of ${plan.maxSeconds.toFixed(0)}s` +
+        ` · ${byRank.size} entries · storyboard ${storyboard ?? "(none)"}\n${warnings}`
+    }
     case "RenderGate": {
       const r = payload.render
+      const checks = r.checks === undefined
+        ? ""
+        : `  checks: loudness ${r.checks.lufs === null ? "?" : `${r.checks.lufs.toFixed(1)} LUFS`} · ` +
+          `${r.checks.black.length === 0 ? "no black frames" : `black at ${r.checks.black.map(([s, e]) => `${s.toFixed(1)}–${e.toFixed(1)}s`).join(", ")}`}` +
+          ` · ${r.checks.frames.length} shots' first and last frames in ${r.checks.frames[0] === undefined ? "(none)" : r.checks.frames[0].first.replace(/\/[^/]*$/, "")}\n`
       return `  ${r.video}\n  ${r.durationS.toFixed(1)}s · ${r.shots} shots · captions ${r.captions}\n` +
-        `  check sheet ${r.checkSheet ?? "(none)"}\n  rejecting goes back to the shots (the sections, for a cut-down short) with your note\n`
+        `  check sheet ${r.checkSheet ?? "(none)"}\n${checks}` +
+        `  rejecting goes back to the shots (the sections for a cut-down short, the moments for a ranking) with your note\n`
     }
     case "ThumbnailGate": {
       const c = payload.config
