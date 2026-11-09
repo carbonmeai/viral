@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { PiecesBySource } from "./sources.ts"
 
 // Mirrors thumb.json, the config thumbnail.py reads. Keys stay snake_case to match the script.
 
@@ -30,6 +31,9 @@ export const ThumbConfig = Schema.Struct({
   source: Schema.String,
   // a short's other videos, V2 first: a layer with `source: 1` is cut from the first of these
   sources: Schema.optionalKey(Schema.Array(Schema.String)),
+  // full-quality pieces of scanned videos, by video index: a layer's frame comes from the piece covering its second,
+  // and its `box` (in the video's own pixels) is scaled to the piece's size. Added when drawing; never stored.
+  pieces_by_source: Schema.optionalKey(PiecesBySource),
   background: Schema.Struct({ src: Schema.Finite, ...LayerSource }),
   // bold: the gradient behind everything, centre colour then edge colour, with an optional burst of rays
   backdrop: Schema.optionalKey(Schema.Struct({

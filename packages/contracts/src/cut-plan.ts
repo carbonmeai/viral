@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { SourceIndex, VideoNumber } from "./sources.ts"
+import { PiecesBySource, SourceIndex, VideoNumber } from "./sources.ts"
 
 // The story beat a section of a cut-down short plays (story-arc skill).
 export const CutBeat = Schema.Literals(["hook", "rising_action", "conflict", "comeback", "payoff"])
@@ -83,6 +83,8 @@ export const CutRenderPlan = Schema.Struct({
   exclude: Schema.optionalKey(Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite]))),
   // the same for the other videos, by their index in the plan's videos as a string ("1" = V2); `exclude` is V1's
   exclude_by_source: Schema.optionalKey(Schema.Record(Schema.String, Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite])))),
+  // full-quality pieces of scanned videos, by video index ("0" = V1); absent = every clip plays from its video
+  pieces_by_source: Schema.optionalKey(PiecesBySource),
   // false when the sections are already snapped to words (the server's plans); absent or true, the renderer
   // snaps them outward itself, as the skill's plans expect
   snap: Schema.optionalKey(Schema.Boolean),

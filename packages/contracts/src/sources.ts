@@ -5,9 +5,11 @@ import { Rights } from "./rights.ts"
 export const SourceId = Schema.String.pipe(Schema.brand("SourceId"))
 export type SourceId = typeof SourceId.Type
 
-// Where the long video comes from. A File is copied into the source folder by the source stage.
+// Where the long video comes from. A File is copied into the source folder by the source stage. A link with `scan`
+// (videos found by research) is downloaded small, at 480p, for reading; a short then fetches only the seconds it
+// uses in 1080p (SourcePiece). Absent = the whole video at up to 1080p, as before.
 export const SourceOrigin = Schema.Union([
-  Schema.TaggedStruct("Url", { url: Schema.String }),
+  Schema.TaggedStruct("Url", { url: Schema.String, scan: Schema.optionalKey(Schema.Boolean) }),
   Schema.TaggedStruct("File", { path: Schema.String })
 ])
 export type SourceOrigin = typeof SourceOrigin.Type
@@ -43,6 +45,16 @@ export class SourceInUse extends Schema.TaggedError<SourceInUse>()("SourceInUse"
   sets: Schema.Int,
   message: Schema.String
 }) {}
+
+// A stretch of a scanned video fetched in full quality for a short: its file (absolute) and where it sits in the
+// video, in seconds. Renderers read a clip from the piece that covers it, at (clip start − piece start).
+export const SourcePiece = Schema.Struct({ path: Schema.String, start: Schema.Finite, end: Schema.Finite })
+export type SourcePiece = typeof SourcePiece.Type
+
+// A render plan's pieces, by the video's index in the plan as a string ("0" = V1), like `exclude_by_source`. A clip
+// no piece covers plays from the video itself (the 480p scan).
+export const PiecesBySource = Schema.Record(Schema.String, Schema.Array(SourcePiece))
+export type PiecesBySource = typeof PiecesBySource.Type
 
 // A short draws from up to 10 videos, V1…V10.
 export const MAX_SHORT_SOURCES = 10

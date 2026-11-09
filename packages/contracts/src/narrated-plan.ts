@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { PiecesBySource } from "./sources.ts"
 
 // Mirrors narrated.json, the plan render-narrated.py reads. Keys stay snake_case because this is
 // the file format the Python renderer consumes.
@@ -174,6 +175,8 @@ export const NarratedPlan = Schema.Struct({
   // the same for the other videos, by clip source index ("1" = V2); `exclude` stays V1's
   exclude_by_source: Schema.optionalKey(Schema.Record(Schema.String, Schema.Array(SourceRange))),
   exclude_note: Schema.optionalKey(Schema.String),
+  // full-quality pieces of scanned videos, by video index ("0" = V1); absent = every clip plays from its video
+  pieces_by_source: Schema.optionalKey(PiecesBySource),
   narration_end: Schema.optionalKey(Seconds),
   shots: Schema.Array(NarratedShot),
   inserts: Schema.optionalKey(Schema.Array(NarratedInsert)),

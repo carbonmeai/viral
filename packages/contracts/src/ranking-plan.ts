@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { SourceIndex, VideoNumber } from "./sources.ts"
+import { PiecesBySource, SourceIndex, VideoNumber } from "./sources.ts"
 
 // A ranking short ("Ranking Animal Comebacks"): one entry per video, each a little story told in that video's own
 // clips with their own sound, a numbered list down the left that fills in as each entry plays, #1 last.
@@ -150,6 +150,8 @@ export const RankingRenderPlan = Schema.Struct({
       crop_x: Schema.optionalKey(Schema.Finite)
     }))
   })),
+  // full-quality pieces of scanned videos, by video index ("0" = V1); absent = every clip plays from its video
+  pieces_by_source: Schema.optionalKey(PiecesBySource),
   // each video's sponsor/ad/end-screen ranges by its index as a string ("0" = V1); the renderer fails on a shot in one
   exclude_by_source: Schema.optionalKey(Schema.Record(Schema.String, Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite])))),
   // [width, height]; 1080×1920 when absent
