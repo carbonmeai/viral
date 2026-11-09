@@ -146,12 +146,14 @@ test("a short from two videos: the agent sees both, each real line is checked in
       const slot = yield* artifacts.allocate(owner, "transcript")
       writeFileSync(join(slot.dir, "transcript.json"), JSON.stringify(transcript))
       yield* artifacts.record(slot, { data: null, path: join(slot.relDir, "transcript.json") })
-      if (ads.length > 0) {
-        yield* artifacts.record(yield* artifacts.allocate(owner, "ad-ranges"), {
-          data: { ranges: ads.map((a) => ({ ...a, kind: "sponsor", evidence: "x" })) },
-          path: null
-        })
+      // the video's been read (a short's run reads its later videos first otherwise)
+      for (const kind of ["source-video", "contact-sheet"] as const) {
+        yield* artifacts.record(yield* artifacts.allocate(owner, kind), { data: null, path: "read" })
       }
+      yield* artifacts.record(yield* artifacts.allocate(owner, "ad-ranges"), {
+        data: { ranges: ads.map((a) => ({ ...a, kind: "sponsor", evidence: "x" })) },
+        path: null
+      })
       return source
     })
     const v1 = yield* withTranscript("https://youtu.be/a", TRANSCRIPT, [])

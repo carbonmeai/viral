@@ -1,4 +1,4 @@
-import type { RunOwner } from "@viral/contracts"
+import type { RunOwner, SourceId } from "@viral/contracts"
 import { Effect, Layer } from "effect"
 import { AdsStage } from "../ads/ads-stage.ts"
 import { AssembleStage } from "../assemble/assemble-stage.ts"
@@ -18,7 +18,8 @@ import { VoiceStage } from "../voice/voice-stage.ts"
 import { StageFailure, StageRegistry } from "./stages.ts"
 
 // The real stage lists. A source run is source → transcribe → contact-sheet → ads → story; a video set's run reads
-// each of its videos first (their own source runs, through ads), then runs set-story;
+// each of its videos first (their own source runs, through ads), then runs set-story; a short's run first reads any
+// of its videos after the first that haven't been (a video added to it);
 // a narrated short's run is script → voice → shots → assemble → render → metadata → thumbnail; a cut-down
 // short's is sections → assemble → render → metadata → thumbnail.
 export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(function*() {
@@ -37,17 +38,27 @@ export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(functio
   const setStory = yield* SetStoryStage
   const sets = yield* VideoSets
   const sources = yield* Sources
+  // each video read (its own source run, through ads) before a video set's story, and before a short's own stages
+  // for the videos after its first (a video added to a short is read on its next run; V1 always was)
+  const readVideos = (ids: ReadonlyArray<SourceId>, first: number) =>
+    Effect.forEach(ids.slice(first), (id, i) =>
+      Effect.map(sources.get(id).pipe(Effect.option), (source) => ({
+        owner: { _tag: "Source", id } as const,
+        through: "ads" as const,
+        label: `V${first + i + 1}${source._tag === "Some" && source.value.title !== null ? ` "${source.value.title}"` : ""}`
+      })))
   const prerequisites = Effect.fn("StageRegistry.prerequisites")(function*(owner: RunOwner) {
+    if (owner._tag === "Project") {
+      const project = yield* projects.get(owner.id).pipe(
+        Effect.mapError(() => new StageFailure({ stage: "videos", code: "not-found", message: `no project ${owner.id}` }))
+      )
+      return yield* readVideos(project.sourceIds, 1)
+    }
     if (owner._tag !== "Set") return []
     const set = yield* sets.get(owner.id).pipe(
       Effect.mapError(() => new StageFailure({ stage: "set-story", code: "not-found", message: `no video set ${owner.id}` }))
     )
-    return yield* Effect.forEach(set.sourceIds, (id, i) =>
-      Effect.map(sources.get(id).pipe(Effect.option), (source) => ({
-        owner: { _tag: "Source", id } as const,
-        through: "ads" as const,
-        label: `V${i + 1}${source._tag === "Some" && source.value.title !== null ? ` "${source.value.title}"` : ""}`
-      })))
+    return yield* readVideos(set.sourceIds, 0)
   })
   const stagesFor = Effect.fn("StageRegistry.stagesFor")(function*(owner: RunOwner) {
     if (owner._tag === "Source") return [...source.stages, ads.stage, story.stage]

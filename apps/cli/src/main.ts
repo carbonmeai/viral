@@ -48,6 +48,7 @@ const program = Effect.gen(function*() {
     SourceNotFound: (e) => Console.error(`no source ${e.id}`),
     SourceInUse: (e) => Console.error(`can't delete source ${e.id}: it's ${e.message}`),
     ProjectSourcesInvalid: (e) => Console.error(e.message),
+    ProjectSourceInUse: (e) => Console.error(e.message),
     ProjectNotFound: (e) => Console.error(`no project ${e.id}`),
     VoiceError: (e) => Console.error(`ElevenLabs (${e.code}): ${e.message}`),
     VideoSetNotFound: (e) => Console.error(`no video set ${e.id}`),

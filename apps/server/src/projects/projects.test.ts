@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
+import { Artifacts } from "../artifacts/artifacts.ts"
 import { Presets } from "../presets/presets.ts"
 import { Sources } from "../sources/sources.ts"
 import { Projects } from "./projects.ts"
@@ -17,8 +18,8 @@ before(() => {
 after(() => rmSync(home, { recursive: true, force: true }))
 
 // Each call builds the layers from scratch, like a server restart against the same database.
-const run = <A, E>(effect: Effect.Effect<A, E, Projects | Sources>) =>
-  Effect.runPromise(Effect.provide(effect, Layer.mergeAll(Projects.layer, Sources.layer)))
+const run = <A, E>(effect: Effect.Effect<A, E, Projects | Sources | Artifacts>) =>
+  Effect.runPromise(Effect.provide(effect, Layer.mergeAll(Projects.layer, Sources.layer, Artifacts.layer)))
 
 test("numbers shorts and slugs them from the title", async () => {
   const { source, first, second } = await run(Effect.gen(function*() {
@@ -173,4 +174,41 @@ test("a short keeps your brief, trimmed; a blank one clears it", async () => {
   assert.equal(none.brief, null)
   assert.equal(changed.brief, "End on the joke.")
   assert.equal(cleared.brief, null)
+})
+
+test("adds a video to a short and removes it again; removal is refused while a step's work uses it", async () => {
+  const outcome = await run(Effect.gen(function*() {
+    const sources = yield* Sources
+    const projects = yield* Projects
+    const artifacts = yield* Artifacts
+    const make = (url: string, title: string) =>
+      Effect.flatMap(sources.create({ origin: { _tag: "Url", url }, rights: "licensed", rightsNote: null }), (s) => sources.setDetails(s.id, title, null))
+    const candy = yield* make("https://youtu.be/candy", "Candy")
+    const heidi = yield* make("https://youtu.be/heidi", "Heidi Klum")
+    const gum = yield* make("https://youtu.be/gum", "Gum")
+    const short = yield* projects.create({ sourceIds: [candy.id], title: "One", approach: "cut-down", presetId: null, musicTrackId: null })
+    yield* projects.addSource(short.id, heidi.id)
+    const added = yield* projects.addSource(short.id, gum.id)
+    const twice = yield* Effect.flip(projects.addSource(short.id, gum.id))
+
+    // the sections use Gum (V3)
+    const owner = { _tag: "Project", id: short.id } as const
+    const section = (source?: number) => ({ beat: "hook", start: 0, end: 5, text: "t", note: "", frame: null, ...(source === undefined ? {} : { source }) })
+    yield* artifacts.record(yield* artifacts.allocate(owner, "cut-plan"), { data: { hookText: null, sections: [section(), section(2)], storyboard: null }, path: null })
+    const gumUsed = yield* Effect.flip(projects.removeSource(short.id, gum.id))
+    const heidiBefore = yield* Effect.flip(projects.removeSource(short.id, heidi.id))
+    // a new version of the sections no longer uses Gum
+    yield* artifacts.record(yield* artifacts.allocate(owner, "cut-plan"), { data: { hookText: null, sections: [section(), section(1)], storyboard: null }, path: null })
+    const withoutGum = yield* projects.removeSource(short.id, gum.id)
+    const only = yield* Effect.flip(projects.removeSource(short.id, heidi.id).pipe(Effect.andThen(projects.removeSource(short.id, candy.id))))
+    return { added, twice, gumUsed, heidiBefore, withoutGum, only, ids: { candy: candy.id, heidi: heidi.id } }
+  }))
+  assert.equal(outcome.added.sourceIds.length, 3)
+  assert.equal(outcome.twice._tag, "ProjectSourcesInvalid")
+  assert.equal(outcome.gumUsed._tag, "ProjectSourceInUse")
+  assert.equal(outcome.gumUsed.message, "\"Gum\" can't be removed: the sections use it. Change that step so it doesn't use it first.")
+  assert.equal(outcome.heidiBefore.message, "\"Heidi Klum\" can't be removed while the sections use \"Gum\", which was added after it.")
+  assert.deepEqual(outcome.withoutGum.sourceIds, [outcome.ids.candy, outcome.ids.heidi])
+  // Heidi Klum is used now (section 2), so it stays; the first video can't go while she's after it
+  assert.equal(outcome.only._tag, "ProjectSourceInUse")
 })

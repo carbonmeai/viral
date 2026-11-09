@@ -26,6 +26,9 @@ export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <tit
                                           "start": "after" | "drop" | {"word": n}}]}; auto = the automatic one;
                                           re-runs from assemble)
   project voice <id> <voice-id|preset>   (the voiceover's voice; "preset" goes back to the preset's)
+  project add-video <id> <source-id>      (adds a video after the short's others, up to 10; nothing re-runs:
+                                          \`project run <id> --from script|sections\` reads it and uses it)
+  project remove-video <id> <source-id>   (refused while a step's current work uses it)
   project run <id> [--from <stage>]
   project post <id>                       (the post text and what publishing again would update)
   project publish <id> [--title "<title>"|--title agent]
@@ -114,6 +117,14 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
       if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)
       const project = yield* client.SetProjectVoice({ id: ProjectId.make(first), voiceId: title === "preset" ? null : title })
       return yield* Console.log(`${describe(project)}  voice ${project.voiceId ?? "(preset)"}`)
+    }
+    case "add-video":
+    case "remove-video": {
+      if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)
+      const input = { id: ProjectId.make(first), sourceId: SourceId.make(title) }
+      const project = yield* (sub === "add-video" ? client.AddSourceToProject(input) : client.RemoveSourceFromProject(input))
+      yield* Console.log(`${describe(project)}  ${project.sourceIds.length} ${project.sourceIds.length === 1 ? "video" : "videos"}`)
+      return yield* Effect.forEach(project.sourceIds, (id, i) => Console.log(`  V${i + 1}  ${id}`), { discard: true })
     }
     case "run": {
       const from = option("--from")

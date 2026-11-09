@@ -59,6 +59,12 @@ export class ProjectSourcesInvalid extends Schema.TaggedError<ProjectSourcesInva
   message: Schema.String
 }) {}
 
+// A video can't leave a short: the current work of a step uses it (or a video added after it, whose place would
+// move), or a run is working on the short. `message` says which, plainly.
+export class ProjectSourceInUse extends Schema.TaggedError<ProjectSourceInUse>()("ProjectSourceInUse", {
+  message: Schema.String
+}) {}
+
 export class ProjectNotFound extends Schema.TaggedError<ProjectNotFound>()("ProjectNotFound", {
   id: ProjectId
 }) {}
@@ -95,6 +101,20 @@ export class ProjectsRpcs extends RpcGroup.make(
     payload: { id: ProjectId, brief: Schema.NullOr(Schema.String) },
     success: Project,
     error: ProjectNotFound
+  }),
+  // Adds a video to the short, after its others (up to 10). Nothing re-runs: the next run reads the video first (when
+  // it hasn't been) and its steps can use it.
+  Rpc.make("AddSourceToProject", {
+    payload: { id: ProjectId, sourceId: SourceId },
+    success: Project,
+    error: Schema.Union([ProjectNotFound, SourceNotFound, ProjectSourcesInvalid])
+  }),
+  // Takes a video out of the short. Refused while a step's current work uses it (ProjectSourceInUse names the steps),
+  // and for the short's only video (ProjectSourcesInvalid).
+  Rpc.make("RemoveSourceFromProject", {
+    payload: { id: ProjectId, sourceId: SourceId },
+    success: Project,
+    error: Schema.Union([ProjectNotFound, ProjectSourcesInvalid, ProjectSourceInUse])
   }),
   // Picks the short's style (null = the default preset).
   Rpc.make("SetProjectPreset", {

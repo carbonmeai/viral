@@ -2,6 +2,8 @@ import { NodeServices } from "@effect/platform-node"
 import {
   APPROACHES,
   ApproachName,
+  type ArtifactKind,
+  CutPlan,
   MAX_SHORT_SOURCES,
   MusicTrackId,
   type MusicTrackNotFound,
@@ -11,14 +13,18 @@ import {
   ProjectFormat,
   ProjectId,
   ProjectNotFound,
+  ProjectSourceInUse,
   ProjectSourcesInvalid,
   ProposalNotFound,
   SetProposalNotFound,
+  Script,
   SetStory,
+  ShotPlan,
   SourceId,
   type SourceNotFound,
   SourceSetId,
   StoryMap,
+  Thumbnail,
   type VideoSetNotFound
 } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Schema } from "effect"
@@ -30,10 +36,12 @@ import { arrangementKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { DatabaseLive } from "../persistence/database.ts"
 import { Presets } from "../presets/presets.ts"
+import { RunStore } from "../runs/run-store.ts"
 import { Settings } from "../settings/settings.ts"
 import { Sources } from "../sources/sources.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
 import { projectSlug } from "./project-slug.ts"
+import { removalProblem } from "./video-uses.ts"
 
 export interface CreateProjectInput {
   // the short's videos, V1 first
@@ -114,6 +122,11 @@ export class Projects extends Context.Service<Projects, {
   setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
   setPreset(id: ProjectId, presetId: PresetId | null): Effect.Effect<Project, ProjectNotFound | PresetNotFound>
   setMusic(id: ProjectId, musicTrackId: MusicTrackId | null): Effect.Effect<Project, ProjectNotFound | MusicTrackNotFound>
+  // a video added after the short's others (up to 10); nothing re-runs
+  addSource(id: ProjectId, sourceId: SourceId): Effect.Effect<Project, ProjectNotFound | SourceNotFound | ProjectSourcesInvalid>
+  // a video taken out, the ones after it moving up; refused while a step's current work uses it or a video after it,
+  // while a run is working on the short, and for its only video
+  removeSource(id: ProjectId, sourceId: SourceId): Effect.Effect<Project, ProjectNotFound | ProjectSourcesInvalid | ProjectSourceInUse>
   // every short, or the shorts that use one video
   list(sourceId: SourceId | null): Effect.Effect<ReadonlyArray<Project>>
   get(id: ProjectId): Effect.Effect<Project, ProjectNotFound>
@@ -132,6 +145,7 @@ export class Projects extends Context.Service<Projects, {
       const artifacts = yield* Artifacts
       const settings = yield* Settings
       const sets = yield* VideoSets
+      const runs = yield* RunStore
 
       // a project with its videos in order, as one row
       const withSources = sql`
@@ -273,6 +287,57 @@ export class Projects extends Context.Service<Projects, {
         return yield* get(id)
       })
 
+      const addSource = Effect.fn("Projects.addSource")(function*(id: ProjectId, sourceId: SourceId) {
+        const project = yield* get(id)
+        yield* sources.get(sourceId)
+        if (project.sourceIds.includes(sourceId)) return yield* new ProjectSourcesInvalid({ message: "that video is already in this short" })
+        if (project.sourceIds.length >= MAX_SHORT_SOURCES) {
+          return yield* new ProjectSourcesInvalid({ message: `a short can use up to ${MAX_SHORT_SOURCES} videos` })
+        }
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql.withTransaction(Effect.gen(function*() {
+          yield* sql`INSERT INTO project_sources (project_id, source_id, position) VALUES (${id}, ${sourceId}, ${project.sourceIds.length})`
+          yield* sql`UPDATE projects SET updated_at = ${now} WHERE id = ${id}`
+        })).pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
+      // the latest version of each step's work that names videos
+      const currentWork = Effect.fn("Projects.currentWork")(function*(id: ProjectId) {
+        const owner = { _tag: "Project", id } as const
+        const latest = <A, I>(kind: ArtifactKind, schema: Schema.Codec<A, I>) =>
+          Effect.map(artifacts.latest(owner, kind), (a) => Option.getOrNull(Option.flatMap(a, (x) => Schema.decodeUnknownOption(schema)(x.data))))
+        return {
+          script: yield* latest("script", Script),
+          shotPlan: yield* latest("shot-plan", ShotPlan),
+          cutPlan: yield* latest("cut-plan", CutPlan),
+          thumbnail: yield* latest("thumbnail", Thumbnail)
+        }
+      })
+
+      const removeSource = Effect.fn("Projects.removeSource")(function*(id: ProjectId, sourceId: SourceId) {
+        const project = yield* get(id)
+        const index = project.sourceIds.indexOf(sourceId)
+        if (index < 0) return yield* new ProjectSourcesInvalid({ message: "that video isn't in this short" })
+        if (project.sourceIds.length === 1) return yield* new ProjectSourcesInvalid({ message: "a short needs a video; this is its only one" })
+        const running = (yield* runs.listRuns({ _tag: "Project", id })).some((r) => r.status === "running")
+        if (running) return yield* new ProjectSourceInUse({ message: "a run is working on this short; remove the video once it stops or waits for you" })
+        const names = yield* Effect.forEach(project.sourceIds, (s, i) =>
+          Effect.map(sources.get(s).pipe(Effect.option), (found) => Option.match(found, { onNone: () => `video ${i + 1}`, onSome: (v) => v.title ?? `video ${i + 1}` })))
+        const problem = removalProblem(yield* currentWork(id), index, names)
+        if (problem !== null) return yield* new ProjectSourceInUse({ message: problem })
+        const now = DateTime.formatIso(yield* DateTime.now)
+        // the videos after it move up one by one, so no two share a place on the way
+        yield* sql.withTransaction(Effect.gen(function*() {
+          yield* sql`DELETE FROM project_sources WHERE project_id = ${id} AND source_id = ${sourceId}`
+          for (let position = index + 1; position < project.sourceIds.length; position++) {
+            yield* sql`UPDATE project_sources SET position = ${position - 1} WHERE project_id = ${id} AND position = ${position}`
+          }
+          yield* sql`UPDATE projects SET updated_at = ${now} WHERE id = ${id}`
+        })).pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const remove = Effect.fn("Projects.remove")(function*(id: ProjectId) {
         const deleted = yield* sql`DELETE FROM projects WHERE id = ${id} RETURNING id`
         if (deleted.length === 0) return false
@@ -280,10 +345,23 @@ export class Projects extends Context.Service<Projects, {
         return true
       }, Effect.orDie)
 
-      return Projects.of({ create, fromProposal, fromSetProposal, setBrief, setVoice, setPreset, setMusic, list, get, remove })
+      return Projects.of({
+        create,
+        fromProposal,
+        fromSetProposal,
+        setBrief,
+        setVoice,
+        setPreset,
+        setMusic,
+        addSource,
+        removeSource,
+        list,
+        get,
+        remove
+      })
     })
   ).pipe(
-    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer, Settings.layer, VideoSets.layer]),
+    Layer.provide([Sources.layer, Presets.layer, MusicLibrary.layer, Artifacts.layer, Settings.layer, VideoSets.layer, RunStore.layer]),
     Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto])
   )
 }
