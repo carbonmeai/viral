@@ -1,4 +1,5 @@
 import { Deferred, Effect, FileSystem, Option, Schema, Stream } from "effect"
+import { SecureRandom } from "effect/crypto"
 import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolEndpoint } from "@viral/provider-core"
 import type { OpencodeEvent, SessionInfo } from "./opencode-api.ts"
 import { atLeast, MIN_OPENCODE_VERSION, opencodeVersion, startOpencodeServer, updateHint } from "./opencode-server.ts"
@@ -79,6 +80,8 @@ const WIND_DOWN = "15 seconds"
 // session's dollar cost, so a turn's cost is the difference.
 export const makeOpencodeProvider = Effect.fn("makeOpencodeProvider")(function*(options: OpencodeOptions = {}) {
   const fs = yield* FileSystem.FileSystem
+  // the run's tool endpoint draws its bearer token from it; taken here so a run needs no other services
+  const random = yield* SecureRandom.SecureRandom
   const command = options.command ?? ["opencode"]
 
   const run: AgentRun = Effect.fn("Opencode.run")(function*<S extends Schema.Top>(
@@ -103,7 +106,7 @@ export const makeOpencodeProvider = Effect.fn("makeOpencodeProvider")(function*(
       return yield* new AgentError({ code: "no-model", message: `"${model}" isn't an OpenCode model id (provider/model)` })
     }
 
-    const endpoint = yield* toolEndpoint(task)
+    const endpoint = yield* toolEndpoint(task).pipe(Effect.provideService(SecureRandom.SecureRandom, random))
     const scratch = yield* fs.makeTempDirectoryScoped({ prefix: "viral-opencode-" }).pipe(
       Effect.mapError((cause) => new AgentError({ code: "session", message: cause.message }))
     )

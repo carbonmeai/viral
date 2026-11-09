@@ -1,5 +1,6 @@
 import { Config, Deferred, Effect, FileSystem, Option, Queue, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { SecureRandom } from "effect/crypto"
 import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolEndpoint } from "@viral/provider-core"
 import { type CodexClient, codexClient, type CodexNotification } from "./codex-client.ts"
 
@@ -112,6 +113,8 @@ const decodeAs = <A, I>(schema: Schema.Codec<A, I>, value: unknown) =>
 // Codex doesn't spend another round writing a summary. Codex reports tokens, not dollars.
 export const makeCodexProvider = Effect.fn("makeCodexProvider")(function*(options: CodexOptions = {}) {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+    // the run's tool endpoint draws its bearer token from it; taken here so a run needs no other services
+    const random = yield* SecureRandom.SecureRandom
     const fs = yield* FileSystem.FileSystem
     const [bin, ...lead] = options.command ?? ["codex"]
 
@@ -135,7 +138,7 @@ export const makeCodexProvider = Effect.fn("makeCodexProvider")(function*(option
       model: string | null,
       system: string
     ) {
-      const endpoint = yield* toolEndpoint(task)
+      const endpoint = yield* toolEndpoint(task).pipe(Effect.provideService(SecureRandom.SecureRandom, random))
       const scratch = yield* fs.makeTempDirectoryScoped({ prefix: "viral-codex-" }).pipe(
         Effect.mapError((cause) => new AgentError({ code: "session", message: cause.message }))
       )
