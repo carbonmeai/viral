@@ -8,6 +8,7 @@ import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { StepDetails } from "../step-details.tsx"
+import { footageLines, footageSummary } from "./footage-values.ts"
 
 export type RenderTab = "check" | "back"
 const TABS: ReadonlyArray<InspectorTab<RenderTab>> = [
@@ -65,6 +66,7 @@ export function RenderInspector({ render, checkSheetUrl, checkFrameUrl, format, 
             <InspectorBlock title="The short">
               <Facts rows={[["Length", `${render.durationS.toFixed(1)}s`], ["Shots", String(render.shots)]]} />
             </InspectorBlock>
+            {render.footage === undefined || render.footage.length === 0 ? null : <FootageBlock footage={render.footage} />}
             {render.checks === undefined ? null : <RenderChecksBlock checks={render.checks} frameUrl={checkFrameUrl ?? null} />}
             <Detail>
               <InspectorBlock title="Files">
@@ -109,6 +111,29 @@ export function RenderInspector({ render, checkSheetUrl, checkFrameUrl, format, 
         )}
       </div>
     </>
+  )
+}
+
+// Where the footage came from, for videos found by research: they were read from 480p copies and only the seconds
+// this short plays were fetched in 1080p. A clip that played from the 480p copy is said plainly, with why.
+function FootageBlock({ footage }: { readonly footage: NonNullable<RenderedShort["footage"]> }) {
+  const lines = footageLines(footage, footage.length > 1)
+  const low = lines.some((l) => l.problem !== null)
+  return (
+    <InspectorBlock title="Footage" action={<span className={low ? "font-normal text-danger" : "font-normal text-fg-3"}>{footageSummary(footage)}</span>}>
+      <Facts
+        rows={lines.map((l) => [
+          l.video,
+          <span key={l.video} className={l.problem === null ? undefined : "text-danger"}>{l.quality}</span>
+        ] as const)}
+      />
+      {lines.filter((l) => l.problem !== null).map((l) => (
+        <span key={l.video} className="text-xs text-danger">{l.video}: {l.problem}. Look closely before approving, or send it back to try again.</span>
+      ))}
+      <span className="text-xs text-fg-2">
+        Found videos are read from small 480p copies; only the seconds this short plays are fetched in 1080p.
+      </span>
+    </InspectorBlock>
   )
 }
 

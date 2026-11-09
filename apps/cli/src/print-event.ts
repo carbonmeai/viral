@@ -77,8 +77,20 @@ const describePayload = (payload: GatePayload | null): string => {
         : `  checks: loudness ${r.checks.lufs === null ? "?" : `${r.checks.lufs.toFixed(1)} LUFS`} · ` +
           `${r.checks.black.length === 0 ? "no black frames" : `black at ${r.checks.black.map(([s, e]) => `${s.toFixed(1)}–${e.toFixed(1)}s`).join(", ")}`}` +
           ` · ${r.checks.frames.length} shots' first and last frames in ${r.checks.frames[0] === undefined ? "(none)" : r.checks.frames[0].first.replace(/\/[^/]*$/, "")}\n`
+      // a video found by research: its clips from 1080p pieces, or (said plainly) from the 480p reading copy
+      const footage = r.footage === undefined || r.footage.length === 0
+        ? ""
+        : `  footage: ${
+          r.footage.map((f) =>
+            `V${f.video + 1} ${
+              f.scanClips === 0
+                ? `${f.height ?? "full"}p pieces (${f.clips} clips from ${f.pieces} ${f.pieces === 1 ? "piece" : "pieces"})`
+                : `WARNING ${f.scanClips} of ${f.clips + f.scanClips} clips from the ${f.scanHeight ?? 480}p reading copy: ${f.problem ?? "outside the pieces"}`
+            }`
+          ).join(" · ")
+        }\n`
       return `  ${r.video}\n  ${r.durationS.toFixed(1)}s · ${r.shots} shots · captions ${r.captions}\n` +
-        `  check sheet ${r.checkSheet ?? "(none)"}\n${checks}` +
+        `  check sheet ${r.checkSheet ?? "(none)"}\n${checks}${footage}` +
         `  rejecting goes back to the shots (the sections for a cut-down short, the moments for a ranking) with your note\n`
     }
     case "ThumbnailGate": {
