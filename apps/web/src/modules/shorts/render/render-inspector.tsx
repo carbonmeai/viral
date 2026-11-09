@@ -121,12 +121,14 @@ function FootageBlock({ footage }: { readonly footage: NonNullable<RenderedShort
   const low = lines.some((l) => l.problem !== null)
   return (
     <InspectorBlock title="Footage" action={<span className={low ? "font-normal text-danger" : "font-normal text-fg-3"}>{footageSummary(footage)}</span>}>
-      <Facts
-        rows={lines.map((l) => [
-          l.video,
-          <span key={l.video} className={l.problem === null ? undefined : "text-danger"}>{l.quality}</span>
-        ] as const)}
-      />
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 text-sm">
+        {lines.map((l) => (
+          <div key={l.video} className="contents">
+            <span className="min-w-0 truncate text-fg-2" title={l.video}>{l.video}</span>
+            <span className={l.problem === null ? "shrink-0 whitespace-nowrap" : "shrink-0 whitespace-nowrap text-danger"}>{l.quality}</span>
+          </div>
+        ))}
+      </div>
       {lines.filter((l) => l.problem !== null).map((l) => (
         <span key={l.video} className="text-xs text-danger">{l.video}: {l.problem}. Look closely before approving, or send it back to try again.</span>
       ))}
