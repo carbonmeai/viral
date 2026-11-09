@@ -253,7 +253,11 @@ def outlined(cut: Image.Image, stroke: int, color: str) -> Image.Image:
     out = Image.new("RGBA", (cut.width + 2 * pad, cut.height + 2 * pad), (0, 0, 0, 0))
     alpha = Image.new("L", out.size, 0)
     alpha.paste(cut.getchannel("A").point(lambda a: 255 if a > 100 else 0), (pad, pad))
-    ring = alpha.filter(ImageFilter.MaxFilter(stroke * 2 + 1)).filter(ImageFilter.GaussianBlur(1))
+    # a (2·stroke+1)-square max filter, as `stroke` 3×3 passes: the same pixels, about three times faster
+    ring = alpha
+    for _ in range(stroke):
+        ring = ring.filter(ImageFilter.MaxFilter(3))
+    ring = ring.filter(ImageFilter.GaussianBlur(1))
     fill = Image.new("RGBA", out.size, color)
     fill.putalpha(ring)
     out.alpha_composite(fill)
