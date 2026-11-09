@@ -6,6 +6,7 @@ import { EVAL_USAGE, evalCommand } from "./eval-command.ts"
 import { MUSIC_USAGE, musicCommand } from "./music-command.ts"
 import { PRESET_USAGE, presetCommand } from "./preset-command.ts"
 import { PROJECT_USAGE, projectCommand } from "./project-command.ts"
+import { RESEARCH_USAGE, researchCommand } from "./research-command.ts"
 import { RUN_USAGE, runCommand } from "./run-command.ts"
 import { SET_USAGE, setCommand } from "./set-command.ts"
 import { SOURCE_USAGE, sourceCommand } from "./source-command.ts"
@@ -13,7 +14,7 @@ import { TOOLS_USAGE, toolsCommand } from "./tools-command.ts"
 import { VOICE_USAGE, voiceCommand } from "./voice-command.ts"
 
 // Dev client for the local Viral server (ws://127.0.0.1:3410/rpc).
-const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, SET_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE, EVAL_USAGE].join("\n")
+const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, SET_USAGE, RESEARCH_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE, EVAL_USAGE].join("\n")
 
 const program = Effect.gen(function*() {
   switch (positionals[0]) {
@@ -21,6 +22,8 @@ const program = Effect.gen(function*() {
       return yield* sourceCommand()
     case "set":
       return yield* setCommand()
+    case "research":
+      return yield* researchCommand()
     case "project":
       return yield* projectCommand()
     case "preset":
@@ -54,6 +57,7 @@ const program = Effect.gen(function*() {
     VideoSetNotFound: (e) => Console.error(`no video set ${e.id}`),
     VideoSetInvalid: (e) => Console.error(e.message),
     VideoSetInUse: (e) => Console.error(`can't delete video set ${e.id}: it's ${e.message}`),
+    ResearchInvalid: (e) => Console.error(e.message),
     SetProposalNotFound: (e) => Console.error(`video set ${e.setId} has no proposal ${e.proposal + 1}; see \`set story\``),
     ProposalNotFound: (e) => Console.error(`source ${e.sourceId} has no proposal ${e.proposal + 1}; see \`source story\``),
     PresetNotFound: (e) => Console.error(`no preset ${e.id}`),

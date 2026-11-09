@@ -1,5 +1,6 @@
 import type { GatePayload, RunUpdate } from "@viral/contracts"
 import { Console, Effect } from "effect"
+import { describeShortlist } from "./shortlist-text.ts"
 
 // "Video 2 · " before a clip's seconds when the short draws from several videos (absent = the first); nothing for
 // one video.
@@ -65,6 +66,8 @@ const describePayload = (payload: GatePayload | null): string => {
         `${c.inset === undefined ? "" : ` · face at ${video(c.inset.source)}${c.inset.src.toFixed(1)}s`}\n` +
         `  rejecting redraws it with your note; edit <id> <config.json> re-renders your changes\n`
     }
+    case "ShortlistGate":
+      return describeShortlist(payload.shortlist)
     case "ArtifactGate":
       return `  ${payload.artifact.kind} v${payload.artifact.version}${payload.artifact.path === null ? "" : `  ${payload.artifact.path}`}\n`
   }
