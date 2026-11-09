@@ -85,7 +85,9 @@ export class MetadataStage extends Context.Service<MetadataStage, {
 
         // what the short says: the narrated script, or a cut-down short's sections in the creator's words
         const lines = project.format === "cut-down"
-          ? (yield* latest("cut-plan", CutPlan)).sections.map((s) => `CREATOR (${s.beat}): "${s.text}"`).join("\n")
+          ? (yield* latest("cut-plan", CutPlan)).sections.map((s) =>
+            several ? `CREATOR (V${(s.source ?? 0) + 1}, ${s.beat}): "${s.text}"` : `CREATOR (${s.beat}): "${s.text}"`
+          ).join("\n")
           : (yield* latest("script", Script)).beats.map((b) =>
             b._tag === "Narration" ? `NARRATOR: ${b.text}` : several ? `REAL (V${(b.source ?? 0) + 1}): "${b.quote}"` : `REAL: "${b.quote}"`
           ).join("\n")
