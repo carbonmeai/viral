@@ -16,11 +16,22 @@ test("downloads prefer 1080p, then 720p, never above 1080p", () => {
   assert.equal(choices.at(-1), "b", "and anything at all, rather than failing")
 })
 
-// Runs download_with_retry from the script with a fake download that fails the given way `fails` times.
+const scanFormat = execFileSync("python3", [join(import.meta.dirname, "fetch-source.py"), "--print-scan-format"]).toString().trim()
+
+test("a scan (a video found by research) prefers 480p, then less, and only then up to 720p", () => {
+  const choices = scanFormat.split("/")
+  assert.equal(choices[0], "bv*[height=480][vcodec^=avc1]+ba[ext=m4a]", "480p H.264 + AAC first, so the mp4 merge copies")
+  const at = (pattern: RegExp) => choices.findIndex((c) => pattern.test(c))
+  assert.ok(at(/height<=480/) < at(/height<=720/), "anything under 480p before 720p")
+  for (const choice of choices.slice(0, -1)) assert.match(choice, /height(=|<=)(480|720)/, `${choice} is capped`)
+})
+
+// Runs download_with_retry (youtube_download.py, shared by fetch-source.py and fetch-pieces.py) with a fake download that
+// fails the given way `fails` times.
 const retry = (error: string, fails: number) => {
   const script = `
 import importlib.util, json, sys
-spec = importlib.util.spec_from_file_location("fetch_source", ${JSON.stringify(join(import.meta.dirname, "fetch-source.py"))})
+spec = importlib.util.spec_from_file_location("youtube_download", ${JSON.stringify(join(import.meta.dirname, "youtube_download.py"))})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 calls, pauses = [], []
 def download():

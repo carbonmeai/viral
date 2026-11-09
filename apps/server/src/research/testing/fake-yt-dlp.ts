@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 // A fake yt-dlp for the research tests: answers `--flat-playlist ytsearch8:<query>` from the rescues search log
 // (rescues-search.txt, the skill run's real results), and a lookup of one video with its details and, when asked,
-// an English caption file. No network. Environment:
+// an English caption file. With `-f` it downloads: a scan (`-o …/source.%(ext)s`) is a small blue video, each
+// `--download-sections "*a-b"` piece a larger green one, both made with ffmpeg, with a sound that follows the video's
+// own clock (so a piece's sound matches the scan's at the same second). No network. Environment:
 //   FAKE_YT_LOG          append each call's arguments here (one JSON line per call)
 //   FAKE_YT_BLOCK        "all", or video ids / "search", answered with a 403
 //   FAKE_YT_UNAVAILABLE  video ids that are removed ("Video unavailable")
 //   FAKE_YT_LIVE         video ids that are live streams
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs"
+//   FAKE_YT_SECTIONS_403 refuse this many piece downloads (counted in FAKE_YT_LOG) with a 403
+//   FAKE_YT_DURATION     the length of a downloaded video not in the search log (default 60 s)
+import { execFileSync } from "node:child_process"
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 
 const args = process.argv.slice(2)
@@ -57,6 +62,41 @@ const url = args.at(-1) ?? ""
 const id = /v=([\w-]{11})/.exec(url)?.[1] ?? url
 if (blocked(id)) fail(`[youtube] ${id}: HTTP Error 403: Forbidden`)
 if (env("FAKE_YT_UNAVAILABLE").includes(id)) fail(`[youtube] ${id}: Video unavailable. This video has been removed by the uploader`)
+
+// a download: the scan, or the pieces asked for
+const value = (flag: string) => args[args.indexOf(flag) + 1]
+if (args.includes("-f")) {
+  const duration = all.get(id)?.duration ?? Number(process.env["FAKE_YT_DURATION"] ?? 60)
+  const sections = args.flatMap((a, i) => args[i - 1] === "--download-sections" ? [a] : [])
+  // a sound that follows the video's clock, so any stretch of it can be matched to the same stretch of the scan
+  const sound = (from: number, seconds: number) =>
+    `aevalsrc=exprs='0.3*sin(2*PI*(300+200*sin(0.37*(t+${from})))*(t+${from}))':s=44100:d=${seconds}`
+  const make = (file: string, color: string, size: string, from: number, seconds: number) =>
+    execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", `color=c=${color}:s=${size}:r=10:d=${seconds}`,
+      "-f", "lavfi", "-i", sound(from, seconds), "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", file])
+  const template = value("-o") ?? "%(id)s.%(ext)s"
+  if (sections.length === 0) {
+    const file = template.replace("%(ext)s", "mp4")
+    make(file, "0x2050FF", "128x72", 0, duration)
+    process.stdout.write(`${JSON.stringify({ title: all.get(id)?.title ?? id, channel: all.get(id)?.channel ?? "Fake Channel", uploader: null, webpage_url: url })}\n`)
+    process.exit(0)
+  }
+  const log = process.env["FAKE_YT_LOG"]
+  const asked = log !== undefined && existsSync(log)
+    ? readFileSync(log, "utf8").split("\n").filter((l) => l.includes("--download-sections")).length
+    : 0
+  if (asked <= Number(process.env["FAKE_YT_SECTIONS_403"] ?? 0)) fail(`[download] Got error: HTTP Error 403: Forbidden`)
+  for (const section of sections) {
+    const [a, b] = section.replace(/^\*/, "").split("-").map(Number) as [number, number]
+    const end = Math.min(b, duration)
+    const file = template.replace("%(section_start)s", String(a)).replace("%(section_end)s", String(b)).replace("%(ext)s", "mp4")
+    make(file, "green", "320x180", a, end - a)
+    process.stdout.write(`${JSON.stringify({ filepath: file, section_start: a, section_end: b, width: 320, height: 180 })}\n`)
+  }
+  process.exit(0)
+}
+
 const video = all.get(id)
 if (video === undefined) fail(`[youtube] ${id}: Video unavailable`)
 const v = video!

@@ -20,7 +20,9 @@ export const FetchedSource = Schema.Struct({
   duration_s: Schema.Finite,
   // the video's size: downloads are 1080p when the site has it, else 720p, never above 1080p
   width: Schema.NullOr(Schema.Int),
-  height: Schema.NullOr(Schema.Int)
+  height: Schema.NullOr(Schema.Int),
+  // a 480p copy for reading (a link found by research); the seconds a short uses are fetched in 1080p (SourcePieces)
+  scan: Schema.optionalKey(Schema.Boolean)
 })
 export type FetchedSource = typeof FetchedSource.Type
 
@@ -30,8 +32,8 @@ const Line = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("done"), ...FetchedSource.fields })
 ]))
 
-// Brings a long video into a folder as source.mp4: downloaded with yt-dlp for a URL, hard-linked or
-// copied for a local file.
+// Brings a long video into a folder as source.mp4: downloaded with yt-dlp for a URL (a 480p scan when the link
+// asks for one), hard-linked or copied for a local file.
 export class SourceFetcher extends Context.Service<SourceFetcher, {
   fetch(origin: SourceOrigin, outDir: string, progress: Progress): Effect.Effect<FetchedSource, FetchError>
 }>()("@viral/server/sources/source-fetcher/SourceFetcher") {
@@ -42,7 +44,7 @@ export class SourceFetcher extends Context.Service<SourceFetcher, {
       const path = yield* Path.Path
 
       const fetch = Effect.fn("SourceFetcher.fetch")(function*(origin: SourceOrigin, outDir: string, progress: Progress) {
-        const from = origin._tag === "Url" ? ["--url", origin.url] : ["--file", origin.path]
+        const from = origin._tag === "Url" ? ["--url", origin.url, ...(origin.scan === true ? ["--scan"] : [])] : ["--file", origin.path]
         return yield* scripts.run(
           [path.join(import.meta.dirname, "fetch-source.py"), ...from, "--out-dir", outDir],
           Schema.decodeEffect(Line),

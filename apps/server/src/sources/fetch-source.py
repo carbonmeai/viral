@@ -5,20 +5,22 @@
 """Bring a long video into a source folder as <out-dir>/source.mp4 and report its metadata.
 
 Usage:
-  uv run fetch-source.py (--url URL | --file PATH) --out-dir DIR
+  uv run fetch-source.py (--url URL [--scan] | --file PATH) --out-dir DIR
 
 A URL is downloaded with yt-dlp at 1080p, else 720p, else the best there is below that (never above 1080p:
 shorts are 1080x1920, so more only costs disk), merged to mp4; yt-dlp is an inline dependency, so nothing
 needs installing. A local file is hard-linked when it is on the same disk, copied otherwise, and remuxed
-when it isn't already an mp4.
+when it isn't already an mp4. `--scan` (videos found by research) downloads a 480p copy for reading instead, through
+Viral's own yt-dlp command (VIRAL_YT_DLP overrides it); a short then fetches only the seconds it uses in 1080p with
+fetch-pieces.py.
 
 stdout, one JSON object per line:
   {"type": "progress", "pct": 42.0}
   {"type": "error", "code": "download", "message": "..."}    (then exit 1)
   {"type": "done", "path": "source.mp4", "title": ..., "channel": ..., "url": ..., "duration_s": 2280.4,
-   "width": 1920, "height": 1080}
+   "width": 1920, "height": 1080}                             (+ "scan": true for a scan)
 
-`--print-format` prints the yt-dlp format selector and exits (for tests).
+`--print-format` / `--print-scan-format` print the yt-dlp format selectors and exit (for tests).
 """
 import argparse
 import json
@@ -29,28 +31,12 @@ import sys
 import time
 from pathlib import Path
 
-
-def emit(obj: dict) -> None:
-    print(json.dumps(obj), flush=True)
-
-
-class FetchFailure(Exception):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
+from youtube_download import (FULL_FORMAT, RETRY_PAUSE_S, SCAN_FORMAT, FetchFailure, download_with_retry, emit,  # noqa: F401
+                              is_refusal, run_yt_dlp)
 
 
-# 1080p first, then 720p, then the best under 1080p, then anything; within a height, H.264 + AAC so the merge
-# into mp4 needs no re-encode.
-FORMAT = "/".join([
-    "bv*[height=1080][vcodec^=avc1]+ba[ext=m4a]",
-    "bv*[height=1080]+ba",
-    "bv*[height=720][vcodec^=avc1]+ba[ext=m4a]",
-    "bv*[height=720]+ba",
-    "bv*[height<=1080]+ba",
-    "b[height<=1080]",
-    "b",
-])
+# 1080p first, then 720p, then the best under 1080p, then anything (FULL_FORMAT); a scan is 480p (SCAN_FORMAT).
+FORMAT = FULL_FORMAT
 
 
 def probe(path: Path) -> dict:
@@ -96,31 +82,32 @@ def _download(yt_dlp, opts: dict, url: str) -> dict:
         return ydl.extract_info(url, download=True)
 
 
-def is_refusal(message: str) -> bool:
-    """YouTube saying no (a 403), as opposed to a missing or broken video."""
-    return "HTTP Error 403" in message or "403: Forbidden" in message
+def from_url_scan(url: str, out: Path) -> dict:
+    """A scan: the 480p copy a video found by research is read from, through Viral's own yt-dlp (the one research
+    searches with). A short later fetches the seconds it uses in 1080p (fetch-pieces.py)."""
+    info: dict = {}
 
+    def line(text: str) -> None:
+        text = text.strip()
+        if text.startswith("{"):
+            info.update(json.loads(text))
+        elif text.endswith("%"):
+            try:
+                emit({"type": "progress", "pct": round(float(text[:-1]), 1)})
+            except ValueError:
+                pass
 
-RETRY_PAUSE_S = 8
-
-
-def download_with_retry(download, sleep) -> dict:
-    """Downloads once, and once more after a short pause when YouTube answers 403. A second refusal is reported as
-    `blocked`, in plain words; Viral never works around it (no cookies, proxies or other tricks)."""
-    for attempt in (1, 2):
-        try:
-            return download()
-        except Exception as error:  # yt-dlp raises DownloadError with a readable message
-            message = str(error)
-            if is_refusal(message) and attempt == 1:
-                emit({"type": "log", "message": f"YouTube refused the download (403); trying once more in {RETRY_PAUSE_S}s"})
-                sleep(RETRY_PAUSE_S)
-                continue
-            if is_refusal(message):
-                raise FetchFailure("blocked", "YouTube refused the download twice (403). Viral doesn't work around a "
-                                              "block: try again later, or replace this video.") from error
-            raise FetchFailure("download", message) from error
-    raise FetchFailure("download", "unreachable")
+    args = ["--quiet", "--progress", "--newline", "--progress-template", "download:%(progress._percent_str)s",
+            "-f", SCAN_FORMAT, "--merge-output-format", "mp4", "-o", str(out / "source.%(ext)s"),
+            "--print", "after_move:%(.{title,channel,uploader,webpage_url})j", url]
+    download_with_retry(lambda: run_yt_dlp(args, line) or info, time.sleep)
+    if not (out / "source.mp4").exists():
+        raise FetchFailure("download", "yt-dlp finished without producing source.mp4")
+    return {
+        "title": info.get("title"),
+        "channel": info.get("channel") or info.get("uploader"),
+        "url": info.get("webpage_url") or url,
+    }
 
 
 def from_file(path: Path, out: Path) -> dict:
@@ -148,20 +135,28 @@ def main() -> None:
     if sys.argv[1:] == ["--print-format"]:
         print(FORMAT)
         return
+    if sys.argv[1:] == ["--print-scan-format"]:
+        print(SCAN_FORMAT)
+        return
     ap = argparse.ArgumentParser()
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--url")
     src.add_argument("--file")
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--scan", action="store_true", help="a link: download the 480p scan instead of the whole video")
     args = ap.parse_args()
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    meta = from_url(args.url, out) if args.url else from_file(Path(args.file).expanduser().resolve(), out)
+    scan = bool(args.url and args.scan)
+    if args.url:
+        meta = from_url_scan(args.url, out) if scan else from_url(args.url, out)
+    else:
+        meta = from_file(Path(args.file).expanduser().resolve(), out)
     video = probe(out / "source.mp4")
     if video["height"]:
-        emit({"type": "log", "message": f"source video is {video['width']}x{video['height']}"})
-    emit({"type": "done", "path": "source.mp4", **meta, **video})
+        emit({"type": "log", "message": f"source video is {video['width']}x{video['height']}{' (a scan for reading)' if scan else ''}"})
+    emit({"type": "done", "path": "source.mp4", **meta, **video, **({"scan": True} if scan else {})})
 
 
 if __name__ == "__main__":

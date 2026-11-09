@@ -145,7 +145,8 @@ export class Researches extends Context.Service<Researches, {
             const own = pick.sourceId === null ? undefined : library.find((s) => s.id === pick.sourceId)
             const reused = own ?? library.find((s) => videoIdOf(s) === pick.videoId)
             if (reused !== undefined) return { ...pick, sourceId: reused.id }
-            const made = yield* sources.create({ origin: { _tag: "Url", url: youTubeUrl(pick.videoId) }, rights: "unconfirmed", rightsNote: note })
+            // read from a 480p scan; a short fetches the seconds it uses in 1080p
+            const made = yield* sources.create({ origin: { _tag: "Url", url: youTubeUrl(pick.videoId), scan: true }, rights: "unconfirmed", rightsNote: note })
             yield* sources.setDetails(made.id, pick.title, pick.channel).pipe(Effect.orDie)
             return { ...pick, sourceId: made.id }
           }))
