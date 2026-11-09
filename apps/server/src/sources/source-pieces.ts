@@ -61,9 +61,14 @@ const Line = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("done"), pieces: Schema.Int })
 ]))
 
+// the signs of a dropped connection (youtube_download.py retries these once, like a 403)
+const NETWORK = /Connection reset|timed out|Input\/output error|ffmpeg exited with code|IncompleteRead|name resolution/
+
 const plainProblem = (code: string, message: string) =>
   code === "blocked"
     ? "YouTube refused the 1080p pieces twice (403)"
+    : NETWORK.test(message)
+    ? "the connection dropped while fetching the 1080p pieces, twice"
     : `the 1080p pieces couldn't be fetched (${message.split("\n").find((l) => l.trim() !== "")?.trim().slice(0, 160) ?? code})`
 
 // The full-quality pieces of the videos read from a 480p scan (found by research): when a short is rendered, only

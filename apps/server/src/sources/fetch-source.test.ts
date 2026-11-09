@@ -48,7 +48,7 @@ except m.FetchFailure as f:
   return JSON.parse(lines.at(-1)!) as { result?: string; code?: string; message?: string; calls: number; pauses: ReadonlyArray<number> }
 }
 
-test("a 403 is retried once after a pause, a second one is reported as blocked, other failures aren't retried", () => {
+test("a 403 or a dropped connection is retried once after a pause, a second 403 is reported as blocked, other failures aren't retried", () => {
   const once = retry("ERROR: unable to download video data: HTTP Error 403: Forbidden", 1)
   assert.equal(once.result, "ok")
   assert.equal(once.calls, 2)
@@ -58,6 +58,10 @@ test("a 403 is retried once after a pause, a second one is reported as blocked, 
   assert.equal(twice.code, "blocked")
   assert.equal(twice.calls, 2, "never a third try")
   assert.match(twice.message!, /doesn't work around a block/)
+
+  const dropped = retry("ERROR: [download] 12-20: ffmpeg exited with code 8 (Connection reset by peer)", 1)
+  assert.equal(dropped.result, "ok", "a dropped connection gets one more try too")
+  assert.equal(dropped.calls, 2)
 
   const gone = retry("ERROR: [youtube] abc: Video unavailable", 1)
   assert.equal(gone.code, "download")

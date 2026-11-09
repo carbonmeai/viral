@@ -83,20 +83,28 @@ def is_refusal(message: str) -> bool:
     return "HTTP Error 403" in message or "403: Forbidden" in message
 
 
+def is_network(message: str) -> bool:
+    """A dropped connection or a stalled stream (ffmpeg cutting a piece gives up with an I/O error): worth one more try."""
+    return any(sign in message for sign in ("Connection reset", "timed out", "Input/output error", "ffmpeg exited with code",
+                                            "IncompleteRead", "Temporary failure in name resolution"))
+
+
 # the pause before the one retry; VIRAL_YT_RETRY_PAUSE_S changes it (tests use 0)
 RETRY_PAUSE_S = float(os.environ.get("VIRAL_YT_RETRY_PAUSE_S") or 8)
 
 
 def download_with_retry(download, sleep) -> dict:
-    """Downloads once, and once more after a short pause when YouTube answers 403. A second refusal is reported as
-    `blocked`, in plain words; Viral never works around it (no cookies, proxies or other tricks)."""
+    """Downloads once, and once more after a short pause when YouTube answers 403 or the connection drops. A second
+    refusal is reported as `blocked`, in plain words; Viral never works around it (no cookies, proxies or other
+    tricks)."""
     for attempt in (1, 2):
         try:
             return download()
         except Exception as error:  # yt-dlp raises DownloadError with a readable message
             message = str(error)
-            if is_refusal(message) and attempt == 1:
-                emit({"type": "log", "message": f"YouTube refused the download (403); trying once more in {RETRY_PAUSE_S:g}s"})
+            if (is_refusal(message) or is_network(message)) and attempt == 1:
+                why = "YouTube refused the download (403)" if is_refusal(message) else "the connection dropped"
+                emit({"type": "log", "message": f"{why}; trying once more in {RETRY_PAUSE_S:g}s"})
                 sleep(RETRY_PAUSE_S)
                 continue
             if is_refusal(message):
