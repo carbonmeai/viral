@@ -88,7 +88,8 @@ export class MomentsStage extends Context.Service<MomentsStage, {
         const research = Option.flatMapNullishOr(set, (s) => s.research)
         const maxSeconds = rankingMaxSeconds(Option.match(research, { onNone: () => null, onSome: (r) => r.length }))
         const ranking: ReadonlyArray<RankingVideo> = yield* Effect.forEach(sources, (s, i) =>
-          Effect.map(frames.ofVideo(s.source.id, videos[i]!), (framing) => ({ words: s.words, seconds: s.seconds, excluded: s.excluded, framing })))
+          Effect.map(frames.ofVideo(s.source.id, videos[i]!), (framing) => ({ words: s.words, seconds: s.seconds, excluded: s.excluded, framing })),
+          { concurrency: 4 })
         return { project, sources, videos, ranking, maxSeconds, research: Option.getOrNull(research) }
       })
       type Ctx = Effect.Success<ReturnType<typeof context>>

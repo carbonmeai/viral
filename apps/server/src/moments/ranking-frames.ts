@@ -112,6 +112,7 @@ export class RankingFrames extends Context.Service<RankingFrames, {
             bySource.set(source, [...(bySource.get(source) ?? []), { start: shot.start, end: shot.end }])
           }
         }
+        // one detect-framing run per video, a few at once
         yield* Effect.forEach([...bySource], ([source, shots]) => {
           const video = videos[source]
           if (video === undefined) return Effect.void
@@ -122,7 +123,7 @@ export class RankingFrames extends Context.Service<RankingFrames, {
             }))),
             Effect.ignore
           )
-        }, { discard: true })
+        }, { discard: true, concurrency: 4 })
         return found
       })
 
