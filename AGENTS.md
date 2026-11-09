@@ -90,7 +90,10 @@ apps/server/src/
                        overrides); otherwise the layer reports "fallback: needs rembg models" and the stage fetches
                        them with progress and draws again (thumbnail-draw.ts). Anything else falls back to a framed
                        inset; VIRAL_CUTOUT=off forces that. Once approved (the stage's `approved` hook) the jpg is published as
-                       ~/.viral/renders/<slug>.jpg
+                       ~/.viral/renders/<slug>.jpg. A short from several videos: the agent sees every video's sheets and
+                       answers with a 1-based `video` per layer (ProposedThumbnail → ThumbnailProposal `source`); the
+                       config keeps V1 as `source`, the others in `sources` and a layer `source` index (all absent for one
+                       video, so single-video configs are byte-identical), and each layer is cut from its own video
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/
@@ -114,9 +117,15 @@ apps/server/src/
                        videos-brief.ts lays several videos out for an agent (V labels, "[V2 12.0–13.5] text" lines,
                        whole transcripts under ~160k characters, else outlines + the transcript tools); agents
                        answer with 1-based `video` numbers (ProposedScript, ProposedShots), stored as 0-based
-                       `source`. Narrated shorts use every video (script, shots, assemble, render, metadata);
-                       sections and the thumbnail still see V1 (M5, M6). GetShortWorkspace's `videos` lists each
-                       one (position = colour index). A short's optional
+                       `source`. Every step uses every video (script, shots, sections, assemble, render, metadata,
+                       thumbnail). GetShortWorkspace's `videos` lists each one (position = colour index).
+                       AddSourceToProject / RemoveSourceFromProject (CLI `project add-video | remove-video`): adding
+                       re-runs nothing; a short's run first reads its videos after V1 that aren't read (prerequisites,
+                       through ads). Removal is refused (ProjectSourceInUse, video-uses.ts names the steps) while the
+                       latest script, shots, sections or thumbnail uses the video or a video after it (clips name
+                       videos by place), while a run is running, and for the only video. credits.ts: the channels whose
+                       footage plays, in order of first appearance (appearanceOrder over the shot plan or sections;
+                       "I made it" videos get none), the same in the drawn credit, the post text and <slug>.md. A short's optional
                        brief (what it should achieve; CreateProject/CreateProjectFromProposal, SetProjectBrief) goes
                        first in the script, shots, sections, thumbnail and metadata prompts (creator-brief.ts)
   presets/             style profiles; one default, seeded on first start. Edits (UpdatePreset) and renames
@@ -216,7 +225,10 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        colour dot and a short name from its title ("Heidi Klum", else "Video 2"; set-values.ts
                        videoColor/videoNames, video-badge.tsx; the editor's names come from short-videos.tsx), with
                        the full title on hover; single-video shorts show none. The title bar's videos chip
-                       (multi-video-note.tsx) says what still uses the first video only (thumbnail; cut-down shorts)
+                       (videos-menu.tsx) lists the short's videos, removes one, and opens "Add a video to this short"
+                       (add-video-dialog.tsx: the library, or a link/file with its rights; just add, or add and
+                       re-run from Script/Sections). With several videos the timeline has a thin strip per video
+                       (SourceStrip) marking which stretches of the short come from it
                        shorts/: a short's editor, one fixed frame for every step (editor-frame.tsx: step bar, stage,
                        inspector, timeline), from GetShortWorkspace and the run followed live. The title bar's Brief
                        button edits the brief (just save, or save and re-run from Script/Sections). Script and Voice
@@ -246,7 +258,8 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        text (choose or write a title, edit the description and hashtags from ⋯, copy it all; saved on
                        the short with SetPostText), "Publish again" with what it will update, the files, and a
                        rights reminder. thumbnail/: the
-                       thumbnail in a phone frame, its moments, and word edits checked with CheckThumbnailEdit.
+                       thumbnail in a phone frame, its moments (each with its video's dot and short name), and word
+                       edits checked with CheckThumbnailEdit.
                        sections/: the Sections step of a cut-down short (preview or storyboard of the sections in
                        order, each playable from its own video; inspector: words, beat, start/end snapped to that
                        video's words, framing, order, remove, add a line found in any video; edits checked with
