@@ -24,6 +24,7 @@ line for the server to decode:
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -35,6 +36,9 @@ from PIL import Image, ImageDraw, ImageFont
 from source_pieces import Pieces
 
 W, H, FPS = 1080, 1920, 30
+# x264's speed preset; the tests set VIRAL_X264_PRESET=ultrafast (what they check doesn't depend on it), the app and
+# the goldens never do
+X264_PRESET = os.environ.get("VIRAL_X264_PRESET") or "medium"
 FONT_CANDIDATES = [
     "/System/Library/Fonts/Supplemental/Arial Black.ttf",
     "/System/Library/Fonts/Supplemental/Impact.ttf",
@@ -144,7 +148,7 @@ def cut_section(src: str, start: float, end: float, vf: str, out: Path) -> None:
         "ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-i", src, "-t", f"{dur:.3f}",
         "-filter_complex", f"[0:v]{vf}[v];[0:a]afade=t=in:d={fade},afade=t=out:st={dur - fade:.3f}:d={fade},aresample=48000[a]",
         "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-ac", "2", str(out),
     ])
 
@@ -396,7 +400,7 @@ def main() -> None:
         if plan.get("lufs") is not None else ["-c:a", "copy"]
     if graph:
         run(["ffmpeg", "-y", "-loglevel", "error", *inputs, "-filter_complex", ";".join(graph),
-             "-map", f"[{last}]", "-map", "0:a", "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+             "-map", f"[{last}]", "-map", "0:a", "-c:v", "libx264", "-preset", X264_PRESET, "-crf", "19",
              "-pix_fmt", "yuv420p", "-r", str(FPS), *audio, "-movflags", "+faststart", "-t", f"{total:.3f}", str(out)])
     else:
         run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(joined), "-map", "0:v", "-map", "0:a", "-c:v", "copy",

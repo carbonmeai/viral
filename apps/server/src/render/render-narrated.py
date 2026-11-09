@@ -36,6 +36,9 @@ from music_bed import arrangement_of, build_music  # needs numpy (in this script
 from source_pieces import Pieces
 
 FPS = 30
+# x264's speed preset; the tests set VIRAL_X264_PRESET=ultrafast (what they check doesn't depend on it), the app and
+# the goldens never do
+X264_PRESET = os.environ.get("VIRAL_X264_PRESET") or "medium"
 # Caption font. Arial Rounded Bold is macOS-only and can't be redistributed; set VIRAL_CAPTION_FONT
 # to an open-licensed font file on other platforms.
 FONTS = [
@@ -143,7 +146,7 @@ def cut(src: str, start: float, dur: float, lay: Layout, out: Path, shot: dict, 
         cmd += ["-map", "0:a", "-af", "aresample=48000", "-c:a", "aac", "-b:a", "192k", "-ac", "2"]
     else:
         cmd += ["-an"]
-    run(cmd + ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-r", str(FPS), str(out)])
+    run(cmd + ["-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-r", str(FPS), str(out)])
 
 
 # ---------------------------------------------------------------- overlays
@@ -471,7 +474,7 @@ def main() -> None:
             if ins["at"] - prev > 0.02:
                 piece = tmp / f"narr_{k:02d}.mp4"
                 run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{prev:.3f}", "-to", f"{ins['at']:.3f}",
-                     "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
+                     "-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
                 segs.append(piece)
             s0, e0 = float(ins["start"]), float(ins["end"])
             v = video_of(ins, f"insert {k}")
@@ -488,7 +491,7 @@ def main() -> None:
             prev = ins["at"]
         tail = tmp / "narr_tail.mp4"
         run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{prev:.3f}",
-             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(tail)])
+             "-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(tail)])
         segs.append(tail)
         caption_words.sort(key=lambda w: w["s"])
     t = shifted(narr_end)
@@ -513,7 +516,7 @@ def main() -> None:
         ins = sum((["-i", str(p)] for p in segs), [])
         fc = "".join(f"[{i}:v][{i}:a]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[v][a]"
         run(["ffmpeg", "-y", "-loglevel", "error", *ins, "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
-             "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-c:a", "aac", "-b:a", "192k", str(joined)])
+             "-c:v", "libx264", "-crf", "18", "-preset", X264_PRESET, "-c:a", "aac", "-b:a", "192k", str(joined)])
     else:
         shutil.copy(narr, joined)
 
@@ -614,7 +617,7 @@ def main() -> None:
     if graph:
         vmap = ["-map", f"[{last}]"] if last != "0:v" else ["-map", "0:v"]
         run(["ffmpeg", "-y", "-loglevel", "error", *inputs, "-filter_complex", ";".join(graph),
-             *vmap, *audio_map, "-c:v", "libx264", "-crf", "19", "-preset", "medium",
+             *vmap, *audio_map, "-c:v", "libx264", "-crf", "19", "-preset", X264_PRESET,
              "-pix_fmt", "yuv420p", "-r", str(FPS), *audio_codec, "-movflags", "+faststart",
              "-t", f"{total:.3f}", str(out)])
     else:

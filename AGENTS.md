@@ -442,7 +442,7 @@ bun run dev:web       # the UI alone at http://127.0.0.1:5733 (against a running
 bun run cli tools install # download the missing tools (also happens on the app's first run)
 bun run package:desktop # build the UI and Viral.app (apps/desktop/release/mac-arm64, unsigned)
 bun run cli           # dev client; prints every command
-bun run test          # node --test over apps and packages
+bun run test          # node --test over apps and packages (8 files at a time; renders with x264 ultrafast)
 bun run cli eval all --models claude-cli,codex,gateway:openai/gpt-6-luna --runs 2 --budget 3 --plan-runs 8
                       # agent-stage eval vs the CLI baseline → ~/.viral/evals/<date>-<stages>/eval.html
                       # (spend recorded in your library; --include <earlier eval dirs> combines the pages)

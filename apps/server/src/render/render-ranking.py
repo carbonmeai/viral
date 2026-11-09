@@ -28,6 +28,7 @@ object per stdout line:
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -39,6 +40,9 @@ from PIL import Image, ImageDraw, ImageFont
 from source_pieces import Pieces
 
 FPS = 30
+# x264's speed preset; the tests set VIRAL_X264_PRESET=ultrafast (what they check doesn't depend on it), the app and
+# the goldens never do
+X264_PRESET = os.environ.get("VIRAL_X264_PRESET") or "medium"
 BOLD = [
     "/System/Library/Fonts/Supplemental/Arial Black.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -197,7 +201,7 @@ def segment(src: str, info: dict, shot: dict, W: int, H: int, aspect: float, png
     af = (f"{a_in}aresample=48000,aformat=channel_layouts=stereo,"
           f"afade=t=in:d={fade:.3f},afade=t=out:st={max(0.0, dur - fade):.3f}:d={fade:.3f}[a]")
     run(["ffmpeg", "-y", "-loglevel", "error", *inputs, "-filter_complex", f"{vf};{af}", "-map", "[v]", "-map", "[a]",
-         "-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-r", str(FPS),
+         "-t", f"{dur:.3f}", "-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-r", str(FPS),
          "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", str(out)])
 
 
