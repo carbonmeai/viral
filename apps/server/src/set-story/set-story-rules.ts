@@ -1,4 +1,4 @@
-import { APPROACHES, type ProposedSetStory, type SetStory, type SourceIndex } from "@viral/contracts"
+import { APPROACHES, type ProposedSetStory, type SetStory, SINGLE_VIDEO_APPROACHES, type SourceIndex } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 import { type SourceContext, sourceLabel } from "../projects/source-context.ts"
 import { locateQuote } from "../transcribe/quote-match.ts"
@@ -13,8 +13,13 @@ const toIndex = (video: number) => (video - 1) as SourceIndex
 // Checks a proposed set story against the set's videos (one context each, V1 first): every beat is in a video of
 // the set and inside it, its quotes are snapped to that video's own transcript and kept out of that video's ads,
 // and there are three proposals with different approaches from the catalog, each using at least two videos that
-// each have a beat.
-export const checkSetStory = (proposed: ProposedSetStory, videos: ReadonlyArray<SourceContext>): Checked<SetStory> => {
+// each have a beat. A set found from an idea that reads as a ranking (`ranking`) has exactly one ranking among them,
+// using every video; other sets have none.
+export const checkSetStory = (
+  proposed: ProposedSetStory,
+  videos: ReadonlyArray<SourceContext>,
+  options: { readonly ranking?: boolean } = {}
+): Checked<SetStory> => {
   const problems: Array<string> = []
   const range = `V1–${sourceLabel(videos.length - 1)}`
   const known = (video: number) => video >= 1 && video <= videos.length
@@ -56,11 +61,17 @@ export const checkSetStory = (proposed: ProposedSetStory, videos: ReadonlyArray<
   if (proposed.proposals.length !== PROPOSALS) problems.push(`there are ${proposed.proposals.length} proposals; give exactly ${PROPOSALS}`)
   const approaches = proposed.proposals.map((p) => p.approach)
   if (new Set(approaches).size !== approaches.length) problems.push("each proposal must use a different approach")
+  const rankings = proposed.proposals.filter((p) => p.approach === "ranking")
+  if (options.ranking === true && rankings.length !== 1) problems.push("the idea is a ranking: make exactly one proposal a ranking")
+  if (options.ranking !== true && rankings.length > 0) problems.push("a ranking is only proposed for an idea that reads as one; propose another approach")
   const proposals = proposed.proposals.map((p, i) => {
     const name = `proposal ${i + 1} (${p.title})`
     if (!(p.approach in APPROACHES)) problems.push(`${name}: "${p.approach}" isn't an approach in the catalog`)
     for (const [axis, score] of Object.entries(p.scores)) {
       if (score < 0 || score > 10) problems.push(`${name}: ${axis} is ${score}; scores are 0–10`)
+    }
+    if (p.approach === "ranking" && new Set(p.videos.filter(known)).size !== videos.length) {
+      problems.push(`${name}: a ranking has an entry for every video; list all ${videos.length}`)
     }
     const unknown = p.videos.filter((v) => !known(v))
     if (unknown.length > 0) problems.push(`${name}: there's no ${unknown.map((v) => `V${v}`).join(", ")}; the set's videos are ${range}`)

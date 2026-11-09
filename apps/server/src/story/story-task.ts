@@ -1,4 +1,4 @@
-import { ApproachName, APPROACHES, StoryMap } from "@viral/contracts"
+import { APPROACHES, SINGLE_VIDEO_APPROACHES, StoryMap } from "@viral/contracts"
 import { approachSkill } from "../agent-skills/skill-pack.ts"
 import type { CheckedTask } from "../agent-session/run-checked.ts"
 import { PROPOSALS } from "./story-rules.ts"
@@ -32,7 +32,8 @@ export interface StoryInput {
 
 // The story stage's agent task, shared by the stage and the evals.
 export const storyTask = (input: StoryInput): CheckedTask<typeof StoryMap> => {
-  const catalog = Object.entries(APPROACHES)
+  // a ranking needs an entry per video, so a single video's catalog leaves it out
+  const catalog = SINGLE_VIDEO_APPROACHES.map((name) => [name, APPROACHES[name]] as const)
     .map(([name, d]) => `- ${name}: hook ${d.hook}, voices ${d.voices}, shape ${d.shape}, format ${d.format}`)
     .join("\n")
   const brief = [
@@ -49,7 +50,7 @@ export const storyTask = (input: StoryInput): CheckedTask<typeof StoryMap> => {
   return {
     stage: "story",
     instructions: STORY_PROMPT,
-    skills: ["story-arc", ...ApproachName.literals.map(approachSkill)],
+    skills: ["story-arc", ...SINGLE_VIDEO_APPROACHES.map(approachSkill)],
     brief,
     output: { tool: "propose_story", description: "Submit the story map and the three proposals.", schema: StoryMap },
     defaultModel: null,

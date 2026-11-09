@@ -8,7 +8,7 @@ const w = (word: string, s: number) => ({ w: word, s, e: s + 0.3 })
 const v1 = { words: [w("It", 10), w("worked.", 10.3), w("Use", 100), w("code", 100.3)], seconds: 600, excluded: [{ start: 95, end: 110 }] }
 const v2 = { words: [w("It", 40), w("worked.", 40.3), w("Never", 300), w("again.", 300.3)], seconds: 400, excluded: [{ start: 290, end: 310 }] }
 const scores = { openLoop: 8, completionCompulsion: 7, universalRelatability: 9, shareability: 6 }
-const proposal = (approach: "question-recap" | "claim-interleaved" | "cut-down", videos: ReadonlyArray<number>) =>
+const proposal = (approach: "question-recap" | "claim-interleaved" | "cut-down" | "ranking", videos: ReadonlyArray<number>) =>
   ({ approach, title: approach, hook: "h", why: "w", scores, videos })
 
 test("snaps each quote in its own video and stores set positions", () => {
@@ -69,4 +69,23 @@ test("three proposals with different approaches", () => {
   const text = checkSetStory(story, [v1, v2]).problems.join("\n")
   assert.match(text, /there are 2 proposals; give exactly 3/)
   assert.match(text, /different approach/)
+})
+
+test("a set found from a ranking idea has exactly one ranking, with every video; other sets have none", () => {
+  const story = (proposals: ProposedSetStory["proposals"]): ProposedSetStory => ({
+    summary: "s",
+    videos: [{ video: 1, summary: "a" }, { video: 2, summary: "b" }],
+    beats: [
+      { video: 1, beat: "result", start: 5, end: 15, summary: "first", quotes: [] },
+      { video: 2, beat: "result", start: 35, end: 45, summary: "second", quotes: [] }
+    ],
+    proposals
+  })
+  const withRanking = story([proposal("ranking", [1, 2]), proposal("question-recap", [1, 2]), proposal("cut-down", [1, 2])])
+  assert.deepEqual(checkSetStory(withRanking, [v1, v2], { ranking: true }).problems, [])
+  assert.match(checkSetStory(withRanking, [v1, v2]).problems.join("\n"), /only proposed for an idea that reads as one/)
+  const none = story([proposal("claim-interleaved", [1, 2]), proposal("question-recap", [1, 2]), proposal("cut-down", [1, 2])])
+  assert.match(checkSetStory(none, [v1, v2], { ranking: true }).problems.join("\n"), /make exactly one proposal a ranking/)
+  const partial = story([proposal("ranking", [1]), proposal("question-recap", [1, 2]), proposal("cut-down", [1, 2])])
+  assert.match(checkSetStory(partial, [v1, v2], { ranking: true }).problems.join("\n"), /entry for every video; list all 2/)
 })

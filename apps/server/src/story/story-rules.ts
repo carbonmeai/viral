@@ -1,4 +1,4 @@
-import { APPROACHES, type StoryMap, type TranscriptWord } from "@viral/contracts"
+import { APPROACHES, SINGLE_VIDEO_APPROACHES, type StoryMap, type TranscriptWord } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 import { locateQuote } from "../transcribe/quote-match.ts"
 
@@ -32,6 +32,7 @@ export const checkStory = (map: StoryMap, words: ReadonlyArray<TranscriptWord>, 
   if (new Set(approaches).size !== approaches.length) problems.push("each proposal must use a different approach")
   for (const p of map.proposals) {
     if (!(p.approach in APPROACHES)) problems.push(`"${p.approach}" isn't an approach in the catalog`)
+    else if (!SINGLE_VIDEO_APPROACHES.includes(p.approach)) problems.push(`"${p.approach}" needs several videos; propose one from the catalog`)
     for (const [axis, score] of Object.entries(p.scores)) {
       if (score < 0 || score > 10) problems.push(`${p.approach}: ${axis} is ${score}; scores are 0–10`)
     }

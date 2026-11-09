@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type ArtifactOwner, type SourceSetId, StoryMap } from "@viral/contracts"
+import { type ArtifactOwner, looksLikeRanking, type SourceSetId, StoryMap } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Path, Schema } from "effect"
 import { ContactSheetSet } from "../contact-sheet/contact-sheets.ts"
 import { AgentSession } from "../agent-session/agent-session.ts"
@@ -69,13 +69,16 @@ export class SetStoryStage extends Context.Service<SetStoryStage, {
             }
           }))
 
+        // a set found from a ranking idea ("top 10…") gets a ranking among its proposals
+        const ranking = set.research !== null && looksLikeRanking(set.research.idea) && members.length >= 2
         const story = yield* runChecked(agent, ctx, setStoryTask({
           brief: set.brief,
           fromIdea: set.research !== null,
+          ranking,
           videos,
           readDirs: videos.flatMap((v) => v.sheetsDir === null ? [] : [v.sheetsDir]),
           tools: transcriptTools(videos)
-        }), (proposed) => Effect.succeed(checkSetStory(proposed, members))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        }), (proposed) => Effect.succeed(checkSetStory(proposed, members, { ranking }))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
 
         const slot = yield* artifacts.allocate(ctx.owner, "set-story")
         yield* artifacts.record(slot, { data: story, path: null, stageRunId: ctx.stageRunId })
