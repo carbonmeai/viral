@@ -20,7 +20,8 @@ apps/server/src/
   home/                ~/.viral paths ($VIRAL_HOME overrides; tests use a temp dir)
   persistence/         SQLite client, foreign keys on, migrations (never edit a shipped one; add a new one). Migrations
                        run with foreign keys off, so one can rebuild a table the SQLite way; it checks the rows and
-                       keys itself before it commits (0002-multi-video.ts upgrades libraries in place)
+                       keys itself before it commits (0002-multi-video.ts upgrades libraries in place; 0005-ranking.ts
+                       rebuilds projects the same way so its format CHECK allows 'ranking')
   sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short that uses them;
                        source-stages.ts defines the video-level stages (source, transcribe, contact-sheet).
                        Links download at 1080p, else 720p, never higher; the size is kept in source-video. A video a
@@ -44,7 +45,11 @@ apps/server/src/
                        `read_transcript` (transcript-tools.ts). It answers with V numbers (1-based); checkSetStory
                        snaps each quote in its own video, keeps each video's ads out, needs every proposal to use ≥2
                        videos that each have a beat, and stores set positions (0-based `source`/`sources`). For a
-                       set found from an idea it also says what a video is `missing` ("no after"), for Replace
+                       set found from an idea it also says what a video is `missing` ("no after"), for Replace this
+                       video. A set found from an idea that reads as a ranking (looksLikeRanking) gets exactly one
+                       `ranking` proposal using every video; other sets and single videos never get one
+                       (SINGLE_VIDEO_APPROACHES). "Make this short" can make any proposal as a ranking
+                       (CreateProjectFromSetProposal `approach`; every video in the set)
   research/            research mode (R1): a video set from an idea (source_set_research: idea, 3/5/7/10 videos, length
                        60|180|any) that starts with no videos; its run is research → (each video read) → set-story.
                        The research stage (Haiku by default, `finding-source-videos` skill) has `search_youtube`
@@ -67,7 +72,9 @@ apps/server/src/
                        deterministic, so a short re-renders in another style without agent work. A narrated short
                        from several videos lists V2… in the plan's `sources` and their ads in `exclude_by_source`;
                        the credit names each channel that isn't yours (projects/credits.ts, "Video: A · B").
-                       Cut-down still stops on a section from another video (M5)
+                       Cut-down still stops on a section from another video (M5). A ranking's moments + preset →
+                       assemble-ranking.ts → ranking.json (each entry's shots from its own video, the style's canvas
+                       and loudness, `via` only when the style's rankingVia is on; no music or captions)
   music-bed/           a short's own music bed: the library holds raw songs only, never changed. Assemble fits the
                        short's song to it (render/fit-music.py: the groove looped in whole bars so the song's drop
                        lands on the drop word) and records a `music-bed` artifact (the wav + which parts of the song
@@ -87,7 +94,9 @@ apps/server/src/
                        automatic with a note. Cut-down shorts have no bed
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
                        srt and <slug>.md into ~/.viral/renders/. Several videos: each one labelled with what it
-                       brings (the set story's line, else its own story), and the credit lists every channel
+                       brings (the set story's line, else its own story), and the credit lists every channel. A
+                       ranking: "Top 5 … (Before & After)" style, the description must end "Wait for #1.", and the
+                       notes say "Footage:" with a sources list (each rank's channel and link, credits.ts)
                        publishing.ts (Publishing): the text you post with (a title you chose among the agent's, or
                        typed: 1–100 chars, YouTube's limit; your description and hashtags) is kept per short under
                        project.<id>.publish.post (new agent metadata clears it); GetPublishStatus says what "Publish
@@ -110,7 +119,9 @@ apps/server/src/
                        ~/.viral/renders/<slug>.jpg. A short from several videos: the agent sees every video's sheets and
                        answers with a 1-based `video` per layer (ProposedThumbnail → ThumbnailProposal `source`); the
                        config keeps V1 as `source`, the others in `sources` and a layer `source` index (all absent for one
-                       video, so single-video configs are byte-identical), and each layer is cut from its own video
+                       video, so single-video configs are byte-identical), and each layer is cut from its own video.
+                       A ranking (ranking-thumbnail.ts): bold, the hero inside #1's after, the face layer inside #1's
+                       before (drawn as a tilted inset), "TOP N" over the subject
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
   tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/
@@ -177,6 +188,21 @@ apps/server/src/
                        outlines + `search_transcript`/`read_transcript`), answers with each section's `video` (V number;
                        stored as the 0-based `source`), and each section is snapped and checked in its own video; each
                        storyboard frame comes from its own video
+  moments/             the moments stage (ranking shorts, R2; gated "Approve the moments?"): a vision agent
+                       (approach-ranking skill) gives every video one entry: before → care → after shots (#1 may take a
+                       fourth), the rank, a label (≤24 chars), one emoji and the title (lead + red accent). Its brief has
+                       each video's transcript cut into whole sentences, the research shortlist's part and expected
+                       moments, the detected framing and the overview sheets; `contact_sheet`, `preview_moments`.
+                       moment-rules.ts snaps every cut to whole sentences (the skill's speech.py: a pause over 1.5 s ends
+                       one; stretch ≤3 s back / 4 s on, else move inward; an unfixable cut is a problem) and checks ranks
+                       1…N, one video per entry, roles in order, ≥0.4 s in, excluded ranges, #1 longest and last, total ≤
+                       the research's length (60 s, else 180 s); the play order is shuffled with #1 last (…3, 2, 1).
+                       ranking-frames.ts: detect-framing.py decides per moment (upright phone footage inside a
+                       widescreen file fills, else a 4:3 window; a video's majority kept in settings), and every shot's
+                       first and last frame is drawn (storyboard.py) and compared (frame-stats.py): black ends are
+                       problems, ends that look like different scenes go back until the agent sets `framesChecked`, and
+                       stay in the plan's `warnings` for you. A ranking run is moments → assemble → render → metadata →
+                       thumbnail; CheckRankingEdit checks and snaps an editor change the same way
   shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
                        asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
                        script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate.
@@ -217,8 +243,9 @@ apps/server/src/
                        short, and the plan's characters used/left and reset date (GetElevenLabsPlan: GET /v1/user/subscription,
                        read-only, cached a minute; needs the key's User › Read permission). A cost estimate shows only when
                        the plan's price is known (its next invoice, in USD)
-  render/              the render stage (gated; a rejection goes back to the shots, or the sections for a
-                       cut-down short, with your note, via the stage's `rejectTo`) + render engine + its Python
+  render/              the render stage (gated; a rejection goes back to the shots, the sections for a cut-down
+                       short or the moments for a ranking, with your note, via the stage's `rejectTo`) + render engine
+                       + its Python
                        scripts (render-short.py is the skill's cut-down renderer: word-snapped sections, crop or
                        blurred fill, 3-word captions, hook title card, credit; it plays each section from its own
                        video (`sources` V2…, `exclude_by_source`, a section's `source`), single-video plans unchanged;
@@ -228,6 +255,12 @@ apps/server/src/
                        headline, chunk/quote captions, labels, credit). render-narrated.py plays each clip from its
                        own video (`source` index into [source, ...sources]) and checks it against that video's ranges;
                        render-narrated-videos.test.ts renders two generated videos and checks colour and pitch.
+                       render-ranking.py is the skill's final ranking style (title with a red accent, the numbered list
+                       1 gold / 2 silver / 3 bronze / last red filling in with label + emoji as each entry plays, each
+                       clip's own sound to the style's LUFS, window or fill framing, the videos' own subtitles kept, an
+                       optional "via <channel>" line); after the render it records `checks` (blackdetect, every shot's
+                       first/last frame in checks/, measured LUFS) on the RenderedShort. render-ranking-videos.test.ts
+                       renders generated videos (one with no audio) on a small canvas.
                        Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
@@ -292,6 +325,17 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        video's words, framing, order, remove, add a line found in any video; edits checked with
                        CheckSectionsEdit). Several videos: each section carries its video's dot + short name, the
                        timeline tints sections by video with one "from" row per video
+                       ranking/: the Ranking step of a ranking short (Ranking → Render → Publish → Thumbnail): the stage
+                       plays the chosen entry's shots in their framing (fill, or a 4:3 window over a blur) under a CSS
+                       copy of the title and the list, filled for every entry played so far; the inspector's ranks
+                       (#1 first: dot + short name, label, emoji, before/care/after stills, up/down, ⋯ Remove / Open
+                       the video), a shot's moment swapped with the frame picker (its length kept) or nudged
+                       (Detailed), "Shuffle again" with #1 last (ranking-values.ts ports the server's shuffle) and the
+                       order and title in Detailed; every change goes through CheckRankingEdit (snapped to whole
+                       sentences) and answers the gate as one Edit. The Render step shows a ranking's checks
+                       (loudness, black frames, each shot's first/last frame) and sends back to Ranking.
+                       make-short-dialog.tsx can offer "As suggested" / "Ranking" (SET_APPROACHES) and passes the choice
+                       to onMake; the Styles editor has the "Ranking credit" switch (rankingVia)
                        library/: Styles (cards with a CSS 9:16 preview of each style; the editor at ?edit=<id>, whose
                        Voice group holds the style's voice and pace), Music (songs with a decoded waveform and drop,
                        kind and rights, add songs or a folder; "Used by" opens each short's editor) and Voices (free
