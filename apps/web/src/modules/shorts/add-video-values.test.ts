@@ -10,6 +10,7 @@ test("only videos the short doesn't have can be added; a link or a full path can
   assert.deepEqual(typedVideo("/Users/me/clip.mp4"), { _tag: "File", path: "/Users/me/clip.mp4" })
   assert.equal(typedVideo("clip.mp4"), null)
   assert.equal(rerunStep("cut-down"), "sections")
+  assert.equal(rerunStep("ranking"), "moments")
   assert.equal(rerunStep("narrated"), "script")
 })
 

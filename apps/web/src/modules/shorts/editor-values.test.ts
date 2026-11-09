@@ -18,6 +18,7 @@ test("each step's state comes from its stages, and the editor opens where you're
   assert.equal(openingStep(steps, states), "shots")
   assert.equal(openingStep(steps, stepStates(steps, [])), "script")
   assert.deepEqual(editorSteps("cut-down").map((s) => s.id), ["sections", "render", "publish", "thumbnail"])
+  assert.deepEqual(editorSteps("ranking").map((s) => s.name), ["Ranking", "Render", "Publish", "Thumbnail"])
 })
 
 // "This guy tasted it. It hurt." at half a second a word

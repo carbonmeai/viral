@@ -9,7 +9,8 @@ import { useEffect, useState } from "react"
 import { setProjectBrief, startShortRun } from "./shorts-api.ts"
 
 // The step a changed brief re-runs from: the first agent step of the short.
-const firstStep = (format: Project["format"]) => format === "cut-down" ? "sections" as const : "script" as const
+const firstStep = (format: Project["format"]) =>
+  format === "cut-down" ? "sections" as const : format === "ranking" ? "moments" as const : "script" as const
 
 // The short's brief, in the title bar on every step: what it should achieve, in your words. Changing it can
 // re-run the short from its first step, or just be saved for the next run.
@@ -66,7 +67,7 @@ export function BriefButton({ project, running, onSaved }: {
             <Button disabled={busy || !changed} onClick={() => submit(false)}>{running ? "Save" : "Just save"}</Button>
             {running ? null : (
               <Button variant="primary" disabled={busy || !changed} onClick={() => submit(true)}>
-                Save and re-run from {from === "script" ? "Script" : "Sections"}
+                Save and re-run from {from === "script" ? "Script" : from === "moments" ? "Ranking" : "Sections"}
               </Button>
             )}
           </>
@@ -79,8 +80,8 @@ export function BriefButton({ project, running, onSaved }: {
           maxLength={600}
           onChange={(e) => setText(e.currentTarget.value)}
         />
-        {running ? <p className="m-0 text-xs text-fg-2">A run is going now, so the brief is saved for the next run. Re-run from {from === "script" ? "Script" : "Sections"} once it's done.</p> : null}
-        {!running && changed ? <p className="m-0 text-xs text-fg-2">Re-running makes a new {from === "script" ? "script" : "set of sections"} and everything after it; what's approved now stays in the history.</p> : null}
+        {running ? <p className="m-0 text-xs text-fg-2">A run is going now, so the brief is saved for the next run. Re-run from {from === "script" ? "Script" : from === "moments" ? "Ranking" : "Sections"} once it's done.</p> : null}
+        {!running && changed ? <p className="m-0 text-xs text-fg-2">Re-running makes a new {from === "script" ? "script" : from === "moments" ? "ranking" : "set of sections"} and everything after it; what's approved now stays in the history.</p> : null}
         {error === null ? null : <p className="m-0 text-xs text-danger">{error}</p>}
       </Dialog>
     </>

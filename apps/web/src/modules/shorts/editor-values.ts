@@ -2,8 +2,9 @@ import type { ProjectFormat, RunRequest, Script, StageName, StageRun, Transcript
 
 // The editor's steps. A step can cover more than one stage: Render is assemble then render; Publish is metadata.
 // Music is the bed assemble fits (narrated shorts only; a cut-down short has no bed, so no Music step).
-export type EditorStepId = "script" | "sections" | "voice" | "shots" | "music" | "render" | "publish" | "thumbnail"
-export const EDITOR_STEP_IDS: ReadonlyArray<EditorStepId> = ["script", "sections", "voice", "shots", "music", "render", "publish", "thumbnail"]
+// A ranking's first step is its moments, shown as "Ranking".
+export type EditorStepId = "script" | "sections" | "moments" | "voice" | "shots" | "music" | "render" | "publish" | "thumbnail"
+export const EDITOR_STEP_IDS: ReadonlyArray<EditorStepId> = ["script", "sections", "moments", "voice", "shots", "music", "render", "publish", "thumbnail"]
 export interface EditorStep {
   readonly id: EditorStepId
   readonly name: string
@@ -26,7 +27,15 @@ const CUT_DOWN: ReadonlyArray<EditorStep> = [
   { id: "thumbnail", name: "Thumbnail", stages: ["thumbnail"] }
 ]
 
-export const editorSteps = (format: ProjectFormat): ReadonlyArray<EditorStep> => format === "cut-down" ? CUT_DOWN : NARRATED
+const RANKING: ReadonlyArray<EditorStep> = [
+  { id: "moments", name: "Ranking", stages: ["moments"] },
+  { id: "render", name: "Render", stages: ["assemble", "render"] },
+  { id: "publish", name: "Publish", stages: ["metadata"] },
+  { id: "thumbnail", name: "Thumbnail", stages: ["thumbnail"] }
+]
+
+export const editorSteps = (format: ProjectFormat): ReadonlyArray<EditorStep> =>
+  format === "cut-down" ? CUT_DOWN : format === "ranking" ? RANKING : NARRATED
 
 export type EditorStepState = "done" | "waiting" | "running" | "failed" | "next"
 
@@ -71,6 +80,7 @@ export const openingStep = (steps: ReadonlyArray<EditorStep>, states: ReadonlyMa
 const STEP_OF_STAGE: Partial<Record<string, EditorStepId>> = {
   script: "script",
   sections: "sections",
+  moments: "moments",
   voice: "voice",
   shots: "shots",
   assemble: "render",

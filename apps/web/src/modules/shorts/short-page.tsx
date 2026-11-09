@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { GateResponse, MusicTrack, MusicTrackId, ProjectId, RunId, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
+import type { GateResponse, MusicTrack, MusicTrackId, ProjectId, RankingProposal, RunId, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Button } from "@viral/ui/primitives/button"
 import { Status } from "@viral/ui/primitives/status"
@@ -59,6 +59,7 @@ import { ScriptInspector, type ScriptTab } from "./script/script-inspector.tsx"
 import { ScriptStage } from "./script/script-stage.tsx"
 import {
   cancelRun,
+  checkRankingEdit,
   checkScriptEdit,
   checkSectionsEdit,
   checkShotsEdit,
@@ -74,6 +75,18 @@ import { CutTimeline } from "./sections/cut-timeline.tsx"
 import { SectionsInspector, type SectionsTab } from "./sections/sections-inspector.tsx"
 import { SectionsStage, type SectionsView } from "./sections/sections-stage.tsx"
 import { changeCount, draftOf, proposalOf as sectionsProposal, sectionBlocks, type SectionsDraft, stillKey } from "./sections/sections-values.ts"
+import { RankingInspector, type RankingTab } from "./ranking/ranking-inspector.tsx"
+import { RankingStage } from "./ranking/ranking-stage.tsx"
+import { RankingTimeline } from "./ranking/ranking-timeline.tsx"
+import {
+  changeCount as rankingChanges,
+  checkFrameMedia,
+  draftOf as rankingDraftOf,
+  entryBlocks,
+  planFrame,
+  type RankingDraft,
+  totalSeconds as rankingSeconds
+} from "./ranking/ranking-values.ts"
 import type { PickedFrame, PickerVideo } from "./shots/frame-picker.tsx"
 import { ShotsInspector, type ShotsTab } from "./shots/shots-inspector.tsx"
 import { ShotsStage, type ShotsView } from "./shots/shots-stage.tsx"
@@ -195,6 +208,15 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [sectionPlaying, setSectionPlaying] = useState(false)
   const [stills, setStills] = useState<ReadonlyMap<string, string>>(new Map())
   const checkSections = useAtomSet(checkSectionsEdit, { mode: "promise" })
+  // the Ranking step (rankings): the selected entry (its rank), the inspector's tab, your edit in progress (snapped
+  // by the server as you change shots), its problems and length as last checked
+  const [rankingRank, setRankingRank] = useState(1)
+  const [rankingTab, setRankingTab] = useState<RankingTab>("ranks")
+  const [rankingDraft, setRankingDraft] = useState<RankingDraft | null>(null)
+  const [rankingProblems, setRankingProblems] = useState<ReadonlyArray<string>>([])
+  const [rankingChecking, setRankingChecking] = useState(false)
+  const [rankingLength, setRankingLength] = useState<number | null>(null)
+  const checkRanking = useAtomSet(checkRankingEdit, { mode: "promise" })
   const fetchStill = useAtomSet(stillAt, { mode: "promise" })
   // the Music step: the short's fitted bed, the library's songs, the inspector's tab, the song picker, and where
   // the bed is playing
@@ -237,6 +259,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         ? checkShots({ payload: { projectId: ws.project.id, proposal: artifact as ShotProposal } }).then((r) => r.problems)
         : open === "sections"
         ? checkSections({ payload: { projectId: ws.project.id, proposal: artifact as SectionsProposal } }).then((r) => r.problems)
+        : open === "moments"
+        ? checkRanking({ payload: { projectId: ws.project.id, proposal: artifact as RankingProposal } }).then((r) => r.problems)
         : open === "thumbnail"
         ? checkThumbnail({ payload: { projectId: ws.project.id, config: artifact as ThumbConfig } }).then((r) => r.problems)
         : Promise.resolve([] as ReadonlyArray<string>)
@@ -304,6 +328,51 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when the set of missing starts changes
   }, [missingKey])
+  // a ranking's moments: your edit in progress, else the plan's; a shot you moved gets a still at its new start
+  const rankingPlan = ws.rankingPlan ?? null
+  const rankingPlanDraft = useMemo(() => (rankingPlan === null ? null : rankingDraftOf(rankingPlan.plan)), [rankingPlan])
+  const ranking = open === "moments" ? rankingDraft ?? rankingPlanDraft : rankingPlanDraft
+  const rankingStillOf = (rank: number, k: number) => {
+    const entry = ranking?.entries.find((e) => e.rank === rank)
+    const shot = entry?.shots[k]
+    if (entry === undefined || shot === undefined || rankingPlan === null) return null
+    const frame = planFrame(rankingPlan.plan, entry.source ?? 0, shot, "first")
+    if (frame !== null) return artifactFileUrl(serverUrl, projectOwner, "ranking-plan", rankingPlan.version, frame)
+    const still = stills.get(stillKey(entry.source, shot.start))
+    return still === undefined ? null : videoStillUrl(still, entry.source ?? 0)
+  }
+  const rankingMissing = rankingPlan === null || ranking === null ? [] : ranking.entries.flatMap((e) =>
+    e.shots
+      .filter((s) => planFrame(rankingPlan.plan, e.source ?? 0, s, "first") === null && !stills.has(stillKey(e.source, s.start)))
+      .map((s) => ({ key: stillKey(e.source, s.start), source: e.source ?? 0, t: Math.round(s.start) })))
+  const rankingMissingKey = rankingMissing.map((m) => m.key).join(",")
+  useEffect(() => {
+    for (const { key, source, t } of rankingMissing) {
+      void fetchStill({ payload: { sourceId: videoOf(source)?.source.id ?? ws.source.id, t, span: 0, every: 1 } })
+        .then((r) => {
+          const frame = r.frames[0]
+          if (frame !== undefined) setStills((m) => new Map(m).set(key, frame.path))
+        })
+        .catch(() => undefined)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when the set of missing starts changes
+  }, [rankingMissingKey])
+  // a change to the ranking; one that moves a shot is checked at once, so its times come back snapped to whole
+  // sentences (and its framing detected for the new moment)
+  const editRanking = (next: RankingDraft, snap = false) => {
+    setRankingProblems([])
+    setRankingDraft(next)
+    if (!snap) return
+    setRankingChecking(true)
+    void checkRanking({ payload: { projectId: ws.project.id, proposal: next } })
+      .then((r) => {
+        setRankingDraft(r.proposal)
+        setRankingProblems(r.problems)
+        setRankingLength(r.durationS)
+      })
+      .catch(() => setRankingProblems(["Couldn't check the change. Is the server running?"]))
+      .finally(() => setRankingChecking(false))
+  }
   const voiceName = voices.find((v) => v.voiceId === ws.voiceId)?.name.split(" - ")[0] ?? "Voice"
   const working = openStep.stages.map((s) => progress.live[s]).find((l) => l !== undefined) ?? null
   const state = states.get(open) ?? "next"
@@ -410,6 +479,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     else if (open === "render") setRenderTab("back")
     else if (open === "thumbnail") setThumbTab("ask")
     else if (open === "sections") setSectionsTab("ask")
+    else if (open === "moments") setRankingTab("ask")
     else setScriptTab("ask")
   }
   const metadata = ws.metadata
@@ -592,6 +662,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       <RenderInspector
         render={render.render}
         checkSheetUrl={render.media.checkSheet === null ? null : homeFileUrl(serverUrl, render.media.checkSheet)}
+        checkFrameUrl={render.media.video === null ? null : (file) => homeFileUrl(serverUrl, checkFrameMedia(render.media.video!, file))}
         format={ws.project.format}
         stages={stages}
         gate={gate}
@@ -756,6 +827,63 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         />
       )
     }
+  } else if (open === "moments") {
+    const source = ws.rankingSource ?? null
+    if (ranking === null || source === null || rankingPlan === null) {
+      stage = notYet("ranking")
+      inspector = null
+    } else {
+      const ranks = ranking.entries.map((e) => e.rank)
+      const rank = ranks.includes(rankingRank) ? rankingRank : ranking.order.at(-1) ?? 1
+      stage = (
+        <>
+          {stageBar(`${ranking.entries.length} entries · ${(rankingLength ?? rankingSeconds(ranking)).toFixed(1)}s`)}
+          <RankingStage
+            draft={ranking}
+            selected={rank}
+            onSelect={setRankingRank}
+            stillOf={rankingStillOf}
+            videoUrlOf={videoUrlOf}
+            videos={ws.videos.length}
+          />
+        </>
+      )
+      inspector = (
+        <RankingInspector
+          draft={ranking}
+          onDraft={editRanking}
+          changes={rankingPlanDraft === null ? 0 : rankingChanges(rankingPlanDraft, ranking)}
+          source={source}
+          warnings={rankingDraft === null ? rankingPlan.plan.warnings : []}
+          selected={rank}
+          onSelect={setRankingRank}
+          stillOf={rankingStillOf}
+          videos={pickerVideos}
+          stillUrl={videoStillUrl}
+          durationS={rankingDraft === null ? rankingPlan.plan.durationS : rankingLength ?? rankingSeconds(ranking)}
+          problems={rankingProblems}
+          checking={rankingChecking}
+          onRevert={() => {
+            setRankingDraft(null)
+            setRankingProblems([])
+            setRankingLength(null)
+          }}
+          onSend={() => {
+            void gate.edit(ranking).then((refused) => {
+              setRankingProblems(refused)
+              if (refused.length === 0) {
+                setRankingDraft(null)
+                setRankingLength(null)
+              }
+            })
+          }}
+          stages={stages}
+          gate={gate}
+          tab={rankingTab}
+          onTab={setRankingTab}
+        />
+      )
+    }
   } else if (open === "music") {
     const track = tracks.find((t) => t.id === ws.project.musicTrackId) ?? null
     const words = ws.voiceover?.words ?? []
@@ -849,7 +977,26 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         }
         stage={stage}
         inspector={inspector ?? <div className="p-4 text-xs text-fg-2">Nothing to inspect here yet.</div>}
-        timeline={ws.project.format === "cut-down" ? (
+        timeline={ws.project.format === "ranking" ? (
+          rankingPlanDraft === null || ranking === null ? (
+            <div className="grid h-[120px] place-items-center text-xs text-fg-2">The timeline appears once the moments are picked.</div>
+          ) : (
+            <RankingTimeline
+              draft={ranking}
+              videos={ws.videos.length}
+              selected={open === "moments" ? rankingRank : null}
+              onSelect={(rank) => {
+                setRankingRank(rank)
+                if (open !== "moments") onStep("moments")
+              }}
+              head={open === "moments"
+                ? entryBlocks(ranking).find((b) => b.rank === rankingRank)?.start ?? null
+                : (open === "render" || open === "publish") && playTime !== null
+                ? playTime
+                : null}
+            />
+          )
+        ) : ws.project.format === "cut-down" ? (
           timelineSections === null || ws.cutSource === null ? (
             <div className="grid h-[120px] place-items-center text-xs text-fg-2">The timeline appears once the sections are planned.</div>
           ) : (

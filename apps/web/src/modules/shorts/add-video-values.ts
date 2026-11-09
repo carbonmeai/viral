@@ -2,8 +2,9 @@ import type { SourceId } from "@viral/contracts"
 import { isVideoLink } from "../videos/video-values.ts"
 
 // The step a change to the short's videos (or its brief) re-runs from: the first agent step.
-export const rerunStep = (format: "narrated" | "cut-down") => format === "cut-down" ? "sections" as const : "script" as const
-export const stepTitle = (step: "script" | "sections") => step === "script" ? "Script" : "Sections"
+export const rerunStep = (format: "narrated" | "cut-down" | "ranking") =>
+  format === "cut-down" ? "sections" as const : format === "ranking" ? "moments" as const : "script" as const
+export const stepTitle = (step: "script" | "sections" | "moments") => step === "script" ? "Script" : step === "moments" ? "Ranking" : "Sections"
 
 // The library videos that can be added: the ones the short doesn't have yet.
 export const addableVideos = <V extends { readonly source: { readonly id: SourceId } }>(library: ReadonlyArray<V>, inShort: ReadonlyArray<SourceId>) =>

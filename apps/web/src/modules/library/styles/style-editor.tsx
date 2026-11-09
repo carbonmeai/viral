@@ -118,6 +118,9 @@ export function StyleEditor({ preset, frame, usedBy }: { readonly preset: Preset
             <SettingRow label="Credit" sub="“Video: <channel>” when the footage isn't yours.">
               <Switch label="Credit" checked={draft.credit} onChange={(credit) => edit({ credit })} />
             </SettingRow>
+            <SettingRow label="Ranking credit" sub="Rankings: a small “via <channel>” under each clip. Off, every channel is in the description.">
+              <Switch label="Ranking credit" checked={draft.rankingVia === true} onChange={(rankingVia) => edit({ rankingVia })} />
+            </SettingRow>
           </SettingsGroup>
 
           <SettingsGroup title="Captions">

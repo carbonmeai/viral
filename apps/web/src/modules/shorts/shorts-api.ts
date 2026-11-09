@@ -25,6 +25,8 @@ export const checkScriptEdit = ViralClient.mutation("CheckScriptEdit")
 export const checkShotsEdit = ViralClient.mutation("CheckShotsEdit")
 export const checkThumbnailEdit = ViralClient.mutation("CheckThumbnailEdit")
 export const checkSectionsEdit = ViralClient.mutation("CheckSectionsEdit")
+// a ranking's moments: checked and snapped to whole sentences; the snapped ranking comes back
+export const checkRankingEdit = ViralClient.mutation("CheckRankingEdit")
 // a still of the long video at one second, fetched on demand (a section whose start you moved)
 export const stillAt = ViralClient.mutation("ListFramesAround")
 export const setProjectVoice = ViralClient.mutation("SetProjectVoice")

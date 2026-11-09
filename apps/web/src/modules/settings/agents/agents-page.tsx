@@ -34,6 +34,7 @@ const STAGES: ReadonlyArray<{ readonly stage: AgentStage; readonly label: string
   { stage: "script", label: "Script", sub: "Writes the narration and picks the real lines." },
   { stage: "shots", label: "Shots", sub: "Looks at the video and picks the footage under each word." },
   { stage: "sections", label: "Sections", sub: "Picks the creator's best moments for a cut-down short." },
+  { stage: "moments", label: "Ranking moments", sub: "Picks each video's before, care and after for a ranking, and ranks them." },
   { stage: "metadata", label: "Metadata", sub: "Writes the title, description and hashtags." },
   { stage: "thumbnail", label: "Thumbnail", sub: "Picks the hero, the face and the words for the thumbnail." }
 ]
@@ -120,7 +121,7 @@ function DefaultGroup({ settings, ready, catalog, evals }: {
         label="Model"
         sub={error ?? stat ?? (current.provider === "claude-cli"
           ? "CLI default keeps each step’s own model (Haiku for research, ads and metadata)."
-          : "Steps that look at images (shots, sections, thumbnail) stay on the Claude CLI for now.")}
+          : "Steps that look at images (shots, sections, ranking moments, thumbnail) stay on the Claude CLI for now.")}
       >
         <ModelPicker
           label="Default model"
