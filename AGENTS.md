@@ -43,7 +43,24 @@ apps/server/src/
                        transcripts under ~160k characters, else a line every 30 s plus `search_transcript` and
                        `read_transcript` (transcript-tools.ts). It answers with V numbers (1-based); checkSetStory
                        snaps each quote in its own video, keeps each video's ads out, needs every proposal to use ≥2
-                       videos that each have a beat, and stores set positions (0-based `source`/`sources`).
+                       videos that each have a beat, and stores set positions (0-based `source`/`sources`). For a
+                       set found from an idea it also says what a video is `missing` ("no after"), for Replace
+  research/            research mode (R1): a video set from an idea (source_set_research: idea, 3/5/7/10 videos, length
+                       60|180|any) that starts with no videos; its run is research → (each video read) → set-story.
+                       The research stage (Haiku by default, `finding-source-videos` skill) has `search_youtube`
+                       (yt-dlp --flat-playlist, 8 results) and `video_details` (description, chapters, start of the
+                       English captions; never a download), 20 of each, one request at a time 1.5 s apart, and stops
+                       asking once YouTube refuses (youtube.ts, research-tools.ts). The server looks every pick up and
+                       checks it (shortlist-rules.ts: exists, not live, ≤20 min, once, exact count, ≤3 backups), saves
+                       thumbnails to sets/<id>/research/thumbs/, and records the `shortlist` set artifact behind the gate
+                       "Download these videos?" (ShortlistGate; an Edit is checked again). Approving (researches.ts
+                       adopt) adds each video (rights unconfirmed, channel kept, a note; a library video with the same
+                       YouTube id is reused) as the set's videos; StageDefinition.beforePrerequisites makes the run read
+                       them only after that. ReplaceResearchVideo: a backup takes the spot, or the shortlist records
+                       `replacing` and the research searches again for that spot (keeping the others). Tests use
+                       testing/fake-yt-dlp.ts (answers from the skill run's rescues search log; VIRAL_YT_DLP points
+                       YouTube at it, VIRAL_YT_THUMBNAILS=off, VIRAL_YT_SPACING_MS=0). A 403 download is retried once
+                       (fetch-source.py), then fails as "blocked"; Viral never works around a block
                        `Projects.fromSetProposal` makes a short from a proposal's videos (set order) and the set's brief
   assemble/            the assemble stage: shot plan + preset (+ music with a known drop) → the renderer's
                        narrated plan, or a cut-down short's sections + preset → the cut-down renderer's plan;
@@ -217,8 +234,13 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        videos/: New source and a video's page (GetSourceOverview; the source run followed live
                        by folding SubscribeRun in run-progress.ts); frames come from contact-sheet stills, or from
                        sheet tiles on older sheets. "Make this short" asks for the optional brief first
-                       (make-short-dialog.tsx). New has two tabs (?kind=several): One video, and Several videos
+                       (make-short-dialog.tsx). New has three tabs (?kind=several|idea): One video, Several videos
                        (sets/new-set-form.tsx: pick from the library or add links/files, reorder, a required brief)
+                       and From an idea (research/research-form.tsx). research/: while a research set has no videos
+                       (or a replacement waits) its page is the shortlist (shortlist-view.tsx: grey rows while it
+                       searches; then remove, ⋯ ask for another (backups first), earlier/later, add a link
+                       (LookupShortlistVideo), ask for a new list, undo; a changed list goes through
+                       CheckShortlistEdit before Download); replace-dialog.tsx is "Replace this video" on the set page
                        sets/: a video set's page (/sets/<id>): Videos (each video's reading, live from its own run)
                        and Proposals ("Make this short" starts from the set's brief). Sets are listed in the
                        sidebar's Video sets. The UI never says "V1"/"V2" (it reads as a version): a video is its
@@ -370,6 +392,9 @@ bun run cli project from-proposal <source-id> <n>
 bun run cli set create <source-id>,<source-id> --brief "<why they belong together>"
 bun run cli set run <set-id> [--again]             # reads each video, then prints 3 proposals across them
 bun run cli set make <set-id> <n>
+# or from an idea: Viral searches YouTube, you approve the shortlist, then it downloads and reads them as a set
+bun run cli research start "<idea>" [--videos 5] [--length 60|180|any]   # stops at the shortlist
+bun run cli research show <set-id>                 # the shortlist again; approve / reject "note" / edit <file>
 bun run cli project style <project-id> <preset-id|default>   # see `preset list`
 bun run cli music add <file> --rights owned && bun run cli music beat <track-id> <bpm> <drop-s>
 bun run cli project music <project-id> <track-id|none>       # none = voice only
