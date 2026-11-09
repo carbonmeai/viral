@@ -49,6 +49,14 @@ export const waitingSub = (item: WaitingItem, showVideo: boolean, videos?: strin
   return showVideo ? `${videos ?? item.sourceTitle ?? "Untitled video"} · ${step}` : step
 }
 
+// A row's picture for a gate that has no short yet: a shortlist shows its first pick's saved YouTube thumbnail
+// (a path in the Viral home, served under /media).
+export const waitingThumbPath = (item: WaitingItem): string | null => {
+  const payload = item.request.payload
+  if (payload === null || payload === undefined || payload._tag !== "ShortlistGate") return null
+  return payload.shortlist.picks.find((p) => p.thumbnail !== null)?.thumbnail ?? null
+}
+
 // The global list, or one video's: the same items, filtered.
 export const scopeWaiting = (items: ReadonlyArray<WaitingItem>, sourceId: string | null) =>
   sourceId === null ? items : items.filter((item) => item.sourceId === sourceId)

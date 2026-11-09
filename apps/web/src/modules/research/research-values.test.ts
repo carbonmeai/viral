@@ -8,7 +8,7 @@ import {
   defaultLength,
   downloadLabel,
   estimateLine,
-  momentsLine,
+  momentChips,
   movePick,
   newListNote,
   removePick,
@@ -45,7 +45,7 @@ test("New › From an idea: rankings start at Up to 3 min, with an estimate unde
 test("a row reads channel · length · views, the upload date in Detailed, and the moments as guesses", () => {
   assert.equal(videoFacts(video("a"), false), "The Dodo · 3:05 · 760k views")
   assert.equal(videoFacts(video("a"), true), "The Dodo · 3:05 · 760k views · 2026-02-07")
-  assert.equal(momentsLine(video("a")), "Expects (a guess): before ~0:12 · after")
+  assert.deepEqual(momentChips(video("a")).map((c) => `${c.tag} ${c.at ?? ""}`.trim()), ["before ~0:12", "after"])
 })
 
 test("changing the list: remove, reorder, a backup in a pick's place, a link added once", () => {
@@ -72,4 +72,32 @@ test("Ask for another uses a backup first, then asks the agent, telling it about
   assert.match(asked._tag === "Agent" ? asked.note : "", /^Find another video for spot 3 instead of c "c" \(#: c\); keep the other videos where they are\.\n\nI changed the list to:\n1\. b "b"/)
   assert.equal(newListNote(list, list, "  More variety "), "More variety")
   assert.match(newListNote(list, removePick(list, 0), "More variety"), /My changes so far:\n1\. b "b" \(#: b\)\n2\. c/)
+})
+
+test("moment chips: the label's name and time, the full words kept", () => {
+  const v = {
+    ...video("a"),
+    moments: [
+      { label: "Before: skeletal, fragile, nothing on her—rescue from Thailand", at: 0 },
+      { label: "Rescue decision: rescuer counts to 10—cat stays", at: 65 },
+      { label: "First days — vet care, heartbreaking first nights", at: null },
+      { label: "after", at: 170 },
+      // no name: read from the words (the live run's labels), else the first two words
+      { label: "Sterling discovered abandoned and scared", at: 0 },
+      { label: "Grooming process revealing the dog underneath", at: 60 },
+      { label: "Happy Dolly playing, sitting, shaking, begging for cookies", at: 210 },
+      { label: "The crowd goes completely silent", at: 30 }
+    ]
+  }
+  assert.deepEqual(momentChips(v).map((c) => [c.tag, c.at]), [
+    ["before", "~0:00"],
+    ["rescue decision", "~1:05"],
+    ["first days", null],
+    ["after", "~2:50"],
+    ["before", "~0:00"],
+    ["care", "~1:00"],
+    ["after", "~3:30"],
+    ["the crowd", "~0:30"]
+  ])
+  assert.equal(momentChips(v)[0]!.full, "Before: skeletal, fragile, nothing on her—rescue from Thailand")
 })

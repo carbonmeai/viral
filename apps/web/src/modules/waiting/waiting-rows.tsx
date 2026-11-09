@@ -4,9 +4,11 @@ import { Button } from "@viral/ui/primitives/button"
 import { Row, RowTitle } from "@viral/ui/primitives/row"
 import { Status } from "@viral/ui/primitives/status"
 import { Thumb } from "@viral/ui/primitives/thumb"
+import { serverUrl } from "../../config/server-url.ts"
 import { ago } from "../../lib/format.ts"
+import { homeFileUrl } from "../../lib/media-url.ts"
 import { stepOfStage } from "../shorts/editor-values.ts"
-import { actionLabel, waitingSub, waitingTarget, waitingTitle } from "./waiting.ts"
+import { actionLabel, waitingSub, waitingTarget, waitingThumbPath, waitingTitle } from "./waiting.ts"
 
 export interface WaitingRowsProps {
   readonly items: ReadonlyArray<WaitingItem>
@@ -35,10 +37,12 @@ export function WaitingRows({ items, showVideo, thumbs, videos, now }: WaitingRo
       else if (target._tag === "Set") void navigate({ to: "/sets/$setId", params: { setId: target.setId } })
       else void navigate({ to: "/videos/$sourceId", params: { sourceId: target.sourceId } })
     }
+    const thumbPath = waitingThumbPath(item)
+    const src = item.projectId !== null ? thumbs.get(item.projectId) ?? null : thumbPath === null ? null : homeFileUrl(serverUrl, thumbPath)
     return (
       <Row key={item.request.id} onOpen={open} className="grid-cols-[minmax(0,1fr)_170px_90px_auto]">
         <RowTitle
-          media={<Thumb shape="tall" width={26} src={item.projectId === null ? null : thumbs.get(item.projectId) ?? null} />}
+          media={<Thumb shape="tall" width={26} src={src} />}
           title={waitingTitle(item)}
           sub={waitingSub(item, showVideo, item.projectId === null ? null : videos?.get(item.projectId))}
         />

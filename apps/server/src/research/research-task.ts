@@ -27,7 +27,7 @@ so check the moments from that text.
 3. Call propose_shortlist once: exactly the number of videos asked for, in the order the short plays them (#1 last for
    a ranking), plus up to ${MAX_RESEARCH_BACKUPS} backups that could take a spot. For each video: its id, its part in the
    short ("#3: the matted dog"), why in one sentence, and the moments you expect with rough times in seconds (a guess;
-   null when you can't tell). Summarise how you searched in one line.
+   null when you can't tell), each labelled "name: a few words" ("before: matted and scared"). Summarise how you searched in one line.
 
 Never pick a live stream, a video over ${MAX_RESEARCH_VIDEO_SECONDS / 60} minutes, or the same video twice; prefer videos
 under ${PREFERRED_RESEARCH_VIDEO_SECONDS / 60} minutes. You have ${RESEARCH_SEARCHES} searches and ${RESEARCH_LOOKUPS} lookups. If

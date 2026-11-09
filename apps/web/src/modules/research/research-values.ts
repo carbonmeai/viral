@@ -46,9 +46,32 @@ export const videoFacts = (v: ShortlistVideo, detailed: boolean) =>
   [v.channel, v.durationS === null ? null : clock(v.durationS), viewsLabel(v.views), detailed ? v.uploadDate : null]
     .filter((p) => p !== null).join(" · ")
 
-// "Expects (a guess): before ~0:12 · care ~1:05 · after"
-export const momentsLine = (v: ShortlistVideo) =>
-  v.moments.length === 0 ? null : `Expects (a guess): ${v.moments.map((m) => m.at === null ? m.label : `${m.label} ~${clock(m.at)}`).join(" · ")}`
+// The agent's moment labels are sentences ("Before: skeletal, fragile, nothing on her—rescue from Thailand"); a chip
+// shows only their name ("before") and rough time, with the full words kept for a hover or the expanded line.
+export interface MomentChip {
+  readonly tag: string
+  readonly at: string | null
+  readonly full: string
+}
+const MAX_TAG = 22
+// Labels without a name ("Sterling discovered abandoned and scared") are named by their words when they read as a
+// transformation's before, care or after; otherwise by their first two words.
+const STEP_WORDS: ReadonlyArray<readonly [string, RegExp]> = [
+  ["after", /\b(home|happy|happily|playing|plays|healthy|transform\w*|forever|thriv\w*|adopt\w*|confident|new life|now)\b/i],
+  ["care", /\b(vet|medical|treat\w*|hospital|groom\w*|bath|shav\w*|care\w*|foster\w*|trust\w*|heal\w*|recover\w*|surgery|clinic|feed\w*|fed)\b/i],
+  ["before", /\b(found|discover\w*|abandon\w*|chain\w*|stray|streets?|matted|starv\w*|emaciat\w*|skinny|malnourish\w*|neglect\w*|surrender\w*|scared|terrified|fear\w*|lifeless|euthanasia|mange)\b/i]
+]
+const momentTag = (label: string) => {
+  const text = label.trim()
+  const named = /^([^:—–(]{1,22}?)\s*(?::|—|–|\s-\s|\()/.exec(text)?.[1]?.trim()
+  if (named !== undefined && named !== "") return named.toLowerCase()
+  const step = STEP_WORDS.find(([, words]) => words.test(text))
+  if (step !== undefined) return step[0]
+  const words = text.split(/\s+/).slice(0, 2).join(" ")
+  return (words.length <= MAX_TAG ? words : `${words.slice(0, MAX_TAG - 1)}…`).toLowerCase().replace(/[.,;]+$/, "")
+}
+export const momentChips = (v: ShortlistVideo): ReadonlyArray<MomentChip> =>
+  v.moments.map((m) => ({ tag: momentTag(m.label), at: m.at === null ? null : `~${clock(m.at)}`, full: m.label.trim() }))
 
 // --- changing the list before you approve it ---
 

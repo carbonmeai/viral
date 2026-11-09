@@ -30,7 +30,7 @@ import { ReplaceDialog, type ReplaceTarget } from "../research/replace-dialog.ts
 import { researchFacts } from "../research/research-values.ts"
 import { ShortlistGate, ShortlistSearching } from "../research/shortlist-view.tsx"
 import { SetProposalCard } from "./set-proposal-card.tsx"
-import { memberState, proposalMoment, proposalVideos, setPhase, videoNames } from "./set-values.ts"
+import { BLOCKED_MESSAGE, failedOnItsOwn, memberState, plainMemberError, proposalMoment, proposalVideos, setPhase, videoNames } from "./set-values.ts"
 import { createProjectFromSetProposal, deleteVideoSet, renameVideoSet, startSetRun, videoSetOverviewAtom } from "./sets-api.ts"
 import { VideoBadge, VideoDot } from "./video-badge.tsx"
 
@@ -193,8 +193,9 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
     if (research === null) return null
     if (member.missing !== null) return `The story step found something missing: ${member.missing}.`
     const state = memberState(member, member.run, member.stages)
-    if (state._tag !== "failed") return null
-    return /blocked|403|refused/i.test(state.error) ? "YouTube blocked the download." : `It couldn't be read: ${state.error}`
+    if (state._tag !== "failed" || !failedOnItsOwn(member.run)) return null
+    const plain = plainMemberError(state.error)
+    return plain === BLOCKED_MESSAGE ? "YouTube blocked the download." : `It couldn't be read: ${plain}`
   }
 
   const sub = [
@@ -396,7 +397,7 @@ function MemberLine({ member, thumb, run, progress, onReplace }: {
             <div className="truncate text-xs text-fg-2">{state.step} · step {Math.min(state.done + 1, state.of)} of {state.of}{live?.message ? ` · ${live.message}` : ""}</div>
           </div>
         ) : state._tag === "failed" ? (
-          <div className="mt-0.5 truncate text-xs text-danger">{state.error}</div>
+          <div className="mt-0.5 truncate text-xs text-danger" title={state.error}>{plainMemberError(state.error)}</div>
         ) : (
           <div className="mt-0.5 truncate text-xs text-fg-2">{facts || (state._tag === "waiting" ? "Waits its turn" : "")}</div>
         )}

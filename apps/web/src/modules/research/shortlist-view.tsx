@@ -7,7 +7,7 @@ import { Menu, MenuItem } from "@viral/ui/primitives/menu"
 import { Panel } from "@viral/ui/primitives/panel"
 import { Skeleton, SkeletonRegion } from "@viral/ui/primitives/skeleton"
 import { Textarea } from "@viral/ui/primitives/textarea"
-import { ArrowDown, ArrowUp, Download, ExternalLink, Plus, RefreshCw, RotateCcw, Shuffle, X } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Download, ExternalLink, Plus, RefreshCw, RotateCcw, Shuffle, X } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { serverUrl } from "../../config/server-url.ts"
 import { homeFileUrl } from "../../lib/media-url.ts"
@@ -23,7 +23,7 @@ import {
   COPYRIGHT_FULL,
   downloadLabel,
   isOnList,
-  momentsLine,
+  momentChips,
   movePick,
   newListNote,
   removeBackup,
@@ -233,7 +233,7 @@ function VideoRow({ video, index, detailed, quiet, children }: {
   readonly quiet?: boolean
   readonly children: ReactNode
 }) {
-  const moments = momentsLine(video)
+  const moments = momentChips(video)
   return (
     <div className={`grid grid-cols-[auto_96px_minmax(0,1fr)_auto] items-center gap-3 rounded-ctl px-3 py-2 ${quiet === true ? "bg-transparent" : "bg-item"}`}>
       {index === null ? <span className="size-2.5" /> : <VideoDot index={index} className="size-2.5" />}
@@ -245,9 +245,49 @@ function VideoRow({ video, index, detailed, quiet, children }: {
         <div className={`truncate font-medium ${quiet === true ? "text-fg-1" : ""}`}>{video.title}</div>
         <div className="truncate text-xs text-fg-2">{videoFacts(video, detailed)}</div>
         <div className="mt-0.5 line-clamp-2 text-xs text-fg-1">{video.why}</div>
-        {detailed && moments !== null ? <div className="mt-0.5 truncate text-xs text-fg-2">{moments}</div> : null}
+        {detailed && moments.length > 0 ? <ExpectedMoments moments={moments} /> : null}
       </div>
       <div className="flex items-center gap-0.5">{children}</div>
+    </div>
+  )
+}
+
+// The moments the agent expects, as short chips ("before ~0:12"), each with its full words on hover; the toggle
+// opens them as lines. Detailed view only.
+function ExpectedMoments({ moments }: { readonly moments: ReturnType<typeof momentChips> }) {
+  const [open, setOpen] = useState(false)
+  const Chevron = open ? ChevronDown : ChevronRight
+  return (
+    <div className="mt-1">
+      <div className="flex flex-wrap items-center gap-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={(e) => (e.stopPropagation(), setOpen(!open))}
+          className="mr-0.5 inline-flex items-center gap-0.5 rounded-chip text-xs text-fg-2 hover:text-fg-1"
+        >
+          <Chevron className="size-3" />
+          Expects (a guess)
+        </button>
+        {moments.map((m, i) => (
+          <span key={i} title={m.full} className="rounded-chip bg-ctl-active px-1.5 py-px text-[11px] text-fg-1">
+            {m.tag}
+            {m.at === null ? null : <span className="ml-1 text-fg-2 tabular-nums">{m.at}</span>}
+          </span>
+        ))}
+      </div>
+      {open
+        ? (
+          <ul className="mt-1 flex flex-col gap-0.5 text-xs text-fg-2">
+            {moments.map((m, i) => (
+              <li key={i}>
+                {m.at === null ? null : <span className="mr-1.5 text-fg-1 tabular-nums">{m.at}</span>}
+                {m.full}
+              </li>
+            ))}
+          </ul>
+        )
+        : null}
     </div>
   )
 }

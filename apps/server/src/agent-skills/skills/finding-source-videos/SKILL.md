@@ -53,7 +53,9 @@ only as good as the moments its videos really contain.
 
 For each pick, list the moments you expect with rough times in seconds: before, care and after for a transformation;
 the build and the payoff for a fail. They are guesses from the captions and chapters, and Viral says so; give null
-when you can't tell rather than inventing a time. Don't stretch a video's description into moments it doesn't
+when you can't tell rather than inventing a time. Start each label with the moment's name and a colon, then a few
+words ("before: matted and scared", "care: the first bath", "after: playing at home"): the shortlist shows the name
+as a chip and the rest on hover. Don't stretch a video's description into moments it doesn't
 mention.
 
 ## Backups

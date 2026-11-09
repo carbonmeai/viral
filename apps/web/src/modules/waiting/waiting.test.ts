@@ -1,7 +1,7 @@
 import type { WaitingItem } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { actionLabel, scopeWaiting, videosSpanned, waitingSub, waitingTarget, waitingTitle } from "./waiting.ts"
+import { actionLabel, scopeWaiting, videosSpanned, waitingSub, waitingTarget, waitingThumbPath, waitingTitle } from "./waiting.ts"
 
 const item = (stage: string, sourceId: string, project: { title: string; number: number } | null): WaitingItem =>
   ({
@@ -46,4 +46,17 @@ test("a research's shortlist waits under its video set and opens the set", () =>
   assert.deepEqual(waitingTarget(shortlist), { _tag: "Set", setId: "s" })
   assert.equal(videosSpanned([shortlist, item("shots", "candy", { title: "x", number: 1 })]), 1)
   assert.deepEqual(scopeWaiting([shortlist], "candy"), [])
+})
+
+test("a shortlist's row shows its first pick's saved thumbnail; other gates have none of their own", () => {
+  const pick = (videoId: string, thumbnail: string | null) => ({ videoId, thumbnail })
+  const withList = (picks: ReadonlyArray<{ videoId: string; thumbnail: string | null }>): WaitingItem => ({
+    ...item("research", "candy", null),
+    request: { stage: "research", payload: { _tag: "ShortlistGate", shortlist: { picks } } } as unknown as WaitingItem["request"]
+  })
+  assert.equal(waitingThumbPath(withList([pick("a", "sets/s/research/thumbs/a.jpg"), pick("b", "sets/s/research/thumbs/b.jpg")])), "sets/s/research/thumbs/a.jpg")
+  // a pick whose thumbnail couldn't be fetched is skipped
+  assert.equal(waitingThumbPath(withList([pick("a", null), pick("b", "sets/s/research/thumbs/b.jpg")])), "sets/s/research/thumbs/b.jpg")
+  assert.equal(waitingThumbPath(withList([])), null)
+  assert.equal(waitingThumbPath({ ...item("shots", "candy", null), request: { stage: "shots", payload: null } as unknown as WaitingItem["request"] }), null)
 })

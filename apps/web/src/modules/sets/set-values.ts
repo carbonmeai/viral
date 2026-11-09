@@ -106,6 +106,26 @@ export const memberState = (member: Pick<VideoSetMember, "ready">, run: Run | nu
   return { _tag: "waiting" }
 }
 
+// A video's failure in plain words. The run's error names the stage and code first ("source (blocked): YouTube
+// refused…"); a refused download says only that it was blocked, the rest loses the stage and code.
+export const BLOCKED_MESSAGE = "Blocked: YouTube refused the download twice. Viral doesn't work around a block."
+// yt-dlp's own failures lose its "ERROR:" and "[download]" / "[youtube] <id>:" tags.
+export const plainMemberError = (error: string) => {
+  if (/\((blocked)\)|HTTP Error 403|403: Forbidden/i.test(error)) return BLOCKED_MESSAGE
+  const download = /^source \(download\): /.test(error)
+  const text = error
+    .replace(/^[\w-]+ \([\w-]+\): /, "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\bERROR:\s*/g, "")
+    .replace(/\[(download|youtube)\]\s*(?:[\w-]{11}:\s*)?/g, "")
+    .trim()
+  return download ? `The download didn't finish: ${text}` : text
+}
+
+// "Replace this video" is for a video whose own reading failed (or that the story found incomplete), not one that
+// was stopped because the run was cancelled.
+export const failedOnItsOwn = (run: Run | null) => run !== null && run.status === "failed"
+
 // What the set page says about the set as a whole.
 export type SetPhase = "reading" | "proposing" | "proposed" | "stopped" | "new"
 

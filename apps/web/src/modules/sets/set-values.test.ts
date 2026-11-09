@@ -1,7 +1,7 @@
 import type { Run, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { memberState, proposalMoment, proposalVideos, reorder, setPhase, shortVideoName, videoColor, videoLabel, videoNames } from "./set-values.ts"
+import { BLOCKED_MESSAGE, failedOnItsOwn, memberState, plainMemberError, proposalMoment, proposalVideos, reorder, setPhase, shortVideoName, videoColor, videoLabel, videoNames } from "./set-values.ts"
 
 const run = (status: Run["status"], error: string | null = null) => ({ status, error }) as Run
 const stage = (name: StageRun["stage"], status: StageRun["status"]) => ({ stage: name, status, attempt: 1 }) as StageRun
@@ -71,4 +71,19 @@ test("dragging a video moves it to its new place, the others closing up", () => 
   const same = ["a", "b"]
   assert.equal(reorder(same, 1, 1), same)
   assert.equal(reorder(same, 0, 5), same)
+})
+
+test("a video's failure in plain words, and Replace only for a video that failed on its own", () => {
+  assert.equal(
+    plainMemberError("source (blocked): YouTube refused the download twice (403). Viral doesn't work around a block: try again later, or replace this video."),
+    BLOCKED_MESSAGE
+  )
+  assert.equal(plainMemberError("source (download): ERROR: [youtube] 3cbMd4i4DGk: Video unavailable"), "The download didn't finish: Video unavailable")
+  assert.equal(plainMemberError("source (download): ERROR: \r[download] Got error: [Errno 32] Broken pipe"), "The download didn't finish: Got error: [Errno 32] Broken pipe")
+  assert.equal(plainMemberError("transcribe (failed): no speech found"), "no speech found")
+  assert.equal(plainMemberError("It stopped before it finished."), "It stopped before it finished.")
+  assert.ok(failedOnItsOwn(run("failed", "source (blocked): …")))
+  assert.ok(!failedOnItsOwn(run("cancelled")))
+  assert.ok(!failedOnItsOwn(run("interrupted")))
+  assert.ok(!failedOnItsOwn(null))
 })
