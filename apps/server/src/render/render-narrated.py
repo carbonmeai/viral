@@ -11,7 +11,8 @@ Usage:
 Plan schema: NarratedPlan in packages/contracts/src/narrated-plan.ts. Relative paths in the plan
 resolve against the plan file's folder. A short from several videos lists V2… in `sources`
 ([{path, transcript}]); a shot, insert or outro clip with `source: 1` plays from the first of them
-(absent = 0 = `source`, V1), and `exclude_by_source` ({"1": [[a, b]]}) holds their excluded ranges.
+(absent = 0 = `source`, V1), and `exclude_by_source` ({"1": [[a, b]]}) holds their excluded ranges. A video read
+from a 480p scan plays from its 1080p pieces (`pieces_by_source`, source_pieces.py) wherever they cover a clip.
 
 Ported from the viral-shorts skill's render_narrated.py. The rendering is unchanged; only reporting
 changed: stdout carries one JSON object per line for the server to decode:
@@ -32,6 +33,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from music_bed import arrangement_of, build_music  # needs numpy (in this script's dependencies)
+from source_pieces import Pieces
 
 FPS = 30
 # Caption font. Arial Rounded Bold is macOS-only and can't be redistributed; set VIRAL_CAPTION_FONT
@@ -370,6 +372,12 @@ def main() -> None:
             t = srcs[i].get("transcript")
             words_cache[i] = words_of(resolve(base, t)) if t else []
         return words_cache[i]
+    # a scanned video's clips play from its 1080p pieces when the plan has them (pieces_by_source)
+    pieces = Pieces(plan, base)
+
+    def cut_from(v: int, start: float, dur: float, out: Path, clip: dict, with_audio: bool) -> None:
+        path, at = pieces.locate(v, paths[v], start, dur * float(clip.get("speed", 1.0)))
+        cut(path, at, dur, lay, out, clip, with_audio)
     lay = Layout(plan)
     slug = plan.get("slug", plan_path.stem)
     out = Path(args.out).resolve() if args.out else base / "shorts" / f"{slug}.mp4"
@@ -435,7 +443,7 @@ def main() -> None:
         v = video_of(sh, f"shot at {sh['at']}s")
         check(f"shot at {sh['at']}s", float(sh["src"]), float(sh["src"]) + dur * float(sh.get("speed", 1.0)), v)
         p = tmp / f"shot_{i:03d}.mp4"
-        cut(paths[v], float(sh["src"]), dur, lay, p, sh, with_audio=False)
+        cut_from(v, float(sh["src"]), dur, p, sh, with_audio=False)
         parts.append(p)
         progress("shots", i + 1, len(shots))
     lst = tmp / "shots.txt"
@@ -469,7 +477,7 @@ def main() -> None:
             v = video_of(ins, f"insert {k}")
             check(f"insert {k}", s0, e0, v)
             clip = tmp / f"insert_{k:02d}.mp4"
-            cut(paths[v], s0, e0 - s0, lay, clip, ins, with_audio=True)
+            cut_from(v, s0, e0 - s0, clip, ins, with_audio=True)
             segs.append(clip)
             # where the clip starts in the output: after every earlier insert, including one at the same word
             t0 = ins["at"] + sum(i["dur"] for i in inserts[:k])
@@ -491,7 +499,7 @@ def main() -> None:
         v = video_of(o, f"outro {j}")
         check(f"outro {j}", s, e, v)
         p = tmp / f"outro_{j}.mp4"
-        cut(paths[v], s, e - s, lay, p, o, with_audio=True)
+        cut_from(v, s, e - s, p, o, with_audio=True)
         segs.append(p)
         if o.get("captions", True):
             said = [w for w in src_words(v) if w["s"] >= s - 0.01 and w["e"] <= e + 0.01]
@@ -619,7 +627,7 @@ def main() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
     emit({"type": "done", "output": str(out), "captions": str(out.with_suffix(".srt")), "duration_s": round(total, 3),
           "shots": len(parts), "narration_s": round(narr_end, 3), "inserts_s": round(sum(i["dur"] for i in inserts), 3),
-          "outro_s": round(total - shifted(narr_end), 3)})
+          "outro_s": round(total - shifted(narr_end), 3), "footage": pieces.counts()})
 
 
 def _ts(t: float) -> str:

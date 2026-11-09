@@ -25,6 +25,8 @@ import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects } from "../projects/projects.ts"
 import { sourceLabel } from "../projects/source-context.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
+import type { Range } from "../sources/piece-ranges.ts"
+import { SourcePieces } from "../sources/source-pieces.ts"
 import { loadShortStory } from "../video-sets/short-story.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
 import { buildThumbnailBrief, THUMBNAIL_PROMPT } from "./thumbnail-prompt.ts"
@@ -68,6 +70,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
       const artifacts = yield* Artifacts
       const contactSheets = yield* ContactSheets
       const renderer = yield* ThumbnailRenderer
+      const sourcePieces = yield* SourcePieces
       const tools = yield* Tools
       // A bold thumbnail's cut-outs: Apple's first (nothing to download); rembg's models are fetched, with
       // progress, only when a layer needs them, then the thumbnail is drawn again.
@@ -109,8 +112,26 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         proposal: ThumbnailProposal | null,
         config: ThumbConfig
       ) {
+        // a video read from a 480p scan gives its frames from 1080p pieces around each layer's second (the agent's
+        // drafts used the scan); the stored config never carries the pieces
+        const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
+        const videos = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        const moments = new Map<number, Array<Range>>()
+        for (const layer of [...(config.layout === "bold" ? [] : [config.background]), config.hero, ...(config.inset === undefined ? [] : [config.inset])]) {
+          moments.set(layer.source ?? 0, [...(moments.get(layer.source ?? 0) ?? []), { start: Math.max(0, layer.src - 0.5), end: layer.src + 0.5 }])
+        }
+        const footage = yield* sourcePieces.forShort(
+          videos.flatMap((v) => {
+            const ranges = moments.get(v.index)
+            return ranges === undefined ? [] : [{ index: v.index, source: v.source, ranges }]
+          }),
+          ctx.progress
+        )
+        const problems = footage.videos.flatMap((v) => v.problem === null ? [] : [`${sourceLabel(v.index)}: ${v.problem}`])
+        if (problems.length > 0) yield* ctx.progress(null, `the thumbnail is drawn from the 480p reading copy (${problems.join("; ")})`)
+        const drawing: ThumbConfig = footage.piecesBySource === undefined ? config : { ...config, pieces_by_source: footage.piecesBySource }
         const slot = yield* artifacts.allocate(ctx.owner, "thumbnail")
-        const drawn = yield* draw(config, path.join(slot.dir, IMAGE), ctx.progress).pipe(Effect.mapError(failWith("render")))
+        const drawn = yield* draw(drawing, path.join(slot.dir, IMAGE), ctx.progress).pipe(Effect.mapError(failWith("render")))
         const summary = cutoutSummary(drawn)
         if (summary !== "") yield* ctx.progress(null, `Cut-outs: ${summary}`)
         const thumbnail: Thumbnail = { proposal, config, image: IMAGE }
@@ -235,7 +256,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         const c = yield* context(ctx)
         const problems = checkConfig(config, c.sources)
         if (problems.length > 0) return yield* fail("invalid-edit", problems.join("; "))
-        const { sources: _sent, ...rest } = config
+        const { sources: _sent, pieces_by_source: _pieces, ...rest } = config
         yield* record(ctx, null, { ...rest, ...configSources(c.sources) })
       })
 
@@ -270,6 +291,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
     Artifacts.layer,
     ContactSheets.layer,
     ThumbnailRenderer.layer,
+    SourcePieces.layer,
     Tools.layer,
     ViralHome.layer,
     NodeServices.layer

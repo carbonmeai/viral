@@ -14,11 +14,17 @@ export class RenderError extends Schema.TaggedError<RenderError>()("RenderError"
 // Reports progress: a percentage (null when unknown) and an optional message for the person watching.
 type Progress = (pct: number | null, message?: string) => Effect.Effect<void>
 
+// How many clips of each video (by index, "0" = V1) played from its 1080p pieces and how many from the video's own
+// file (source_pieces.py)
+const FootageCounts = Schema.Record(Schema.String, Schema.Struct({ pieces: Schema.Int, scan: Schema.Int }))
+export type FootageCounts = typeof FootageCounts.Type
+
 export interface NarratedRender {
   readonly output: string
   readonly captions: string
   readonly durationS: number
   readonly shots: number
+  readonly footage: FootageCounts
 }
 
 const NarratedStep = Schema.Literals(["shots", "outro", "overlays", "encode"])
@@ -32,7 +38,8 @@ const NarratedLine = Schema.fromJsonString(Schema.Union([
     duration_s: Schema.Finite,
     shots: Schema.Int,
     narration_s: Schema.Finite,
-    outro_s: Schema.Finite
+    outro_s: Schema.Finite,
+    footage: Schema.optionalKey(FootageCounts)
   })
 ]))
 
@@ -58,6 +65,7 @@ export interface CutRender {
   readonly captions: string
   readonly durationS: number
   readonly sections: number
+  readonly footage: FootageCounts
 }
 
 const CutStep = Schema.Literals(["sections", "overlays", "encode"])
@@ -68,7 +76,8 @@ const CutLine = Schema.fromJsonString(Schema.Union([
     output: Schema.String,
     captions: Schema.String,
     duration_s: Schema.Finite,
-    sections: Schema.Int
+    sections: Schema.Int,
+    footage: Schema.optionalKey(FootageCounts)
   })
 ]))
 const CutPlanJson = Schema.fromJsonString(CutRenderPlan)
@@ -94,6 +103,7 @@ export interface RankingRender {
   // where each entry plays in the short, in playing order
   readonly timeline: ReadonlyArray<{ readonly rank: number; readonly start: number; readonly end: number }>
   readonly checks: RenderChecks
+  readonly footage: FootageCounts
 }
 
 const RankingStep = Schema.Literals(["shots", "encode", "checks"])
@@ -106,7 +116,8 @@ const RankingLine = Schema.fromJsonString(Schema.Union([
     duration_s: Schema.Finite,
     shots: Schema.Int,
     timeline: Schema.Array(Schema.Struct({ rank: Schema.Int, start: Schema.Finite, end: Schema.Finite })),
-    checks: RenderChecks
+    checks: RenderChecks,
+    footage: Schema.optionalKey(FootageCounts)
   })
 ]))
 const RankingPlanJson = Schema.fromJsonString(RankingRenderPlan)
@@ -165,7 +176,8 @@ export class RenderEngine extends Context.Service<RenderEngine, {
                     output: line.output,
                     captions: line.captions,
                     durationS: line.duration_s,
-                    shots: line.shots
+                    shots: line.shots,
+                    footage: line.footage ?? {}
                   })
               }
             }
@@ -186,7 +198,13 @@ export class RenderEngine extends Context.Service<RenderEngine, {
             (line): Effect.Effect<CutRender | undefined> =>
               line.type === "progress"
                 ? progress(cutPct(line.step, line.done, line.total)).pipe(Effect.as(undefined))
-                : Effect.succeed({ output: line.output, captions: line.captions, durationS: line.duration_s, sections: line.sections })
+                : Effect.succeed({
+                  output: line.output,
+                  captions: line.captions,
+                  durationS: line.duration_s,
+                  sections: line.sections,
+                  footage: line.footage ?? {}
+                })
           ).pipe(toRenderError)
         }
       )
@@ -210,7 +228,8 @@ export class RenderEngine extends Context.Service<RenderEngine, {
                   durationS: line.duration_s,
                   shots: line.shots,
                   timeline: line.timeline,
-                  checks: line.checks
+                  checks: line.checks,
+                  footage: line.footage ?? {}
                 })
           ).pipe(toRenderError)
         }

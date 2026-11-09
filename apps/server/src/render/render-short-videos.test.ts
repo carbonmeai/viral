@@ -113,3 +113,18 @@ test("a section from a video the plan doesn't have fails", async () => {
   const error = await renderError(plan({ sources: [] }))
   assert.equal(error.code, "unknown-source")
 })
+
+// A video read from a 480p scan plays from its 1080p pieces: V2's piece from 4 s to 7 s is a grey ramp whose
+// brightness is the second on V2's own clock (16 + 25 × t), so the short's frame shows which second it came from.
+test("a section a piece covers plays from the piece at its own second of the video; others from the video itself", { timeout: 120_000 }, async () => {
+  const piece = join(work, "v2-4-7.mp4")
+  ffmpeg("-f", "lavfi", "-i", "color=c=black:s=480x480:r=30:d=3,format=yuv420p,geq=lum='16+25*(T+4)':cb=128:cr=128",
+    "-f", "lavfi", "-i", "sine=f=800:d=3", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", piece)
+  const exit = await render(plan({ pieces_by_source: { "1": [{ path: piece, start: 4, end: 7 }] } }))
+  assert.ok(Exit.isSuccess(exit), Exit.isFailure(exit) ? String(exit.cause) : "")
+  // 3 s into the short is V2's 5.5 s: brightness 153.5 (RGB ≈ 160); V1's sections stay red
+  const { r, g, b } = pixel(exit.value.output, 3)
+  assert.ok(Math.abs(r - 160) < 14 && Math.abs(g - 160) < 14 && Math.abs(b - 160) < 14, `V2's 5.5s: ${JSON.stringify({ r, g, b })}`)
+  assert.ok(pixel(exit.value.output, 1).r > 150, "V1 plays from its own file")
+  assert.deepEqual(exit.value.footage, { "0": { pieces: 0, scan: 2 }, "1": { pieces: 1, scan: 0 } })
+})

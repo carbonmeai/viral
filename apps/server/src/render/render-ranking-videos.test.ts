@@ -170,3 +170,31 @@ test("a shot past the end of its video fails", async () => {
   const error = await renderError(plan({ items: [{ rank: 1, label: "Late", emoji: "⏰", shots: [{ source: 0, src: 9, dur: 3, framing: "fill" }] }], order: [1] }))
   assert.equal(error.code, "too-short")
 })
+
+// A video read from a 480p scan plays from its 1080p pieces: here the red video's piece from 1.5 s to 7.5 s is a grey
+// ramp whose brightness is the second on the video's own clock (16 + 25 × t), so a frame of the short shows which
+// second of the video it came from. A shot no piece covers plays from the scan, and the render says how many did.
+test("a shot a piece covers plays from the piece at its own second of the video; one it doesn't, from the scan", { timeout: 120_000 }, async () => {
+  const piece = join(work, "red-1.5-7.5.mp4")
+  ffmpeg("-f", "lavfi", "-i", "color=c=black:s=640x360:r=25:d=6,format=yuv420p,geq=lum='16+25*(T+1.5)':cb=128:cr=128",
+    "-f", "lavfi", "-i", "sine=f=300:d=6", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", piece)
+  const exit = await render(plan({
+    order: [2, 1],
+    items: [
+      { rank: 1, label: "Scan", emoji: "🍎", shots: [{ source: 0, src: 8.2, dur: 1, framing: "fill" }] },
+      { rank: 2, label: "Piece", emoji: "🐘", shots: [{ source: 0, src: 2, dur: 2, framing: "fill" }] }
+    ],
+    exclude_by_source: {},
+    pieces_by_source: { "0": [{ path: piece, start: 1.5, end: 7.5 }] }
+  }))
+  assert.ok(Exit.isSuccess(exit), Exit.isFailure(exit) ? String(exit.cause) : "")
+  const out = exit.value.output
+  // the footage at 0.5 s and 1.5 s of the short is the video's 2.5 s and 3.5 s: brightness 78 and 103 (as RGB ≈ 72, 102)
+  const grey = (t: number) => pixel(out, t, Math.round(W * 0.75), Math.round(H * 0.55))
+  for (const [t, expected] of [[0.5, 72], [1.5, 102]] as const) {
+    const { r, g, b } = grey(t)
+    assert.ok(Math.abs(r - expected) < 14 && Math.abs(g - expected) < 14 && Math.abs(b - expected) < 14, `${t}s is the video's ${t + 2}s: ${JSON.stringify({ r, g, b })}`)
+  }
+  assert.ok(isRed(grey(2.5)), "the uncovered shot plays from the scan (red)")
+  assert.deepEqual(exit.value.footage, { "0": { pieces: 1, scan: 1 } })
+})

@@ -11,7 +11,9 @@ Config schema: ThumbConfig in packages/contracts/src/thumb-config.ts. `source` r
 file's folder; `box` is a crop in source pixels [x0, y0, x1, y1]; x/y are centre fractions of the canvas.
 
 A short from several videos: `sources` lists the other videos (V2 first) and a layer's `source` index picks its
-video (0 = `source`, 1 = `sources[0]`…; absent = 0), so the hero and the face can come from different videos.
+video (0 = `source`, 1 = `sources[0]`…; absent = 0), so the hero and the face can come from different videos. A
+video read from a 480p scan gives its frames from its 1080p pieces (`pieces_by_source`) where they cover a layer's
+second; the layer's `box`, in the scan's pixels, is scaled to the piece.
 
 Ported from the viral-shorts skill's thumbnail.py; the layout is unchanged (blurred, darkened full-bleed
 background; the hero object big in the middle with a red circle; a tilted, white-bordered reaction inset;
@@ -42,6 +44,9 @@ import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "render"))
+from source_pieces import Pieces  # noqa: E402  (the renderers' pieces of scanned videos)
 
 W, H = 1080, 1920
 FONTS = ["/System/Library/Fonts/Supplemental/Impact.ttf", "/System/Library/Fonts/Supplemental/Arial Black.ttf",
@@ -394,13 +399,39 @@ def video_of(srcs: list[str], layer: dict) -> str:
     return srcs[i]
 
 
-def bold(cfg: dict, srcs: list[str], out: Path) -> None:
+def video_width(path: str) -> int | None:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width", "-of", "csv=p=0", path],
+                       capture_output=True, text=True)
+    try:
+        return int(r.stdout.strip().split("\n")[0])
+    except ValueError:
+        return None
+
+
+def layer_frame(srcs: list[str], layer: dict, pieces: Pieces) -> tuple[Image.Image, dict]:
+    """A layer's frame and its config: from a 1080p piece of a scanned video when one covers the layer's second, its
+    `box` (in the scan's pixels) scaled to the piece's size; else from the video itself, unchanged."""
+    src = video_of(srcs, layer)
+    path, at = pieces.locate(int(layer.get("source", 0)), src, float(layer["src"]), 0.04)
+    img = frame(path, at)
+    if path == src or not layer.get("box"):
+        return img, layer
+    scan_w = video_width(src)
+    if not scan_w:
+        return img, layer
+    f = img.width / scan_w
+    x0, y0, x1, y1 = layer["box"]
+    box = [min(round(x0 * f), img.width - 1), min(round(y0 * f), img.height - 1), min(round(x1 * f), img.width), min(round(y1 * f), img.height)]
+    return img, {**layer, "box": box}
+
+
+def bold(cfg: dict, srcs: list[str], out: Path, pieces: Pieces) -> None:
     emit({"type": "progress", "step": "background"})
     canvas = backdrop(cfg.get("backdrop", {}))
 
     hero_cfg, face_cfg = cfg["hero"], cfg.get("inset")
-    hero_img = boost(crop_box(frame(video_of(srcs, hero_cfg), hero_cfg["src"]), hero_cfg))
-    face_img = boost(crop_box(frame(video_of(srcs, face_cfg), face_cfg["src"]), face_cfg)) if face_cfg else None
+    hero_img = boost(crop_box(*layer_frame(srcs, hero_cfg, pieces)))
+    face_img = boost(crop_box(*layer_frame(srcs, face_cfg, pieces))) if face_cfg else None
     emit({"type": "progress", "step": "cutout"})
     jobs = [(hero_img, "isnet-general-use")] + ([(face_img, "u2net_human_seg")] if face_img is not None else [])
     cuts = cutouts(jobs)
@@ -483,7 +514,7 @@ def bold(cfg: dict, srcs: list[str], out: Path) -> None:
 
     out.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out, quality=92)
-    emit({"type": "done", "output": str(out), "width": W, "height": H, "cutouts": report})
+    emit({"type": "done", "output": str(out), "width": W, "height": H, "cutouts": report, "footage": pieces.counts()})
 
 
 def main() -> None:
@@ -498,13 +529,15 @@ def main() -> None:
         if not Path(src).exists():
             fail("source", f"no video at {src}")
     out = Path(args.out) if args.out else cfgp.with_suffix(".jpg")
+    # a scanned video's frames come from its 1080p pieces when the config has them (pieces_by_source)
+    pieces = Pieces(cfg, cfgp.parent)
     if cfg.get("layout") == "bold":
-        bold(cfg, srcs, out)
+        bold(cfg, srcs, out, pieces)
         return
 
     # background
     emit({"type": "progress", "step": "background"})
-    bg = frame(video_of(srcs, cfg["background"]), cfg["background"]["src"])
+    bg = layer_frame(srcs, cfg["background"], pieces)[0]
     s = max(W / bg.width, H / bg.height)
     bg = bg.resize((int(bg.width * s) + 1, int(bg.height * s) + 1), Image.LANCZOS)
     bg = bg.crop(((bg.width - W) // 2, (bg.height - H) // 2, (bg.width - W) // 2 + W, (bg.height - H) // 2 + H))
@@ -513,7 +546,7 @@ def main() -> None:
 
     # hero object
     emit({"type": "progress", "step": "hero"})
-    hero, hx, hy = placed(frame(video_of(srcs, cfg["hero"]), cfg["hero"]["src"]), cfg["hero"])
+    hero, hx, hy = placed(*layer_frame(srcs, cfg["hero"], pieces))
     hero_l = rounded(hero, 36, 10)
     shadow(canvas, hero_l, hx - 10, hy - 10)
     d = ImageDraw.Draw(canvas)
@@ -527,7 +560,7 @@ def main() -> None:
     # reaction inset
     if cfg.get("inset"):
         emit({"type": "progress", "step": "inset"})
-        ins, ix, iy = placed(frame(video_of(srcs, cfg["inset"]), cfg["inset"]["src"]), cfg["inset"])
+        ins, ix, iy = placed(*layer_frame(srcs, cfg["inset"], pieces))
         ins_l = rounded(ins, 28, 12).rotate(cfg["inset"].get("tilt", 0), expand=True, resample=Image.BICUBIC)
         ix -= (ins_l.width - ins.width) // 2
         iy -= (ins_l.height - ins.height) // 2
@@ -557,7 +590,7 @@ def main() -> None:
 
     out.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out, quality=92)
-    emit({"type": "done", "output": str(out), "width": W, "height": H})
+    emit({"type": "done", "output": str(out), "width": W, "height": H, "footage": pieces.counts()})
 
 
 if __name__ == "__main__":

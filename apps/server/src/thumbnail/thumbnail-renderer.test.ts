@@ -175,3 +175,23 @@ test("a short from several videos: each layer is cut from its own video", async 
   const unknown = await run((r) => Effect.flip(r.render({ ...two, hero: { ...two.hero, source: 2 } }, join(dir, "unknown.jpg"))))
   assert.equal(unknown.code, "unknown-source")
 })
+
+// A video read from a 480p scan gives its frames from its 1080p pieces: the scan is red at 160×90, its piece from 1 s
+// to 4 s is green on the left half and blue on the right at 640×360. The hero's box is the scan's right half, in the
+// scan's pixels, so it must be scaled to the piece to show the piece's right half (blue).
+test("a layer covered by a piece is cut from the piece, its box scaled from the scan's pixels to the piece's", async () => {
+  const scan = join(dir, "scan.mp4")
+  const piece = join(dir, "piece-1-4.mp4")
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=160x90:d=5:r=10", "-pix_fmt", "yuv420p", scan])
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=green:s=640x360:d=3:r=10,drawbox=x=320:y=0:w=320:h=360:color=blue:t=fill",
+    "-pix_fmt", "yuv420p", piece])
+  const thumb = { source: scan, background: { src: 2 }, hero: { src: 2, box: [80, 0, 160, 90] as const, y: 0.45, width: 0.5 }, lines: [{ text: "HI" }] }
+  const centre = (image: string) => {
+    const rgb = execFileSync("ffmpeg", ["-loglevel", "error", "-i", image, "-vf", "crop=8:8:536:860,scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+    return { r: rgb[0]!, g: rgb[1]!, b: rgb[2]! }
+  }
+  const fromPiece = centre((await run((r) => r.render({ ...thumb, pieces_by_source: { "0": [{ path: piece, start: 1, end: 4 }] } }, join(dir, "piece.jpg")))).image)
+  assert.ok(fromPiece.b > 150 && fromPiece.r < 80 && fromPiece.g < 80, `the piece's right half: ${JSON.stringify(fromPiece)}`)
+  const fromScan = centre((await run((r) => r.render(thumb, join(dir, "scan.jpg")))).image)
+  assert.ok(fromScan.r > 150 && fromScan.g < 80 && fromScan.b < 80, `without pieces, the scan: ${JSON.stringify(fromScan)}`)
+})

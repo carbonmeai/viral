@@ -17,11 +17,14 @@ its red accent, the numbered list (1 gold, 2 silver, 3 bronze, the last red) who
 entry plays, landscape footage in a 4:3 window over a blurred fill, upright footage filling the screen, each clip's own
 sound evened out to -14 LUFS. Changed: the server has already moved every cut to whole sentences, so the shots play
 exactly as planned; a shot names its video by index; an optional "via <channel>" line; a canvas size; and checks of the
-finished mp4 (black frames, each shot's first and last frame, loudness). Reporting is one JSON object per stdout line:
+finished mp4 (black frames, each shot's first and last frame, loudness). A video read from a 480p scan plays from
+its 1080p pieces (`pieces_by_source`, source_pieces.py) wherever they cover a shot. Reporting is one JSON object per
+stdout line:
   {"type": "progress", "step": "shots" | "encode" | "checks", "done": 3, "total": 31}
   {"type": "error", "code": "excluded-range", "message": "..."}   (then exit 1)
   {"type": "done", "output": "...mp4", "captions": "...srt", "duration_s": 158.6, "shots": 31, "timeline": [...],
-   "checks": {"black": [[s, e]], "lufs": -13.9, "frames": [{"rank", "shot", "start", "end", "first", "last"}]}}
+   "checks": {"black": [[s, e]], "lufs": -13.9, "frames": [{"rank", "shot", "start", "end", "first", "last"}]},
+   "footage": {"0": {"pieces": 3, "scan": 0}}}
 """
 import argparse
 import json
@@ -32,6 +35,8 @@ import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+from source_pieces import Pieces
 
 FPS = 30
 BOLD = [
@@ -284,6 +289,9 @@ def main() -> None:
     excluded = plan.get("exclude_by_source", {}) or {}
     title = tuple((plan.get("title") or ["", ""])[:2])
     via_on = bool(plan.get("via", False))
+    # a scanned video's clips play from its 1080p pieces when the plan has them (pieces_by_source)
+    pieces = Pieces(plan, base)
+    piece_infos: dict[str, dict] = {}
 
     # every shot checked before anything renders
     infos: dict[int, dict] = {}
@@ -321,7 +329,13 @@ def main() -> None:
             dur = float(shot["dur"])
             src = float(shot["src"])
             p = tmp / f"seg_{len(parts):03d}.mp4"
-            segment(videos[i], infos[i], shot, W, H, aspect, png, p)
+            clip, at = pieces.locate(i, videos[i], src, dur)
+            if clip == videos[i]:
+                segment(videos[i], infos[i], shot, W, H, aspect, png, p)
+            else:
+                if clip not in piece_infos:
+                    piece_infos[clip] = probe(clip)
+                segment(clip, piece_infos[clip], {**shot, "src": at}, W, H, aspect, png, p)
             parts.append(p)
             if i not in words_of:
                 words_of[i] = load_words(transcripts[i] if i < len(transcripts) else None)
@@ -371,7 +385,7 @@ def main() -> None:
     if not args.keep_temp:
         shutil.rmtree(tmp, ignore_errors=True)
     emit({"type": "done", "output": str(out), "captions": str(captions), "duration_s": round(t, 3), "shots": len(parts),
-          "timeline": timeline, "checks": {"black": black, "lufs": lufs, "frames": frames}})
+          "timeline": timeline, "checks": {"black": black, "lufs": lufs, "frames": frames}, "footage": pieces.counts()})
 
 
 if __name__ == "__main__":

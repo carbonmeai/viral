@@ -14,11 +14,13 @@ Ported from the viral-shorts skill's render_short.py. The rendering is unchanged
 blurred-fit framing, 3-word captions with the active word highlighted, a hook title card); added are a credit
 line, excluded ranges, caption colour/case and loudness, and several videos: `sources` lists V2… (each with its
 transcript), `exclude_by_source` their excluded ranges ({"1": [[a, b]]} = V2's), and a section's `source` picks its
-video (0 = `source`, absent = V1), so a single-video plan renders exactly as before. Reporting changed: stdout carries one JSON object per
+video (0 = `source`, absent = V1), so a single-video plan renders exactly as before. A video read from a 480p scan plays
+from its 1080p pieces (`pieces_by_source`, source_pieces.py) wherever they cover a section. Reporting changed: stdout carries one JSON object per
 line for the server to decode:
   {"type": "progress", "step": "sections", "done": 3, "total": 7}
   {"type": "error", "code": "excluded-range", "message": "..."}   (then exit 1)
-  {"type": "done", "output": "...mp4", "captions": "...srt", "duration_s": 41.2, "sections": 7}
+  {"type": "done", "output": "...mp4", "captions": "...srt", "duration_s": 41.2, "sections": 7,
+   "footage": {"0": {"pieces": 7, "scan": 0}}}
 """
 import argparse
 import json
@@ -29,6 +31,8 @@ import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+from source_pieces import Pieces
 
 W, H, FPS = 1080, 1920, 30
 FONT_CANDIDATES = [
@@ -325,6 +329,8 @@ def main() -> None:
                 fail("excluded-range", f"{where}section {sec['start']}–{sec['end']}s overlaps the excluded range {a}–{b}s")
 
     framing = plan.get("framing", "crop")
+    # a scanned video's sections play from its 1080p pieces when the plan has them (pieces_by_source)
+    pieces = Pieces(plan, base)
     timed_words: list[dict] = []
     beats: list[tuple[str, float, float]] = []
     parts: list[Path] = []
@@ -341,7 +347,8 @@ def main() -> None:
         end = min(end, src_dur)
         vf = reframe_filter(sec.get("framing", framing), float(sec.get("crop_x", plan.get("crop_x", 0.5))), src_w, src_h)
         part = tmp / f"part_{i:02d}.mp4"
-        cut_section(srcs[video], start, end, vf, part)
+        clip, at = pieces.locate(video, srcs[video], start, end - start)
+        cut_section(clip, at, at + (end - start), vf, part)
         parts.append(part)
         for w in words:
             if w["s"] >= start - 0.01 and w["e"] <= end + 0.01:
@@ -405,7 +412,7 @@ def main() -> None:
     if not args.keep_temp:
         shutil.rmtree(tmp, ignore_errors=True)
     emit({"type": "done", "output": str(out), "captions": str(out.with_suffix(".srt")), "duration_s": round(total, 3),
-          "sections": len(parts)})
+          "sections": len(parts), "footage": pieces.counts()})
 
 
 if __name__ == "__main__":
