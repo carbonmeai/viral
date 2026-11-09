@@ -44,6 +44,10 @@ text at the top, the hero object big in the middle, and a reaction face.
 - **A curiosity tease, not a statement:** a question or a consequence the viewer has to tap to resolve
   ("IT BROKE HIM", "WORST CANDY EVER?", "7 TASTES AT ONCE?!"), 2–5 words on one or two lines. Statements
   ("7 TASTES / 1 CANDY") suit classic.
+- **A line fits the canvas, not a letter count.** Bold draws each line as big as it fits across the thumbnail, so a
+  line of about 16 characters ("ANIMAL COMEBACKS") still reads; much longer, or a run of wide letters (W, M), and the
+  check asks you to shorten it or split it over the two lines. Keep the subject whole rather than cutting a word to
+  fit ("ANIMAL COMEBACKS", not "COMEBACK"). Classic keeps a line to 12 characters.
 - **Yellow then white** for the two lines; red for the word that carries the threat or the question ("EVER?").
 - **They restate the open loop,** not the title word for word, and never spoil the ending.
 - **No clickbait the short doesn't deliver.** Every claim in the words and every frame must be in the video.

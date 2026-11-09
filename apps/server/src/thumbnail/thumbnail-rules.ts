@@ -16,8 +16,26 @@ export interface ThumbnailContext {
 const WORDS: readonly [number, number] = [2, 4]
 // a bold thumbnail's tease can take one more word ("WORST CANDY EVER?")
 const BOLD_WORDS: readonly [number, number] = [2, 5]
-// longest line that still reads at a big size on a 1080px-wide thumbnail
+// longest classic line that still reads at a big size on a 1080px-wide thumbnail
 const LINE_CHARS = 12
+// A bold line is measured instead: render-thumbnail.py draws it in Impact at 210–220px and shrinks it until it fits
+// 92% of the 1080px canvas, so a line passes when it would still be at least BOLD_MIN_SIZE px tall ("ANIMAL COMEBACKS"
+// draws at about 124px; about 16–18 letters fit). Impact's advance widths per 1000 px of font size, measured with Pillow
+// from /System/Library/Fonts/Supplemental/Impact.ttf; anything not listed counts as a W (the widest).
+const BOLD_MIN_SIZE = 110
+const BOLD_TEXT_WIDTH = 1080 * 0.92
+const IMPACT_WIDTHS: Record<string, number> = {
+  " ": 176, A: 508, B: 552, C: 554, D: 553, E: 416, F: 398, G: 551, H: 555, I: 288, J: 331, K: 537, L: 380, M: 717,
+  N: 542, O: 546, P: 502, Q: 546, R: 539, S: 517, T: 461, U: 547, V: 523, W: 814, X: 482, Y: 473, Z: 397, "0": 536,
+  "1": 381, "2": 502, "3": 530, "4": 500, "5": 537, "6": 542, "7": 392, "8": 535, "9": 542, "!": 270, "?": 525,
+  "'": 185, "\"": 370, ".": 185, ",": 168, ":": 202, ";": 202, "&": 576, "-": 294, "#": 626, "$": 547, "%": 693,
+  "+": 533, "/": 396, "(": 313, ")": 313, "*": 281, "@": 775
+}
+// the size a bold line is drawn at once shrunk to fit the canvas (never above the layout's own size)
+export const boldLineSize = (text: string): number => {
+  const units = [...text].reduce((n, c) => n + (IMPACT_WIDTHS[c] ?? IMPACT_WIDTHS["W"]!), 0)
+  return units === 0 ? Infinity : Math.floor((BOLD_TEXT_WIDTH * 1000) / units)
+}
 // smallest crop side, as a fraction of the frame: anything less is too soft once blown up
 const MIN_CROP = 0.2
 // the hero sits in a fixed slot 92% of the canvas wide; a crop much taller than wide would cover the text
@@ -126,7 +144,13 @@ export const checkThumbnail = (proposal: ThumbnailProposal, sources: ReadonlyArr
   if (words < range[0] || words > range[1]) problems.push(`the text is ${words} words; use ${range[0]}–${range[1]}`)
   for (const line of lines) {
     if (line.text === "") problems.push("a line of text is empty")
-    else if (line.text.length > LINE_CHARS) problems.push(`"${line.text}" is ${line.text.length} characters; keep a line to ${LINE_CHARS} so it stays huge`)
+    else if (bold) {
+      const size = boldLineSize(line.text)
+      if (size < BOLD_MIN_SIZE) {
+        problems.push(`"${line.text}" is too wide to stay huge: it would shrink to ${size}px (at least ${BOLD_MIN_SIZE}px); ` +
+          "keep a line to about 16 characters, or split it over two lines")
+      }
+    } else if (line.text.length > LINE_CHARS) problems.push(`"${line.text}" is ${line.text.length} characters; keep a line to ${LINE_CHARS} so it stays huge`)
   }
   // V1 is stored as before, without a source
   const { source: backgroundSource, ...background } = proposal.background

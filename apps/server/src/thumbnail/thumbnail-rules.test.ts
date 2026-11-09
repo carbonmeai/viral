@@ -1,7 +1,7 @@
 import type { ThumbnailProposal } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { checkConfig, checkThumbnail, fromProposedThumbnail, thumbConfig } from "./thumbnail-rules.ts"
+import { boldLineSize, checkConfig, checkThumbnail, fromProposedThumbnail, thumbConfig } from "./thumbnail-rules.ts"
 
 const ctx = { width: 854, height: 480, sourceSeconds: 2296, excluded: [{ start: 2158, end: 2296 }] }
 const v1 = [{ ...ctx, path: "/v/source.mp4" }]
@@ -83,6 +83,21 @@ test("bold needs a face and a real emoji, and allows five words", () => {
   assert.match(text, /"yuck" isn't a single emoji/)
   assert.doesNotMatch(text, /words; use/)
   assert.match(checkThumbnail({ ...bold, lines: [{ text: "a b c", color: "white" }, { text: "d e f", color: "red" }] }, [ctx]).problems.join(), /6 words; use 2–5/)
+})
+
+// A bold line is measured in the renderer's font (Impact), not counted: "ANIMAL COMEBACKS" (16 characters) still draws
+// big, a line of wide letters or a long phrase doesn't. Classic keeps its 12-character cap.
+test("a bold line passes while it fits the canvas at a big size, whatever its length in characters", () => {
+  const ranking = (text: string) => checkThumbnail({ ...bold, lines: [{ text: "top 5", color: "yellow" }, { text, color: "white" }] }, [ctx]).problems
+  assert.deepEqual(ranking("animal comebacks"), [], "16 characters that fit at 124px")
+  assert.ok(Math.abs(boldLineSize("ANIMAL COMEBACKS") - 124) <= 2, "about what Pillow measures in Impact (124px)")
+  assert.deepEqual(ranking("worst candy ever?"), [])
+  assert.match(ranking("unbelievable comebacks").join("\n"), /"UNBELIEVABLE COMEBACKS" is too wide to stay huge: it would shrink to \d+px/)
+  assert.match(ranking("www mmmmmmmmm").join("\n"), /too wide/, "13 wide letters don't fit")
+  assert.match(ranking("animal comebacks ranked from worst").join("\n"), /words; use 2–5/, "and the words rule still holds")
+  assert.match(checkThumbnail({ ...candy, lines: [{ text: "animal", color: "yellow" }, { text: "comebacks", color: "white" }] }, [ctx]).problems.join(), /^$/)
+  assert.match(checkThumbnail({ ...candy, lines: [{ text: "top 5", color: "yellow" }, { text: "animal comebacks", color: "white" }] }, [ctx]).problems.join(),
+    /"ANIMAL COMEBACKS" is 16 characters; keep a line to 12/, "classic still counts characters")
 })
 
 test("each layer is checked in its own video; V1 is stored without a source", () => {
