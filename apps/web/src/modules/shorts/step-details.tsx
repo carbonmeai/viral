@@ -1,6 +1,7 @@
 import type { StageName, StageRun } from "@viral/contracts"
 import { Detail } from "../system/detail.tsx"
 import { Facts, InspectorBlock } from "./editor-frame.tsx"
+import { spendText, stepSpend } from "./editor-values.ts"
 
 // "claude-opus-5-5[1m]" → "Opus 5.5", "claude-haiku-4-5-20251001" → "Haiku 4.5", "eleven_v4" as it is
 const modelName = (model: string | null) => {
@@ -23,11 +24,10 @@ export function StepDetails({ stages, names }: { readonly stages: ReadonlyArray<
       </Detail>
     )
   }
-  const cost = runs.reduce((n, s) => n + (s.costUsd ?? 0), 0)
-  const chars = runs.reduce((n, s) => n + (s.ttsCharacters ?? 0), 0)
+  // every attempt in this run: the total, and each try's ("$0.57 · 2 tries ($0.17, $0.40)")
+  const spend = stepSpend(runs, names)
+  const cost = spendText(spend)
   const ms = runs.reduce((n, s) => n + (s.durationMs ?? 0), 0)
-  // tries of the step itself: the most attempts any of its stages took (assemble + render once is 1 try)
-  const tries = Math.max(...names.map((name) => runs.filter((r) => r.stage === name).length))
   // a step that runs a program (assemble, render) has no model; it shows how long it took on this Mac
   const model = runs.map((r) => r.model).findLast((m) => m !== null) ?? null
   return (
@@ -37,9 +37,10 @@ export function StepDetails({ stages, names }: { readonly stages: ReadonlyArray<
           rows={[
             ...(model === null ? [] : [["Model", modelName(latest.model ?? model)] as const]),
             ...(model === null && ms >= 500 ? [["Time", `${Math.round(ms / 1000)}s on this Mac`] as const] : []),
-            ...(cost > 0 ? [["Cost", `$${cost.toFixed(2)}`] as const] : []),
-            ...(chars > 0 ? [["Characters", String(chars)] as const] : []),
-            ["Tries", String(tries)]
+            ...(cost === null ? [] : [["Cost", cost] as const]),
+            ...(spend.characters > 0 ? [["Characters", String(spend.characters)] as const] : []),
+            // the cost already says how many tries when there were several
+            ...(cost !== null && spend.tries.length > 1 ? [] : [["Tries", String(spend.tries.length)] as const])
           ]}
         />
       </InspectorBlock>

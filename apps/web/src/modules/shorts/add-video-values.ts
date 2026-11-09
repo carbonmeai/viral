@@ -21,3 +21,18 @@ export const refusalText = (error: unknown, fallback: string) =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string" && error.message !== ""
     ? error.message
     : fallback
+
+// The short's videos that the library has newer details for (a link the short was given has since been read, or a
+// video renamed): "<id>@<ms>" for each, joined, "" when the short is up to date. The editor reloads the short when
+// this changes, so a new video's name appears without a refresh; the shell keeps the library fresh.
+interface Dated {
+  readonly id: SourceId
+  readonly updatedAt: { readonly epochMilliseconds: number }
+}
+export const newerVideos = (inShort: ReadonlyArray<Dated>, library: ReadonlyArray<Dated>) =>
+  inShort.flatMap((mine) => {
+    const latest = library.find((s) => s.id === mine.id)
+    return latest !== undefined && latest.updatedAt.epochMilliseconds > mine.updatedAt.epochMilliseconds
+      ? [`${mine.id}@${latest.updatedAt.epochMilliseconds}`]
+      : []
+  }).join(",")

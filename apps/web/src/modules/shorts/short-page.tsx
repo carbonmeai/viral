@@ -9,12 +9,14 @@ import { ArrowRight, Check, Copy, Eye, FolderOpen, LayoutGrid, MessageSquare, Un
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { desktop, serverUrl } from "../../config/server-url.ts"
 import { artifactFileUrl, artifactPathUrl, homeFileUrl } from "../../lib/media-url.ts"
+import { overviewAtom } from "../home/overview.ts"
 import { ServerState } from "../home/server-state.tsx"
 import { TitleBar } from "../layout/title-bar.tsx"
 import { tracksAtom, voicesAtom } from "../library/library-api.ts"
 import { Detail, useDetailed } from "../system/detail.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
+import { newerVideos } from "./add-video-values.ts"
 import { BriefButton } from "./brief-button.tsx"
 import { ShortVideosProvider } from "./short-videos.tsx"
 import { VideosMenu } from "./videos-menu.tsx"
@@ -27,7 +29,8 @@ import {
   openingStep,
   shortTimeOf,
   stepOfRequest,
-  stepStates
+  stepStates,
+  withStoredCosts
 } from "./editor-values.ts"
 import type { GateControls } from "./gate.ts"
 import { LaterStep } from "./later-step.tsx"
@@ -135,7 +138,10 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   readonly refresh: () => void
 }) {
   // the live run is fresher than the last workspace load
-  const stages: ReadonlyArray<StageRun> = progress.run === null ? ws.stages : progress.stages
+  const stages: ReadonlyArray<StageRun> = useMemo(
+    () => progress.run === null ? ws.stages : withStoredCosts(progress.stages, ws.stages),
+    [progress.run, progress.stages, ws.stages]
+  )
   const pending: RunRequest | null = progress.run === null ? ws.pending : progress.pending[0] ?? null
   const steps = editorSteps(ws.project.format)
   const states = useMemo(() => stepStates(steps, stages), [steps, stages])
@@ -143,6 +149,12 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const openStep = steps.find((s) => s.id === open)!
   const waitingOn = stepOfRequest(steps, pending)
   const current = openingStep(steps, states)
+  // a video just added by link is read in its own run; once the library has its title, reload the short to name it
+  const library = Option.getOrNull(AsyncResult.value(useAtomValue(overviewAtom)))
+  const newer = newerVideos(ws.videos.map((v) => v.source), library?.videos.map((v) => v.source) ?? [])
+  useEffect(() => {
+    if (newer !== "") refresh()
+  }, [newer, refresh])
 
   const respond = useAtomSet(respondToRequest, { mode: "promise" })
   const check = useAtomSet(checkScriptEdit, { mode: "promise" })

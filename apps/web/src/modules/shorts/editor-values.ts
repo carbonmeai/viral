@@ -215,3 +215,44 @@ export const sourceStretches = (
       else out.push({ start: p.start, end: p.end })
       return out
     }, []))
+
+// The live run's stage runs, with what the last workspace load knows that the live events don't yet: a stage
+// reports its cost as it goes but its row only arrives again when it finishes, so an attempt waiting at its gate
+// would show no cost. Costs only grow, so a live value wins once there is one.
+export const withStoredCosts = (live: ReadonlyArray<StageRun>, stored: ReadonlyArray<StageRun>): ReadonlyArray<StageRun> =>
+  live.map((run) => {
+    const known = stored.find((s) => s.id === run.id)
+    return known === undefined ? run : {
+      ...run,
+      model: run.model ?? known.model,
+      provider: run.provider ?? known.provider,
+      billing: run.billing ?? known.billing,
+      costUsd: run.costUsd ?? known.costUsd,
+      ttsCharacters: run.ttsCharacters ?? known.ttsCharacters
+    }
+  })
+
+// What a step spent in this run: its total, and each try's (a try is an attempt number across the step's stages, so
+// the Render step's assemble + render once is one try).
+export interface StepSpend {
+  readonly costUsd: number
+  readonly tries: ReadonlyArray<number>
+  readonly characters: number
+}
+export const stepSpend = (stages: ReadonlyArray<StageRun>, names: ReadonlyArray<StageName>): StepSpend => {
+  const runs = stages.filter((s) => names.includes(s.stage))
+  const cost = (rs: ReadonlyArray<StageRun>) => rs.reduce((n, s) => n + (s.costUsd ?? 0), 0)
+  const attempts = [...new Set(runs.map((r) => r.attempt))].sort((a, b) => a - b)
+  return {
+    costUsd: cost(runs),
+    tries: attempts.map((a) => cost(runs.filter((r) => r.attempt === a))),
+    characters: runs.reduce((n, s) => n + (s.ttsCharacters ?? 0), 0)
+  }
+}
+
+const usd = (n: number) => `$${n.toFixed(2)}`
+// "$0.57 · 2 tries ($0.17, $0.40)", or "$0.17" for one try; null when it cost nothing
+export const spendText = (spend: StepSpend) =>
+  spend.costUsd <= 0 ? null : spend.tries.length > 1
+    ? `${usd(spend.costUsd)} · ${spend.tries.length} tries (${spend.tries.map(usd).join(", ")})`
+    : usd(spend.costUsd)

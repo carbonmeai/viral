@@ -1,7 +1,7 @@
 import type { Script, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { editorSteps, layoutTimeline, narratedWords, narrationEnds, openingStep, realLines, shortTimeOf, sourceStretches, stepStates } from "./editor-values.ts"
+import { editorSteps, layoutTimeline, narratedWords, narrationEnds, openingStep, realLines, shortTimeOf, sourceStretches, spendText, stepSpend, stepStates, withStoredCosts } from "./editor-values.ts"
 
 const stage = (name: StageRun["stage"], status: StageRun["status"], attempt = 1) => ({ stage: name, status, attempt }) as StageRun
 
@@ -64,4 +64,32 @@ test("the source strip joins each video's touching pieces of the short", () => {
     { start: 7, end: 7, source: 1 }
   ], 3)
   assert.deepEqual(strip, [[{ start: 0, end: 3.5 }, { start: 5, end: 6 }], [{ start: 3.5, end: 5 }], []])
+})
+
+const spent = (id: string, name: StageRun["stage"], attempt: number, costUsd: number | null, more: Partial<StageRun> = {}) =>
+  ({ id, stage: name, status: "succeeded", attempt, costUsd, ttsCharacters: null, model: null, provider: null, billing: null, ...more }) as unknown as StageRun
+
+test("a step's cost is every try in the run, shown per try when there were several", () => {
+  const thumb = stepSpend([spent("t1", "thumbnail", 1, 0.17), spent("m", "metadata", 1, 0.02), spent("t2", "thumbnail", 2, 0.4)], ["thumbnail"])
+  assert.equal(thumb.tries.length, 2)
+  assert.equal(spendText(thumb), "$0.57 · 2 tries ($0.17, $0.40)")
+  assert.equal(spendText(stepSpend([spent("s", "script", 1, 0.17)], ["script"])), "$0.17")
+  // assemble + render once is one try; a program's step costs nothing
+  const render = stepSpend([spent("a", "assemble", 1, null), spent("r", "render", 1, null)], ["assemble", "render"])
+  assert.equal(render.tries.length, 1)
+  assert.equal(spendText(render), null)
+  // the voice counts characters across its takes
+  assert.equal(stepSpend([spent("v1", "voice", 1, null, { ttsCharacters: 300 }), spent("v2", "voice", 2, null, { ttsCharacters: 310 })], ["voice"]).characters, 610)
+})
+
+test("an attempt waiting at its gate keeps the cost the workspace load saw", () => {
+  // live events sent the row when it started (no cost yet); the workspace was loaded once the gate was raised
+  const live = [spent("t1", "thumbnail", 1, 0.17, { status: "failed" }), spent("t2", "thumbnail", 2, null, { status: "running" })]
+  const stored = [spent("t1", "thumbnail", 1, 0.17, { status: "failed" }), spent("t2", "thumbnail", 2, 0.4, { status: "waiting", billing: "subscription" })]
+  const merged = withStoredCosts(live, stored)
+  assert.equal(spendText(stepSpend(merged, ["thumbnail"])), "$0.57 · 2 tries ($0.17, $0.40)")
+  assert.equal(merged[1]?.billing, "subscription")
+  assert.equal(merged[1]?.status, "running")
+  // a finished live row wins
+  assert.equal(withStoredCosts([spent("t2", "thumbnail", 2, 0.45)], stored)[0]?.costUsd, 0.45)
 })
