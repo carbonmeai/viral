@@ -7,9 +7,11 @@ import { Skeleton } from "@viral/ui/primitives/skeleton"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, MessageSquare, Play, Plus, Scissors, Search, Trash2, Type } from "lucide-react"
 import { useMemo, useState } from "react"
 import { AskBox } from "../ask-box.tsx"
+import { ClipBadge } from "../clip-badge.tsx"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
+import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { useClipPlayer } from "../use-clip-player.ts"
 import { Detail } from "../../system/detail.tsx"
@@ -21,10 +23,11 @@ import {
   framingOf,
   lengthOf,
   nudge,
-  searchTranscript,
+  searchVideos,
   sectionFrom,
   type SectionsDraft,
-  totalSeconds
+  totalSeconds,
+  videoOfSection
 } from "./sections-values.ts"
 
 export type SectionsTab = "section" | "hook" | "add" | "ask"
@@ -88,7 +91,8 @@ export interface SectionsInspectorProps {
   readonly selected: number
   readonly onSelect: (k: number) => void
   readonly stillOf: (k: number) => string | null
-  readonly sourceVideoUrl: string | null
+  // a video's file by position (V1 = 0), once fetched
+  readonly videoUrlOf: (source: number) => string | null
   readonly onPlay: () => void
   readonly problems: ReadonlyArray<string>
   readonly onRevert: () => void
@@ -101,12 +105,17 @@ export interface SectionsInspectorProps {
 
 // The Sections step's inspector: the selected section (its beat, edges, framing and place in the order), the hook
 // text and the short's length, adding a line from the transcript, and asking the agent. Changes collect as one
-// edit, checked by the server before it goes to the gate.
+// edit, checked by the server before it goes to the gate. In a short from several videos each section shows its
+// video, its edges snap to that video's words, and a line can be found in any of them.
 export function SectionsInspector(props: SectionsInspectorProps) {
   const { draft, onDraft, preset, cut, selected, onSelect, gate, tab, onTab } = props
+  const named = useShortVideos()
   const editable = gate.request !== null
   const sections = draft.sections
   const section = sections[selected]
+  const several = cut.videos.length > 1
+  const video = section === undefined ? undefined : videoOfSection(cut.videos, section)
+  const videoUrl = section === undefined ? null : props.videoUrlOf(section.source ?? 0)
   const set = (k: number, next: EditSection) => onDraft({ ...draft, sections: sections.map((s, i) => (i === k ? next : s)) })
   const reorder = (to: number) => {
     if (to < 0 || to >= sections.length) return
@@ -127,7 +136,7 @@ export function SectionsInspector(props: SectionsInspectorProps) {
           <HookTab {...props} />
         ) : tab === "add" ? (
           <AddTab {...props} />
-        ) : section === undefined ? (
+        ) : section === undefined || video === undefined ? (
           <span className="text-sm text-fg-2">There are no sections. Add one from the transcript.</span>
         ) : (
           <>
@@ -145,10 +154,11 @@ export function SectionsInspector(props: SectionsInspectorProps) {
               </div>
               <span className="font-medium">“{section.text}”</span>
               <span className="text-sm text-fg-2">{section.note}</span>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <BeatChip beat={section.beat} />
-                <span className="text-xs text-fg-2">{lengthOf(section).toFixed(1)}s</span>
-                <Button className="ml-auto" size="sm" disabled={props.sourceVideoUrl === null} onClick={props.onPlay}><Play />Play</Button>
+                <ClipBadge source={section.source} videos={cut.videos.length} />
+                <span className="shrink-0 text-xs text-fg-2">{lengthOf(section).toFixed(1)}s</span>
+                <Button className="ml-auto" size="sm" disabled={videoUrl === null} onClick={props.onPlay}><Play />Play</Button>
               </div>
             </InspectorBlock>
 
@@ -161,9 +171,9 @@ export function SectionsInspector(props: SectionsInspectorProps) {
               />
             </InspectorBlock>
 
-            <InspectorBlock title="From the video">
-              <EdgeNudge label="Start" at={section.start} disabled={!editable} onNudge={(d) => set(selected, nudge(section, "start", d, cut.words, cut.sourceSeconds))} />
-              <EdgeNudge label="End" at={section.end} disabled={!editable} onNudge={(d) => set(selected, nudge(section, "end", d, cut.words, cut.sourceSeconds))} />
+            <InspectorBlock title={several ? `From ${nameOf(named, section.source ?? 0)}` : "From the video"}>
+              <EdgeNudge label="Start" at={section.start} disabled={!editable} onNudge={(d) => set(selected, nudge(section, "start", d, video.words, video.sourceSeconds))} />
+              <EdgeNudge label="End" at={section.end} disabled={!editable} onNudge={(d) => set(selected, nudge(section, "end", d, video.words, video.sourceSeconds))} />
               <span className="text-xs text-fg-2">Each step moves to the next whole word.</span>
             </InspectorBlock>
 
@@ -213,6 +223,7 @@ export function SectionsInspector(props: SectionsInspectorProps) {
 
             <Detail>
               <Facts rows={[
+                ...(several ? [["Video", named.titles[section.source ?? 0] ?? nameOf(named, section.source ?? 0)] as const] : []),
                 ["Source", `${clock(section.start)}–${clock(section.end)}`],
                 ["Seconds", `${section.start.toFixed(2)}–${section.end.toFixed(2)}`]
               ]} />
@@ -269,33 +280,38 @@ function HookTab({ draft, onDraft, cut, gate }: SectionsInspectorProps) {
 }
 
 // Find a line in the long video by its words and add it as a section after the selected one.
-function AddTab({ draft, onDraft, cut, selected, onSelect, sourceVideoUrl, gate }: SectionsInspectorProps) {
+function AddTab({ draft, onDraft, cut, selected, onSelect, videoUrlOf, gate }: SectionsInspectorProps) {
   const [query, setQuery] = useState("")
   const [beat, setBeat] = useState<CutBeat>("rising_action")
-  const clips = useClipPlayer(sourceVideoUrl)
-  const found = useMemo(() => searchTranscript(cut.words, query), [cut.words, query])
+  const clips = useClipPlayer(videoUrlOf(0))
+  const found = useMemo(() => searchVideos(cut.videos, query), [cut.videos, query])
   const editable = gate.request !== null
-  const inAd = (m: { readonly start: number; readonly end: number }) => cut.excluded.some((r) => m.start < r.end && m.end > r.start)
+  const several = cut.videos.length > 1
+  const inAd = (m: { readonly start: number; readonly end: number; readonly source?: number }) =>
+    (cut.videos[m.source ?? 0]?.excluded ?? []).some((r) => m.start < r.end && m.end > r.start)
   return (
     <>
-      <InspectorBlock title="Find a line">
+      <InspectorBlock title={several ? "Find a line in any of the videos" : "Find a line"}>
         <Input aria-label="Words to find" placeholder="e.g. so nasty" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
       </InspectorBlock>
       <InspectorBlock title="Add as">
         <Select<CutBeat> label="Beat for the new section" value={beat} options={BEAT_OPTIONS} onChange={setBeat} />
       </InspectorBlock>
-      {query.trim().length >= 2 && found.length === 0 ? <span className="text-sm text-fg-2">Nobody says that in the video.</span> : null}
+      {query.trim().length >= 2 && found.length === 0 ? <span className="text-sm text-fg-2">Nobody says that in {several ? "these videos" : "the video"}.</span> : null}
       <div className="grid gap-1.5">
         {found.map((m) => {
-          const key = `found-${m.start}`
+          const key = `found-${m.source ?? 0}-${m.start}`
           const ad = inAd(m)
+          const from = cut.videos[m.source ?? 0]!
+          const url = videoUrlOf(m.source ?? 0)
           return (
             <div key={key} className="grid gap-1.5 rounded-ctl bg-item p-2.5">
               <span className="text-sm text-fg-1">“{m.text}”</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-fg-3">{clock(m.start)}</span>
-                {ad ? <span className="text-xs text-danger">in an ad</span> : null}
-                <IconButton label="Play" disabled={sourceVideoUrl === null} onClick={() => clips.play(key, m.start, m.end)}><Play /></IconButton>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <ClipBadge source={m.source} videos={cut.videos.length} />
+                <span className="shrink-0 text-xs text-fg-3">{clock(m.start)}</span>
+                {ad ? <span className="shrink-0 text-xs text-danger">in an ad</span> : null}
+                <IconButton label="Play" disabled={url === null} onClick={() => clips.play(key, m.start, m.end, url)}><Play /></IconButton>
                 <Button
                   size="sm"
                   className="ml-auto"
@@ -303,7 +319,7 @@ function AddTab({ draft, onDraft, cut, selected, onSelect, sourceVideoUrl, gate 
                   onClick={() => {
                     const at = Math.min(selected + 1, draft.sections.length)
                     const next = [...draft.sections]
-                    next.splice(at, 0, sectionFrom(m, beat, cut.words, cut.sourceSeconds))
+                    next.splice(at, 0, sectionFrom(m, beat, from.words, from.sourceSeconds, m.source ?? 0))
                     onDraft({ ...draft, sections: next })
                     onSelect(at)
                   }}

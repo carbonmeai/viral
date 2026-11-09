@@ -4,6 +4,7 @@ import { IconButton } from "@viral/ui/primitives/button"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react"
 import { Detail } from "../../system/detail.tsx"
+import { ClipBadge } from "../clip-badge.tsx"
 import { useClipPlayer } from "../use-clip-player.ts"
 import { captionOf, SectionPreview } from "./section-preview.tsx"
 import { BEATS, clock, type EditSection, framingOf, lengthOf } from "./sections-values.ts"
@@ -24,8 +25,9 @@ export function BeatChip({ beat }: { readonly beat: EditSection["beat"] }) {
 }
 
 // The Sections step's stage: the selected section as the short will show it (playable in place), or every
-// section as a storyboard in playing order, each with its beat, source times, words and a play button.
-export function SectionsStage({ sections, preset, hookText, view, selected, onSelect, stillOf, sourceVideoUrl, playing, onPlaying }: {
+// section as a storyboard in playing order, each with its beat, source times, words and a play button. In a short
+// from several videos each section shows its video (colour dot and short name) and plays from it.
+export function SectionsStage({ sections, preset, hookText, view, selected, onSelect, stillOf, videoUrlOf, videos, playing, onPlaying }: {
   readonly sections: ReadonlyArray<EditSection>
   readonly preset: Preset
   readonly hookText: string | null
@@ -34,14 +36,18 @@ export function SectionsStage({ sections, preset, hookText, view, selected, onSe
   readonly onSelect: (k: number) => void
   // a section's image: its planned frame, or a still at its start
   readonly stillOf: (k: number) => string | null
-  readonly sourceVideoUrl: string | null
+  // a video's file by position (V1 = 0), once fetched
+  readonly videoUrlOf: (source: number) => string | null
+  // how many videos the short has
+  readonly videos: number
   // the preview is playing the selected section
   readonly playing: boolean
   readonly onPlaying: (playing: boolean) => void
 }) {
-  const clips = useClipPlayer(sourceVideoUrl)
+  const clips = useClipPlayer(videoUrlOf(0))
   const section = sections[selected]
   if (section === undefined) return <div className="grid flex-1 place-items-center text-fg-2">There are no sections.</div>
+  const sourceVideoUrl = videoUrlOf(section.source ?? 0)
   const captions = preset.config.captions
   // the hook card shows over the first section in styles that show a headline
   const card = selected === 0 && preset.config.headline !== null ? hookText : null
@@ -62,9 +68,10 @@ export function SectionsStage({ sections, preset, hookText, view, selected, onSe
           />
         </div>
         <div className="flex shrink-0 items-center gap-3.5 px-3.5 pt-1.5 pb-2.5">
-          <span className="w-[200px] text-xs text-fg-2">
-            Section {selected + 1} of {sections.length} · {lengthOf(section).toFixed(1)}s
-            <Detail><span className="text-fg-3"> · {clock(section.start)}</span></Detail>
+          <span className="flex w-[240px] min-w-0 items-center gap-1.5 text-xs text-fg-2">
+            <span className="shrink-0">Section {selected + 1} of {sections.length} · {lengthOf(section).toFixed(1)}s</span>
+            <Detail><span className="shrink-0 text-fg-3">{clock(section.start)}</span></Detail>
+            <ClipBadge source={section.source} videos={videos} />
           </span>
           <div className="mx-auto flex items-center gap-1">
             <IconButton label="Previous section" disabled={selected === 0} onClick={() => onSelect(selected - 1)}><ChevronLeft /></IconButton>
@@ -73,7 +80,7 @@ export function SectionsStage({ sections, preset, hookText, view, selected, onSe
             </IconButton>
             <IconButton label="Next section" disabled={selected === sections.length - 1} onClick={() => onSelect(selected + 1)}><ChevronRight /></IconButton>
           </div>
-          <span className="w-[200px]" />
+          <span className="w-[240px]" />
         </div>
       </>
     )
@@ -85,6 +92,7 @@ export function SectionsStage({ sections, preset, hookText, view, selected, onSe
         {sections.map((s, k) => {
           const src = stillOf(k)
           const key = `section-${s.key}`
+          const url = videoUrlOf(s.source ?? 0)
           return (
             <div
               key={s.key}
@@ -106,19 +114,20 @@ export function SectionsStage({ sections, preset, hookText, view, selected, onSe
                 <button
                   type="button"
                   aria-label={clips.playing === key ? "Stop" : `Play section ${k + 1}`}
-                  disabled={sourceVideoUrl === null}
+                  disabled={url === null}
                   onClick={(e) => {
                     e.stopPropagation()
-                    clips.play(key, s.start, s.end)
+                    clips.play(key, s.start, s.end, url)
                   }}
                   className="absolute right-1 bottom-1 grid size-6 place-items-center rounded-full bg-black/70 text-white outline-none hover:bg-black/85 disabled:opacity-40 [&_svg]:size-3"
                 >
                   {clips.playing === key ? <Pause /> : <Play />}
                 </button>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <BeatChip beat={s.beat} />
-                <span className="text-[11px] text-fg-3">{clock(s.start)}–{clock(s.end)}</span>
+                <ClipBadge source={s.source} videos={videos} />
+                <span className="truncate text-[11px] text-fg-3">{clock(s.start)}–{clock(s.end)}</span>
               </div>
               <span className="line-clamp-3 text-xs text-fg-1">“{s.text}”</span>
             </div>

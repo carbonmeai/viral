@@ -285,9 +285,9 @@ test("a cut-down short's workspace carries what its sections are cut from, and a
     }
   }))
 
-  assert.equal(ws.cutSource?.words.length, 120, "the long video's words, for nudging a section to them")
-  assert.equal(ws.cutSource?.sourceSeconds, 59.9)
-  assert.deepEqual(ws.cutSource?.excluded, [{ start: 55, end: 60 }])
+  assert.equal(ws.cutSource?.videos[0]?.words.length, 120, "the long video's words, for nudging a section to them")
+  assert.equal(ws.cutSource?.videos[0]?.sourceSeconds, 59.9)
+  assert.deepEqual(ws.cutSource?.videos[0]?.excluded, [{ start: 55, end: 60 }])
   assert.deepEqual(ws.cutSource?.limits, { minSection: 0.8, total: [20, 60], hookWords: 8 })
   assert.equal(narrated.cutSource, null, "a narrated short isn't cut from the transcript")
 

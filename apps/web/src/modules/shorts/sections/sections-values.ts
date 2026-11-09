@@ -88,11 +88,13 @@ export const nudge = (
   return section
 }
 
-// A line of the transcript you found, as a section you can add.
+// A line of the transcript you found, as a section you can add. `source` is its video (by position) when the
+// search covers several.
 export interface TranscriptMatch {
   readonly start: number
   readonly end: number
   readonly text: string
+  readonly source?: number
 }
 
 const normal = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "")
@@ -116,14 +118,37 @@ export const searchTranscript = (words: ReadonlyArray<TranscriptWord>, query: st
   return matches
 }
 
+// One of the short's videos as its sections are cut from and checked against: its words, length and excluded ranges.
+export interface CutVideo {
+  readonly words: ReadonlyArray<TranscriptWord>
+  readonly sourceSeconds: number
+  readonly excluded: ReadonlyArray<{ readonly start: number; readonly end: number }>
+}
+
+// The places your words are said in each of the short's videos, V1's first, each match marked with its video.
+export const searchVideos = (videos: ReadonlyArray<CutVideo>, query: string, limit = 8): ReadonlyArray<TranscriptMatch> =>
+  videos.flatMap((v, source) => searchTranscript(v.words, query, limit).map((m) => ({ ...m, source }))).slice(0, limit * Math.min(2, videos.length))
+
+// The video a section is cut from (V1 when it doesn't say, or when the short has no such video).
+export const videoOfSection = <V>(videos: ReadonlyArray<V>, section: { readonly source?: number }): V | undefined =>
+  videos[section.source ?? 0] ?? videos[0]
+
 let added = 0
-// A transcript line as a new section, snapped to its words, after the selected one.
-export const sectionFrom = (match: TranscriptMatch, beat: CutBeat, words: ReadonlyArray<TranscriptWord>, duration: number): EditSection => {
+// A transcript line as a new section, snapped to its words, after the selected one. `source` is its video's
+// position; V1 is left out, as the plan stores it.
+export const sectionFrom = (
+  match: TranscriptMatch,
+  beat: CutBeat,
+  words: ReadonlyArray<TranscriptWord>,
+  duration: number,
+  source = 0
+): EditSection => {
   const snapped = snapSection(match.start, match.end, words, duration)
   added += 1
   return {
     key: `added-${added}`,
     beat,
+    ...(source === 0 ? {} : { source }),
     start: round(snapped.start),
     end: round(snapped.end),
     note: "added in the editor",
@@ -141,7 +166,7 @@ export const move = <A>(list: ReadonlyArray<A>, from: number, to: number): Reado
 }
 
 const sameSection = (a: EditSection, b: EditSection) =>
-  a.beat === b.beat && a.start === b.start && a.end === b.end && a.cropX === b.cropX && a.framing === b.framing
+  a.beat === b.beat && (a.source ?? 0) === (b.source ?? 0) && a.start === b.start && a.end === b.end && a.cropX === b.cropX && a.framing === b.framing
 
 // How many things you changed: each section added, removed, edited or moved, and the hook text. Removing one
 // section is one change, not a shift of every section after it; a section counts as moved when it falls out of
@@ -182,11 +207,12 @@ export const changeCount = (original: SectionsDraft, draft: SectionsDraft) => {
 // The draft as the sections gate takes an edit.
 export const proposalOf = (draft: SectionsDraft): SectionsProposal => ({
   hookText: draft.hookText === null || draft.hookText.trim() === "" ? null : draft.hookText.trim(),
-  sections: draft.sections.map(({ beat, start, end, cropX, framing, note }) => ({
+  sections: draft.sections.map(({ beat, source, start, end, cropX, framing, note }) => ({
     beat,
     start,
     end,
     note,
+    ...(source === undefined || source === 0 ? {} : { source }),
     ...(cropX === undefined ? {} : { cropX }),
     ...(framing === undefined ? {} : { framing })
   }))
@@ -200,10 +226,11 @@ export const totalSeconds = (sections: ReadonlyArray<{ readonly start: number; r
 export const framingOf = (section: CutSection, preset: PresetConfig): "crop" | "blur" =>
   section.framing ?? (preset.framing === "band" ? "blur" : "crop")
 
-// Where each section plays in the short, in the short's seconds.
+// Where each section plays in the short, in the short's seconds, and which video it's from (by position).
 export interface SectionBlock {
   readonly k: number
   readonly beat: CutBeat
+  readonly source: number
   readonly start: number
   readonly end: number
 }
@@ -211,11 +238,14 @@ export interface SectionBlock {
 export const sectionBlocks = (sections: ReadonlyArray<EditSection>): ReadonlyArray<SectionBlock> => {
   let at = 0
   return sections.map((s, k) => {
-    const block = { k, beat: s.beat, start: at, end: at + lengthOf(s) }
+    const block = { k, beat: s.beat, source: s.source ?? 0, start: at, end: at + lengthOf(s) }
     at = block.end
     return block
   })
 }
+
+// Where a still of a video at a whole second is kept: "1:42" = V2 at 42s.
+export const stillKey = (source: number | undefined, t: number) => `${source ?? 0}:${Math.round(t)}`
 
 // "12:34.5" for a source second.
 export const clock = (t: number) => {

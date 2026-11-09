@@ -87,12 +87,15 @@ export const ShortWorkspace = Schema.Struct({
   thumbnail: Schema.NullOr(Schema.Struct({ ...at, thumbnail: Thumbnail })),
   // V1's file, relative to its folder, for playing the real lines (`videos` has each video's)
   sourceVideo: Schema.NullOr(Schema.String),
-  // what a cut-down short is cut from and checked against, for editing its sections: the long video's words with
-  // their times, its length, the ranges a section may not touch, and the section limits; null for narrated shorts
+  // what a cut-down short is cut from and checked against, for editing its sections: each video's words with their
+  // times, its length and the ranges a section may not touch (V1 first, as `videos`), and the section limits; null
+  // for narrated shorts
   cutSource: Schema.NullOr(Schema.Struct({
-    words: Schema.Array(TranscriptWord),
-    sourceSeconds: Schema.Finite,
-    excluded: Schema.Array(Schema.Struct({ start: Schema.Finite, end: Schema.Finite })),
+    videos: Schema.Array(Schema.Struct({
+      words: Schema.Array(TranscriptWord),
+      sourceSeconds: Schema.Finite,
+      excluded: Schema.Array(Schema.Struct({ start: Schema.Finite, end: Schema.Finite }))
+    })),
     limits: Schema.Struct({
       minSection: Schema.Finite,
       total: Schema.Tuple([Schema.Finite, Schema.Finite]),

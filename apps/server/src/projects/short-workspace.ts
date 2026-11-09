@@ -153,7 +153,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
             video: Option.getOrNull(Option.flatMapNullishOr(video, (a) => a.path)),
             seconds: s.seconds
           })))
-        const cut = project.format === "cut-down" && Option.isSome(sectionSources(sources)) ? Option.some(v1) : Option.none<ProjectSource>()
+        const cut = project.format === "cut-down" ? sectionSources(sources) : Option.none<ReadonlyArray<ProjectSource>>()
 
         return {
           project,
@@ -186,10 +186,12 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
           }))),
           thumbnail: Option.getOrNull(Option.map(thumbnail, (a) => ({ version: a.version, path: a.path, thumbnail: a.data }))),
           sourceVideo: videos[0]?.video ?? null,
-          cutSource: Option.getOrNull(Option.map(cut, (c) => ({
-            words: c.words,
-            sourceSeconds: c.seconds,
-            excluded: c.excluded.map((r) => ({ start: r.start, end: r.end })),
+          cutSource: Option.getOrNull(Option.map(cut, (videos) => ({
+            videos: videos.map((c) => ({
+              words: c.words,
+              sourceSeconds: c.seconds,
+              excluded: c.excluded.map((r) => ({ start: r.start, end: r.end }))
+            })),
             limits: { minSection: SECTION_LIMITS.minSection, total: [...SECTION_LIMITS.total], hookWords: SECTION_LIMITS.hookWords }
           })))
         } satisfies ShortWorkspace

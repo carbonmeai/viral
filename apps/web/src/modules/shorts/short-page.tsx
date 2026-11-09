@@ -71,7 +71,7 @@ import {
 import { CutTimeline } from "./sections/cut-timeline.tsx"
 import { SectionsInspector, type SectionsTab } from "./sections/sections-inspector.tsx"
 import { SectionsStage, type SectionsView } from "./sections/sections-stage.tsx"
-import { changeCount, draftOf, proposalOf as sectionsProposal, sectionBlocks, type SectionsDraft } from "./sections/sections-values.ts"
+import { changeCount, draftOf, proposalOf as sectionsProposal, sectionBlocks, type SectionsDraft, stillKey } from "./sections/sections-values.ts"
 import type { PickedFrame, PickerVideo } from "./shots/frame-picker.tsx"
 import { ShotsInspector, type ShotsTab } from "./shots/shots-inspector.tsx"
 import { ShotsStage, type ShotsView } from "./shots/shots-stage.tsx"
@@ -175,14 +175,14 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [thumbProblems, setThumbProblems] = useState<ReadonlyArray<string>>([])
   const [copied, setCopied] = useState(false)
   // the Sections step (cut-down shorts): the selected section, the stage's view, your edit in progress, and the
-  // stills fetched for sections whose start you moved (by source second)
+  // stills fetched for sections whose start you moved (by video and source second, stillKey)
   const [sectionK, setSectionK] = useState(0)
   const [sectionsView, setSectionsView] = useState<SectionsView>("preview")
   const [sectionsTab, setSectionsTab] = useState<SectionsTab>("section")
   const [sectionsDraft, setSectionsDraft] = useState<SectionsDraft | null>(null)
   const [sectionProblems, setSectionProblems] = useState<ReadonlyArray<string>>([])
   const [sectionPlaying, setSectionPlaying] = useState(false)
-  const [stills, setStills] = useState<ReadonlyMap<number, string>>(new Map())
+  const [stills, setStills] = useState<ReadonlyMap<string, string>>(new Map())
   const checkSections = useAtomSet(checkSectionsEdit, { mode: "promise" })
   const fetchStill = useAtomSet(stillAt, { mode: "promise" })
   // the Music step: the short's fitted bed, the library's songs, the inspector's tab, the song picker, and where
@@ -273,19 +273,21 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     const section = draft?.sections[k]
     if (section === undefined || ws.cutPlan === null) return null
     if (section.frame !== null) return artifactFileUrl(serverUrl, projectOwner, "cut-plan", ws.cutPlan.version, section.frame)
-    const still = stills.get(Math.round(section.start))
-    return still === undefined ? null : stillUrl(still)
+    const still = stills.get(stillKey(section.source, section.start))
+    return still === undefined ? null : videoStillUrl(still, section.source ?? 0)
   }
   const sectionStill = stillOf(sections)
-  // a section whose start moved, or that you added, gets a still of the video at its new start
-  const missing = sections?.sections.filter((s) => s.frame === null && !stills.has(Math.round(s.start))).map((s) => Math.round(s.start)) ?? []
-  const missingKey = missing.join(",")
+  // a section whose start moved, or that you added, gets a still of its own video at its new start
+  const missing = sections?.sections
+    .filter((s) => s.frame === null && !stills.has(stillKey(s.source, s.start)))
+    .map((s) => ({ key: stillKey(s.source, s.start), source: s.source ?? 0, t: Math.round(s.start) })) ?? []
+  const missingKey = missing.map((m) => m.key).join(",")
   useEffect(() => {
-    for (const t of missing) {
-      void fetchStill({ payload: { sourceId: ws.source.id, t, span: 0, every: 1 } })
+    for (const { key, source, t } of missing) {
+      void fetchStill({ payload: { sourceId: videoOf(source)?.source.id ?? ws.source.id, t, span: 0, every: 1 } })
         .then((r) => {
           const frame = r.frames[0]
-          if (frame !== undefined) setStills((m) => new Map(m).set(t, frame.path))
+          if (frame !== undefined) setStills((m) => new Map(m).set(key, frame.path))
         })
         .catch(() => undefined)
     }
@@ -703,7 +705,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
               setSectionsView("preview")
             }}
             stillOf={sectionStill}
-            sourceVideoUrl={sourceVideoUrl}
+            videoUrlOf={videoUrlOf}
+            videos={ws.videos.length}
             playing={sectionPlaying}
             onPlaying={setSectionPlaying}
           />
@@ -719,7 +722,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
           selected={k}
           onSelect={select}
           stillOf={sectionStill}
-          sourceVideoUrl={sourceVideoUrl}
+          videoUrlOf={videoUrlOf}
           onPlay={() => {
             setSectionsView("preview")
             setSectionPlaying(true)
@@ -840,8 +843,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
           ) : (
             <CutTimeline
               sections={timelineSections.sections}
-              sourceSeconds={ws.cutSource.sourceSeconds}
-              excluded={ws.cutSource.excluded}
+              videos={ws.cutSource.videos}
               stillOf={stillOf(timelineSections)}
               selected={open === "sections" ? Math.min(sectionK, timelineSections.sections.length - 1) : null}
               onSelect={(k) => {

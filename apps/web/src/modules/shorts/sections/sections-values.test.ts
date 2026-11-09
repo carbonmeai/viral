@@ -1,7 +1,7 @@
 import type { CutPlan } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { changeCount, draftOf, move, nudge, proposalOf, searchTranscript, sectionBlocks, sectionFrom, snapSection, totalSeconds } from "./sections-values.ts"
+import { changeCount, draftOf, move, nudge, proposalOf, searchTranscript, searchVideos, sectionBlocks, sectionFrom, snapSection, stillKey, totalSeconds, videoOfSection } from "./sections-values.ts"
 
 // "It worked. The spice killed it. This is so nasty." at a word every half second
 const said = ["It", "worked.", "The", "spice", "killed", "it.", "This", "is", "so", "nasty."]
@@ -65,4 +65,28 @@ test("blocks lay the sections end to end in the short's seconds", () => {
   const sections = draftOf(plan).sections
   assert.equal(totalSeconds(sections).toFixed(2), "3.02")
   assert.deepEqual(sectionBlocks(sections).map((b) => [b.start.toFixed(2), b.end.toFixed(2)]), [["0.00", "1.01"], ["1.01", "3.02"]])
+})
+
+// a second video: "Look at my hand." from 4s
+const other = ["Look", "at", "my", "hand."].map((w, i) => ({ w, s: 4 + i * 0.5, e: 4 + i * 0.5 + 0.4 }))
+const videos = [{ words, sourceSeconds: 60, excluded: [] }, { words: other, sourceSeconds: 30, excluded: [{ start: 0, end: 2 }] }]
+
+test("a short from two videos: the search covers both, a found line keeps its video, and the edit sends it", () => {
+  const found = searchVideos(videos, "hand")
+  assert.deepEqual(found.map((m) => [m.source, m.text]), [[1, "Look at my hand."]])
+  const added = sectionFrom(found[0]!, "payoff", other, 30, found[0]!.source)
+  assert.equal(added.source, 1)
+  assert.equal("source" in sectionFrom(searchTranscript(words, "spice")[0]!, "conflict", words, duration, 0), false, "V1 is left out")
+  const original = draftOf(plan)
+  const draft = { ...original, sections: [...original.sections, added] }
+  assert.equal(changeCount(original, draft), 1)
+  assert.deepEqual(proposalOf(draft).sections[2], { beat: "payoff", start: added.start, end: added.end, note: "added in the editor", source: 1 })
+  // moving a section to another video is a change
+  const moved = { ...original, sections: [{ ...original.sections[0]!, source: 1 }, original.sections[1]!] }
+  assert.equal(changeCount(original, moved), 1)
+  assert.equal(videoOfSection(videos, added), videos[1])
+  assert.equal(videoOfSection(videos, { source: 7 }), videos[0], "an unknown video falls back to the first")
+  assert.deepEqual(sectionBlocks(draft.sections).map((b) => b.source), [0, 0, 1])
+  assert.equal(stillKey(1, 4.4), "1:4")
+  assert.equal(stillKey(undefined, 4.6), "0:5")
 })
