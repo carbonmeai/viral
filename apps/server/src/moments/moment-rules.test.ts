@@ -148,3 +148,12 @@ test("the agent's video numbers become positions, and a missing order is shuffle
   assert.equal("framesChecked" in proposal.entries[0]!.shots[0]!, false)
   assert.equal(proposal.order.at(-1), 1)
 })
+
+test("a cut a few hundredths into a sentence still keeps its first word", () => {
+  // "I think my favorite part." starts at 171.26; the brief's 0.1 s rounding gives 171.3
+  const sentences = sentencesOf([{ w: "walk.", s: 168.86, e: 169.1 }, ...say(171.26, "I think my favorite part.")])
+  const snapped = snapToSentences(sentences, 171.3, 173.7, { ...options, limit: 300 })
+  assert.equal(snapped.problem, null)
+  assert.equal(snapped.start, 171.18)
+  assert.equal(snapped.end, 173.7, "already after the last word")
+})

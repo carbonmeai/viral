@@ -102,8 +102,9 @@ export const snapToSentences = (sentences: ReadonlyArray<Sentence>, start: numbe
   const dur = end - start
   const ok = (s: number, e: number) =>
     s >= options.minStart && e <= options.limit && !options.blocked.some((r) => s < r.end && e > r.start)
-  // a sentence straddling the in-point
-  const straddlingIn = sentences.find((x) => x.start < start - 0.05 && start - 0.05 < x.end - 0.1)
+  // a sentence straddling the in-point. Tighter than speech.py's 50 ms grace: word timings are exact, and a cut a few
+  // hundredths into a sentence (a time rounded to 0.1 s) drops its first word ("I think…" → "think…")
+  const straddlingIn = sentences.find((x) => x.start - PAD_IN < start - 0.001 && start < x.end - 0.1)
   if (straddlingIn !== undefined) {
     if (start - straddlingIn.start <= options.maxBack && ok(straddlingIn.start - PAD_IN, end)) {
       notes.push(`in ${start.toFixed(2)}→${(straddlingIn.start - PAD_IN).toFixed(2)} (keep whole: '${quote(straddlingIn.text)}')`)
@@ -118,7 +119,7 @@ export const snapToSentences = (sentences: ReadonlyArray<Sentence>, start: numbe
     }
   }
   // a sentence straddling the out-point
-  const straddlingOut = sentences.find((x) => x.start + 0.1 < end + 0.05 && end + 0.05 < x.end)
+  const straddlingOut = sentences.find((x) => x.start + 0.1 < end && end < x.end + 0.02)
   if (straddlingOut !== undefined) {
     if (straddlingOut.end - end <= options.maxForward && ok(start, straddlingOut.end + PAD_OUT)) {
       notes.push(`out ${end.toFixed(2)}→${(straddlingOut.end + PAD_OUT).toFixed(2)} (finish: '${quote(straddlingOut.text)}')`)
