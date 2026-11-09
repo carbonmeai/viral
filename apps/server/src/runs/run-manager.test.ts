@@ -10,7 +10,7 @@ import { Sources } from "../sources/sources.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
 import { RunManager } from "./run-manager.ts"
 import { RunStore } from "./run-store.ts"
-import { type Prerequisite, type StageContext, type StageDefinition, StageRegistry } from "./stages.ts"
+import { type Prerequisite, type StageContext, type StageDefinition, StageFailure, StageRegistry } from "./stages.ts"
 
 let home: string
 before(() => {
@@ -27,6 +27,8 @@ const sessions: Array<string | null> = []
 const withReview = { on: false }
 // a video set's run: what it needs first, and its one stage
 const setNeeds: { current: ReadonlyArray<Prerequisite> } = { current: [] }
+// videos whose "source" stage fails, by owner id (a blocked download)
+const failingSources = new Set<string>()
 
 const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
   const artifacts = yield* Artifacts
@@ -40,7 +42,10 @@ const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
       name: "source",
       artifact: "source-video",
       gate: null,
-      run: (ctx) => Effect.sync(() => void calls.source++).pipe(Effect.andThen(produce(ctx, "source-video", { ok: true })))
+      run: (ctx) =>
+        failingSources.has(ctx.owner.id)
+          ? Effect.fail(new StageFailure({ stage: "source", code: "blocked", message: "YouTube refused the download twice (403)." }))
+          : Effect.sync(() => void calls.source++).pipe(Effect.andThen(produce(ctx, "source-video", { ok: true })))
     },
     {
       name: "transcribe",
@@ -398,6 +403,24 @@ test("cancelling a set run cancels the video runs it started", async () => {
   const setEnd = (await until(rt, setRun.id, finished)).findLast(finished)
   assert.ok(setEnd?._tag === "Event" && setEnd.event._tag === "RunFinished")
   assert.equal(setEnd.event.run.status, "cancelled")
+  setNeeds.current = []
+  await rt.dispose()
+})
+
+test("one video that can't be read doesn't stop the set's other videos; the set run fails after them", async () => {
+  const rt = boot()
+  const [blocked, fine] = [await createSource(rt), await createSource(rt)]
+  failingSources.add(blocked.id)
+  setNeeds.current = [blocked, fine].map((owner, i) => ({ owner, through: "source" as const, label: `V${i + 1}` }))
+  const set = await createSet(rt, [blocked, fine])
+  const setRun = await start(rt, set)
+  const setEnd = (await until(rt, setRun.id, finished)).findLast(finished)
+  assert.ok(setEnd?._tag === "Event" && setEnd.event._tag === "RunFinished")
+  assert.equal(setEnd.event.run.status, "failed")
+  assert.match(setEnd.event.run.error ?? "", /V1 couldn't be read: source \(blocked\)/)
+  assert.deepEqual((await runsOf(rt, blocked)).map((r) => r.status), ["failed"])
+  assert.deepEqual((await runsOf(rt, fine)).map((r) => r.status), ["completed"], "the other video was still read")
+  failingSources.clear()
   setNeeds.current = []
   await rt.dispose()
 })

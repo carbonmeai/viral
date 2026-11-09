@@ -13,7 +13,7 @@ import {
   type StageName,
   type StageRun
 } from "@viral/contracts"
-import { Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, PubSub, Ref, Stream } from "effect"
+import { Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, PubSub, Ref, Result, Stream } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { RunStore } from "./run-store.ts"
 import { findStage, type Prerequisite, type StageContext, type StageDefinition, StageFailure, StageRegistry } from "./stages.ts"
@@ -260,7 +260,11 @@ export class RunManager extends Context.Service<RunManager, {
             if (fulfilled) return
             fulfilled = true
             const needs = registry.prerequisites === undefined ? [] : yield* registry.prerequisites(run.owner)
-            yield* Effect.forEach(needs, fulfil, { concurrency: 2, discard: true })
+            // every prerequisite gets its chance: one video that fails (a blocked download) doesn't stop the others,
+            // so only that one needs replacing; the run fails after, with the first failure
+            const results = yield* Effect.forEach(needs, (need) => Effect.result(fulfil(need)), { concurrency: 2 })
+            const failed = results.find(Result.isFailure)
+            if (failed !== undefined) return yield* failed.failure
           })
           const stages = yield* stagesUpTo(run.owner, through)
           let forcedFrom = run.fromStage === null ? stages.length : Option.getOrElse(findStage(stages, run.fromStage), () => 0)
