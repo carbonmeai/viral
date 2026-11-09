@@ -39,6 +39,8 @@ export interface PostNotes {
   readonly approach: string
   readonly style: string
   readonly durationS: number
+  // a ranking's sources: each rank's channel and link, under a "Footage:" credit
+  readonly sources?: ReadonlyArray<string> | null
 }
 
 // The agent's titles other than the one you post with.
@@ -46,10 +48,19 @@ export const otherTitles = (metadata: Pick<ShortMetadata, "title" | "alternates"
   [metadata.title, ...metadata.alternates].filter((t) => t !== title)
 
 // The post text as markdown, kept next to the video in ~/.viral/renders/.
-export const postNotes = ({ post, alternates, credit, approach, style, durationS }: PostNotes) =>
-  [
+export const postNotes = ({ post, alternates, credit, approach, style, durationS, sources }: PostNotes) => {
+  const ranking = sources !== undefined && sources !== null && sources.length > 0
+  const creditLine = credit === null ? "" : `\n\n${ranking ? "Footage" : "Credit"}: ${credit}`
+  const sourcesList = ranking ? `\n\nSources:\n${sources.map((s) => `- ${s}`).join("\n")}` : ""
+  return [
     `# ${post.title}`,
     `**Approach:** ${approach} · **Style:** ${style} · **Length:** ${durationS.toFixed(1)}s`,
     `## Title\n\n${post.title}${alternates.length === 0 ? "" : `\n\nAlternates:\n${alternates.map((a) => `- ${a}`).join("\n")}`}`,
-    `## Description\n\n${post.description}${credit === null ? "" : `\n\nCredit: ${credit}`}\n\n${post.hashtags.join(" ")}`
+    `## Description\n\n${post.description}${creditLine}${sourcesList}\n\n${post.hashtags.join(" ")}`
   ].join("\n\n") + "\n"
+}
+
+// A ranking's post text keeps #1 a secret and makes the viewer wait for it.
+export const RANKING_ENDING = "Wait for #1."
+export const checkRankingMetadata = (metadata: ShortMetadata): ReadonlyArray<string> =>
+  metadata.description.trim().endsWith(RANKING_ENDING) ? [] : [`a ranking's description ends "${RANKING_ENDING}"`]

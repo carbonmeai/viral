@@ -1,4 +1,4 @@
-import { type ArtifactOwner, CutPlan, type Project, ShotPlan } from "@viral/contracts"
+import { type ArtifactOwner, CutPlan, type Project, RankingPlan, ShotPlan } from "@viral/contracts"
 import { Effect, Option, Schema } from "effect"
 import type { Artifacts } from "../artifacts/artifacts.ts"
 
@@ -8,11 +8,17 @@ type Credited = { readonly rights: string; readonly channel: string | null }
 export type CreditPlan =
   | { readonly _tag: "Narrated"; readonly plan: Pick<ShotPlan, "shots" | "inserts" | "outro"> }
   | { readonly _tag: "Cut"; readonly plan: Pick<CutPlan, "sections"> }
+  | { readonly _tag: "Ranking"; readonly plan: Pick<RankingPlan, "entries" | "order"> }
 
 // The short's videos (positions, V1 = 0) in the order their footage first appears on it: a narrated short's shots,
 // real lines and outro by where they play (a real line plays after its word, the outro last), a cut-down short's
 // sections as they play.
 export const appearanceOrder = (credit: CreditPlan): ReadonlyArray<number> => {
+  if (credit._tag === "Ranking") {
+    // entries play in the plan's order, each from its own video
+    const byRank = new Map(credit.plan.entries.map((e) => [e.rank, e.source ?? 0]))
+    return [...new Set(credit.plan.order.flatMap((rank) => byRank.get(rank) ?? []))]
+  }
   const clips = credit._tag === "Cut"
     ? credit.plan.sections.map((s, i) => ({ at: i, source: s.source ?? 0 }))
     : [
@@ -42,10 +48,38 @@ export const creditLine = (sources: ReadonlyArray<Credited>, order: ReadonlyArra
 // null before there's one.
 export const loadAppearanceOrder = Effect.fn("loadAppearanceOrder")(function*(project: Project, artifacts: Artifacts["Service"]) {
   const owner: ArtifactOwner = { _tag: "Project", id: project.id }
+  if (project.format === "ranking") {
+    const plan = Option.flatMap(yield* artifacts.latest(owner, "ranking-plan"), (a) => Schema.decodeUnknownOption(RankingPlan)(a.data))
+    return Option.match(plan, { onNone: () => null, onSome: (p) => appearanceOrder({ _tag: "Ranking", plan: p }) })
+  }
   if (project.format === "cut-down") {
     const plan = Option.flatMap(yield* artifacts.latest(owner, "cut-plan"), (a) => Schema.decodeUnknownOption(CutPlan)(a.data))
     return Option.match(plan, { onNone: () => null, onSome: (p) => appearanceOrder({ _tag: "Cut", plan: p }) })
   }
   const plan = Option.flatMap(yield* artifacts.latest(owner, "shot-plan"), (a) => Schema.decodeUnknownOption(ShotPlan)(a.data))
   return Option.match(plan, { onNone: () => null, onSome: (p) => appearanceOrder({ _tag: "Narrated", plan: p }) })
+})
+
+// A ranking's sources list for the description: each rank with its label, channel and link, #1 first ("#1 Horse who
+// gave up: The Dodo, https://…"). Your own footage is listed without a channel.
+export const rankingSources = (
+  plan: Pick<RankingPlan, "entries">,
+  sources: ReadonlyArray<Credited & { readonly url: string | null; readonly title: string | null }>
+) =>
+  [...plan.entries].sort((a, b) => a.rank - b.rank).map((entry) => {
+    const source = sources[entry.source ?? 0]
+    const by = source === undefined ? [] : creditedChannels([source])
+    const parts = [...by, ...(source?.url === null || source?.url === undefined ? [] : [source.url])]
+    return `#${entry.rank} ${entry.label}${parts.length === 0 ? "" : `: ${parts.join(", ")}`}`
+  })
+
+// The latest ranking plan's sources list, or none for other shorts (and before there's a plan).
+export const loadRankingSources = Effect.fn("loadRankingSources")(function*(
+  project: Project,
+  artifacts: Artifacts["Service"],
+  sources: ReadonlyArray<Credited & { readonly url: string | null; readonly title: string | null }>
+) {
+  if (project.format !== "ranking") return null
+  const plan = Option.flatMap(yield* artifacts.latest({ _tag: "Project", id: project.id }, "ranking-plan"), (a) => Schema.decodeUnknownOption(RankingPlan)(a.data))
+  return Option.match(plan, { onNone: () => null, onSome: (p) => rankingSources(p, sources) })
 })

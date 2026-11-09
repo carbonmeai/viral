@@ -16,7 +16,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Presets } from "../presets/presets.ts"
-import { creditLine, loadAppearanceOrder } from "../projects/credits.ts"
+import { creditLine, loadAppearanceOrder, loadRankingSources } from "../projects/credits.ts"
 import { Projects, sourcesOf } from "../projects/projects.ts"
 import { RunManager } from "../runs/run-manager.ts"
 import { RunStore } from "../runs/run-store.ts"
@@ -71,7 +71,10 @@ export class Publishing extends Context.Service<Publishing, {
           : yield* presets.get(project.presetId).pipe(Effect.catch(() => presets.getDefault))
         const renderArtifact = yield* artifacts.latest(owner, "render")
         const render = Option.flatMap(renderArtifact, (a) => Schema.decodeUnknownOption(RenderedShort)(a.data))
-        const planArtifact = yield* artifacts.latest(owner, project.format === "cut-down" ? "cut-render-plan" : "narrated-plan")
+        // a ranking draws no "Video:" credit (its channels are in the description), so it's never re-rendered for one
+        const planArtifact = project.format === "ranking"
+          ? Option.none()
+          : yield* artifacts.latest(owner, project.format === "cut-down" ? "cut-render-plan" : "narrated-plan")
         const planned = Option.flatMap(planArtifact, (a) => Schema.decodeUnknownOption(PlannedCredit)(a.data))
         const saved = yield* settings.get(postKey(project.id), PostText)
         const names = publishedNames(project.slug)
@@ -110,7 +113,8 @@ export class Publishing extends Context.Service<Publishing, {
           replaces: old.filter((f) => !names.includes(f)),
           busy: going
         }
-        return { status, published: published.value, render, renderArtifact, preset }
+        const rankingSources = yield* loadRankingSources(project, artifacts, videos)
+        return { status, published: published.value, render, renderArtifact, preset, rankingSources }
       })
 
       const status = Effect.fn("Publishing.status")(function*(projectId: ProjectId) {
@@ -145,6 +149,7 @@ export class Publishing extends Context.Service<Publishing, {
           metadata: now.published,
           post: now.status.post,
           credit: now.status.credit,
+          sources: now.rankingSources,
           approach: project.approach,
           style: now.preset.name,
           previous: now.published

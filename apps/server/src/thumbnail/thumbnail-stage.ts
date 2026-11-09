@@ -7,6 +7,7 @@ import {
   type ProjectId,
   ProposedThumbnail,
   PublishedShort,
+  RankingPlan,
   Script,
   StoryMap,
   ThumbConfig,
@@ -29,6 +30,7 @@ import { VideoSets } from "../video-sets/video-sets.ts"
 import { buildThumbnailBrief, THUMBNAIL_PROMPT } from "./thumbnail-prompt.ts"
 import { Tools } from "../tools/tools.ts"
 import { cutoutSummary, drawThumbnail } from "./thumbnail-draw.ts"
+import { checkRankingThumbnail, rankingThumbnailBrief, tiltInset } from "./ranking-thumbnail.ts"
 import { ThumbnailRenderer } from "./thumbnail-renderer.ts"
 import {
   checkConfig,
@@ -116,7 +118,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
       })
 
       // The agent's self-check: the thumbnail's problems, or a draft drawn so it can look at it.
-      const previewTool = (videos: ReadonlyArray<ThumbnailContext & ThumbnailVideo>, root: string, attempt: number) => {
+      const previewTool = (videos: ReadonlyArray<ThumbnailContext & ThumbnailVideo>, root: string, attempt: number, ranking: RankingPlan | null) => {
         let drawn = 0
         return agentTool({
           name: "preview_thumbnail",
@@ -125,10 +127,10 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
             : "Check a thumbnail and draw it. Returns the problems to fix, or the image file to Read.",
           schema: ProposedThumbnail,
           run: Effect.fn("ThumbnailStage.preview")(function*(proposed: ProposedThumbnail) {
-            const checked = checkThumbnail(fromProposedThumbnail(proposed), videos)
+            const checked = withRanking(checkThumbnail(fromProposedThumbnail(proposed), videos), ranking)
             if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
             const out = path.join(root, `attempt-${attempt}-${++drawn}.jpg`)
-            const config = thumbConfig(checked.value, videos)
+            const config = configFor(checked.value, videos, ranking)
             yield* draw(config, out, () => Effect.void)
             return [
               `It passes the checks. The draft: ${out}`,
@@ -137,6 +139,12 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
           }, Effect.catch((error) => Effect.succeed(`couldn't draw the preview: ${error.message}`)))
         })
       }
+
+      // a ranking's thumbnail is #1's after with #1's before as a tilted inset
+      const withRanking = (checked: ReturnType<typeof checkThumbnail>, ranking: RankingPlan | null) =>
+        ranking === null ? checked : { ...checked, problems: [...checked.problems, ...checkRankingThumbnail(checked.value, ranking)] }
+      const configFor = (proposal: ThumbnailProposal, videos: ReadonlyArray<ThumbnailContext & ThumbnailVideo>, ranking: RankingPlan | null) =>
+        ranking === null ? thumbConfig(proposal, videos) : tiltInset(thumbConfig(proposal, videos))
 
       // a video's overview contact sheets, as lines for the brief, and their folder for the agent to read
       const overviewSheets = Effect.fn("ThumbnailStage.overviewSheets")(function*(owner: ArtifactOwner) {
@@ -155,7 +163,10 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         const published = yield* latestData(ctx.owner, "metadata", PublishedShort)
         const story = yield* latestData(v1.owner, "story-map", StoryMap)
         const label = (source: number | undefined) => c.several ? `V${(source ?? 0) + 1}, ` : ""
-        const lines = c.project.format === "cut-down"
+        const ranking = c.project.format === "ranking" ? Option.getOrNull(yield* latestData(ctx.owner, "ranking-plan", RankingPlan)) : null
+        const lines = ranking !== null
+          ? [...ranking.entries].sort((a, b) => a.rank - b.rank).map((e) => `#${e.rank} ${e.label} ${e.emoji} (${label(e.source)}${e.shots.map((s) => s.role).join(" → ")})`)
+          : c.project.format === "cut-down"
           ? Option.match(yield* latestData(ctx.owner, "cut-plan", CutPlan), {
             onNone: () => [],
             onSome: (p) => p.sections.map((s) => `CREATOR (${label(s.source)}${s.beat}): "${s.text}"`)
@@ -173,7 +184,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
           Effect.mapError(failWith("write"))
         )
         const shortStory = c.several ? yield* loadShortStory(c.project, artifacts, sets) : null
-        const brief = buildThumbnailBrief({
+        const baseBrief = buildThumbnailBrief({
           creatorBrief: c.project.brief,
           title: Option.match(published, { onNone: () => c.project.title, onSome: (p) => p.title }),
           alternates: Option.match(published, { onNone: () => [], onSome: (p) => p.alternates }),
@@ -198,6 +209,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
             }
             : {})
         })
+        const brief = ranking === null ? baseBrief : `${baseBrief}\n\n${rankingThumbnailBrief(ranking, c.several)}`
         const proposal = yield* runChecked(agent, ctx, {
           stage: "thumbnail",
           instructions: THUMBNAIL_PROMPT,
@@ -206,13 +218,15 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
           output: { tool: "propose_thumbnail", description: "Submit the thumbnail.", schema: ProposedThumbnail },
           tools: [
             detailSheetTool(contactSheets, path, c.sources.map((s) => ({ video: s.path, seconds: s.sourceSeconds })), v1.sourceSeconds, detailRoot),
-            previewTool(c.sources, previewRoot, ctx.attempt)
+            previewTool(c.sources, previewRoot, ctx.attempt, ranking)
           ],
           defaultModel: null,
           readDirs: [...overviews.flatMap((o) => Option.toArray(o.dir)), detailRoot, previewRoot],
           maxTurns: 40
-        }, (proposed) => Effect.succeed(checkThumbnail(fromProposedThumbnail(proposed), c.sources))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
-        yield* record(ctx, proposal, thumbConfig(proposal, c.sources))
+        }, (proposed) => Effect.succeed(withRanking(checkThumbnail(fromProposedThumbnail(proposed), c.sources), ranking))).pipe(
+          Effect.mapError((e) => fail(e.code, e.message))
+        )
+        yield* record(ctx, proposal, configFor(proposal, c.sources, ranking))
       })
 
       // An edit sends back the renderer's config: checked, then drawn from this short's own videos.

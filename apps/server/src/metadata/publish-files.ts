@@ -13,6 +13,8 @@ export interface PublishInput {
   readonly metadata: ShortMetadata
   readonly post: PostText
   readonly credit: string | null
+  // a ranking's sources list (each rank's channel and link), or null
+  readonly sources?: ReadonlyArray<string> | null
   readonly approach: string
   readonly style: string
   // the version published before, whose files are removed when the new ones have other names
@@ -40,6 +42,7 @@ export const writePublished = Effect.fn("writePublished")(function*(
     post: input.post,
     alternates: otherTitles(input.metadata, input.post.title),
     credit: input.credit,
+    sources: input.sources ?? null,
     approach: input.approach,
     style: input.style,
     durationS: input.render.durationS

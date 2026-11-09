@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { CutPlan, type ProjectId, PublishedShort, RenderedShort, Script, SetStory, type SourceId, StoryMap } from "@viral/contracts"
+import { CutPlan, type ProjectId, PublishedShort, RankingPlan, RenderedShort, Script, SetStory, type SourceId, StoryMap } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
@@ -11,10 +11,10 @@ import { type StageContext, type StageDefinition, StageFailure } from "../runs/s
 import { Sources } from "../sources/sources.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
 import { Settings } from "../settings/settings.ts"
-import { checkMetadata } from "./metadata-rules.ts"
+import { checkMetadata, checkRankingMetadata } from "./metadata-rules.ts"
 import { metadataTask } from "./metadata-task.ts"
 import { writePublished } from "./publish-files.ts"
-import { loadAppearanceOrder } from "../projects/credits.ts"
+import { loadAppearanceOrder, loadRankingSources } from "../projects/credits.ts"
 import { agentPost, postCredit, postKey } from "./publish-rules.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "metadata", code, message })
@@ -55,7 +55,7 @@ export class MetadataStage extends Context.Service<MetadataStage, {
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
-        const latest = <A, I>(kind: "script" | "cut-plan" | "render", schema: Schema.Codec<A, I>) =>
+        const latest = <A, I>(kind: "script" | "cut-plan" | "ranking-plan" | "render", schema: Schema.Codec<A, I>) =>
           Effect.flatMap(artifacts.latest(ctx.owner, kind), (a) =>
             Effect.fromOption(Option.flatMap(a, (x) => Schema.decodeUnknownOption(schema)(x.data))).pipe(
               Effect.mapError(() => fail("not-ready", `no ${kind} yet`))
@@ -84,8 +84,17 @@ export class MetadataStage extends Context.Service<MetadataStage, {
             })))
           : []
 
-        // what the short says: the narrated script, or a cut-down short's sections in the creator's words
-        const lines = project.format === "cut-down"
+        // what the short says: the narrated script, a cut-down short's sections in the creator's words, or a ranking's
+        // entries #1 first (each with its video and what its clips show)
+        const ranking = project.format === "ranking" ? yield* latest("ranking-plan", RankingPlan) : null
+        const lines = ranking !== null
+          ? [
+            `On-screen title: "${ranking.title.lead}${ranking.title.accent}", ${ranking.entries.length} entries, played in the order ${ranking.order.join(", ")} (#1 last)`,
+            ...[...ranking.entries].sort((a, b) => a.rank - b.rank).map((e) =>
+              `#${e.rank} ${e.label} ${e.emoji} (V${(e.source ?? 0) + 1}): ${e.shots.map((s) => `${s.role}: ${s.note}${s.text === "" ? "" : ` ("${s.text.slice(0, 80)}")`}`).join(" · ")}`
+            )
+          ].join("\n")
+          : project.format === "cut-down"
           ? (yield* latest("cut-plan", CutPlan)).sections.map((s) =>
             several ? `CREATOR (V${(s.source ?? 0) + 1}, ${s.beat}): "${s.text}"` : `CREATOR (${s.beat}): "${s.text}"`
           ).join("\n")
@@ -103,8 +112,12 @@ export class MetadataStage extends Context.Service<MetadataStage, {
           lines,
           ...(several
             ? { videos: videoSummaries, acrossVideos: Option.getOrNull(Option.map(setStory, (s) => s.summary)) }
-            : {})
-        }), (proposed) => Effect.succeed(checkMetadata(proposed))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+            : {}),
+          ...(ranking === null ? {} : { ranking: { entries: ranking.entries.length } })
+        }), (proposed) => {
+          const checked = checkMetadata(proposed)
+          return Effect.succeed(ranking === null ? checked : { ...checked, problems: [...checked.problems, ...checkRankingMetadata(checked.value)] })
+        }).pipe(Effect.mapError((e) => fail(e.code, e.message)))
 
         // publish: the finished files side by side in ~/.viral/renders/, posted with the agent's text (new titles
         // replace a title you chose for the old ones)
@@ -119,6 +132,7 @@ export class MetadataStage extends Context.Service<MetadataStage, {
           post: agentPost(metadata),
           // every channel whose footage plays and isn't yours ("NileBlue · Mark Rober"), as the video credits them
           credit: postCredit(videos, yield* loadAppearanceOrder(project, artifacts)),
+          sources: yield* loadRankingSources(project, artifacts, videos),
           approach: project.approach,
           style: preset.name,
           previous: Option.getOrNull(previous)

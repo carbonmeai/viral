@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { appearanceOrder, creditedChannels, creditLine } from "./credits.ts"
+import { appearanceOrder, creditedChannels, creditLine, rankingSources } from "./credits.ts"
 
 const sources = [
   { rights: "licensed", channel: "NileBlue" },
@@ -40,4 +40,23 @@ test("a narrated short's videos appear by where their clips play; a cut-down sho
     plan: { sections: [{ source: 1 }, {}, { source: 1 }].map((s) => ({ ...s, beat: "hook" as const, start: 0, end: 1, text: "t", note: "", frame: null })) }
   })
   assert.deepEqual(cut, [1, 0])
+})
+
+test("a ranking's videos appear in play order; its sources list each rank's channel and link, #1 first", () => {
+  const entries = [
+    { rank: 1, source: 2, label: "Horse who gave up" },
+    { rank: 2, label: "Puppy walks again" },
+    { rank: 3, source: 1, label: "My own cat" }
+  ]
+  assert.deepEqual(appearanceOrder({ _tag: "Ranking", plan: { entries: entries.map((e) => ({ ...e, emoji: "🐴", shots: [] })), order: [3, 2, 1] } }), [1, 0, 2])
+  const videos = [
+    { rights: "unconfirmed", channel: "The Dodo", url: "https://www.youtube.com/watch?v=a", title: "a" },
+    { rights: "owned", channel: "Me", url: null, title: "b" },
+    { rights: "unconfirmed", channel: "Hope For Paws", url: "https://www.youtube.com/watch?v=c", title: "c" }
+  ]
+  assert.deepEqual(rankingSources({ entries: entries.map((e) => ({ ...e, emoji: "🐴", shots: [] })) }, videos), [
+    "#1 Horse who gave up: Hope For Paws, https://www.youtube.com/watch?v=c",
+    "#2 Puppy walks again: The Dodo, https://www.youtube.com/watch?v=a",
+    "#3 My own cat"
+  ])
 })
