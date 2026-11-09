@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { CutRenderPlan, NarratedPlan } from "@viral/contracts"
+import { CutRenderPlan, NarratedPlan, RankingRenderPlan, RenderChecks } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { ViralHome } from "../home/viral-home.ts"
 import { type ScriptError, ScriptRunner } from "../script-runner/script-runner.ts"
@@ -86,6 +86,44 @@ const cutPct = (step: typeof CutStep.Type, done: number, total: number) => {
   }
 }
 
+export interface RankingRender {
+  readonly output: string
+  readonly captions: string
+  readonly durationS: number
+  readonly shots: number
+  // where each entry plays in the short, in playing order
+  readonly timeline: ReadonlyArray<{ readonly rank: number; readonly start: number; readonly end: number }>
+  readonly checks: RenderChecks
+}
+
+const RankingStep = Schema.Literals(["shots", "encode", "checks"])
+const RankingLine = Schema.fromJsonString(Schema.Union([
+  Schema.Struct({ type: Schema.Literal("progress"), step: RankingStep, done: Schema.Int, total: Schema.Int }),
+  Schema.Struct({
+    type: Schema.Literal("done"),
+    output: Schema.String,
+    captions: Schema.String,
+    duration_s: Schema.Finite,
+    shots: Schema.Int,
+    timeline: Schema.Array(Schema.Struct({ rank: Schema.Int, start: Schema.Finite, end: Schema.Finite })),
+    checks: RenderChecks
+  })
+]))
+const RankingPlanJson = Schema.fromJsonString(RankingRenderPlan)
+
+// Overall render % per step: cutting the shots dominates, then the loudness pass, then the checks of the mp4.
+const rankingPct = (step: typeof RankingStep.Type, done: number, total: number) => {
+  const fraction = total === 0 ? 1 : done / total
+  switch (step) {
+    case "shots":
+      return 80 * fraction
+    case "encode":
+      return 80 + 10 * fraction
+    case "checks":
+      return 90 + 5 * fraction
+  }
+}
+
 // Runs the Python render scripts next to this file through the ScriptRunner.
 export class RenderEngine extends Context.Service<RenderEngine, {
   // Writes the plan to `<workDir>/narrated.json` (its relative paths resolve against workDir) and
@@ -93,6 +131,8 @@ export class RenderEngine extends Context.Service<RenderEngine, {
   renderNarrated(plan: NarratedPlan, workDir: string, out: string, progress: Progress): Effect.Effect<NarratedRender, RenderError>
   // The same for a cut-down short: writes `<workDir>/cut.json` and renders it to `out` + .srt.
   renderCut(plan: CutRenderPlan, workDir: string, out: string, progress: Progress): Effect.Effect<CutRender, RenderError>
+  // The same for a ranking: writes `<workDir>/ranking.json` and renders it to `out` + .srt, then checks the mp4.
+  renderRanking(plan: RankingRenderPlan, workDir: string, out: string, progress: Progress): Effect.Effect<RankingRender, RenderError>
 }>()("@viral/server/render/render-engine/RenderEngine") {
   static readonly layer = Layer.effect(
     RenderEngine,
@@ -151,7 +191,32 @@ export class RenderEngine extends Context.Service<RenderEngine, {
         }
       )
 
-      return RenderEngine.of({ renderNarrated, renderCut })
+      const renderRanking = Effect.fn("RenderEngine.renderRanking")(
+        function*(plan: RankingRenderPlan, workDir: string, out: string, progress: Progress) {
+          const planFile = path.join(workDir, "ranking.json")
+          yield* Schema.encodeEffect(RankingPlanJson)(plan).pipe(
+            Effect.flatMap((encoded) => fs.writeFileString(planFile, encoded)),
+            Effect.mapError((error) => new RenderError({ code: "plan", message: error.message }))
+          )
+          return yield* scripts.run(
+            [script("render-ranking.py"), planFile, "--out", out],
+            Schema.decodeEffect(RankingLine),
+            (line): Effect.Effect<RankingRender | undefined> =>
+              line.type === "progress"
+                ? progress(rankingPct(line.step, line.done, line.total)).pipe(Effect.as(undefined))
+                : Effect.succeed({
+                  output: line.output,
+                  captions: line.captions,
+                  durationS: line.duration_s,
+                  shots: line.shots,
+                  timeline: line.timeline,
+                  checks: line.checks
+                })
+          ).pipe(toRenderError)
+        }
+      )
+
+      return RenderEngine.of({ renderNarrated, renderCut, renderRanking })
     })
   ).pipe(Layer.provide([NodeServices.layer, ViralHome.layer, ScriptRunner.layer]))
 }
