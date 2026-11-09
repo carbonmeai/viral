@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan, MusicArrangement, NarratedPlan, type ProjectId, Script, ShotPlan, Transcript } from "@viral/contracts"
+import { type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan, MusicArrangement, NarratedPlan, type ProjectId, RankingPlan, RankingRenderPlan, Script, ShotPlan, Transcript } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
@@ -8,7 +8,7 @@ import { checkArrangement, planArrangement, wordStartsInShort } from "../music-b
 import { arrangementKey, dropWordKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { Presets } from "../presets/presets.ts"
-import { appearanceOrder, creditLine } from "../projects/credits.ts"
+import { appearanceOrder, creditedChannels, creditLine } from "../projects/credits.ts"
 import { ProjectSources } from "../projects/project-sources.ts"
 import { Projects } from "../projects/projects.ts"
 import { sourceLabel } from "../projects/source-context.ts"
@@ -16,6 +16,7 @@ import { type StageContext, type StageDefinition, StageFailure } from "../runs/s
 import { Settings } from "../settings/settings.ts"
 import { narrationEnds } from "../shots/shot-rules.ts"
 import { assembleCut } from "./assemble-cut.ts"
+import { assembleRanking } from "./assemble-ranking.ts"
 import { assembleNarrated } from "./assemble-narrated.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "assemble", code, message })
@@ -28,6 +29,7 @@ const projectOf = (ctx: StageContext): ProjectId => {
 const TranscriptJson = Schema.fromJsonString(Transcript)
 const PlanJson = Schema.fromJsonString(NarratedPlan)
 const CutPlanJson = Schema.fromJsonString(CutRenderPlan)
+const RankingPlanJson = Schema.fromJsonString(RankingRenderPlan)
 
 // Turns the approved plan into the renderer's plan in the project's style (preset). No agent and no cost.
 // `narrated`: the shot plan, with music, saved as narrated.json. `cut`: a cut-down short's sections, saved as
@@ -35,6 +37,7 @@ const CutPlanJson = Schema.fromJsonString(CutRenderPlan)
 export class AssembleStage extends Context.Service<AssembleStage, {
   readonly narrated: StageDefinition
   readonly cut: StageDefinition
+  readonly ranking: StageDefinition
 }>()("@viral/server/assemble/assemble-stage/AssembleStage") {
   static readonly layer = Layer.effect(
     AssembleStage,
@@ -206,9 +209,37 @@ export class AssembleStage extends Context.Service<AssembleStage, {
         yield* artifacts.record(slot, { data: plan, path: path.join(slot.relDir, "cut.json"), stageRunId: ctx.stageRunId })
       })
 
+      // A ranking has no voiceover, music or captions: the moments and the style make the whole plan.
+      const runRanking = Effect.fn("AssembleStage.ranking")(function*(ctx: StageContext) {
+        const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
+        const videos = yield* projectSources.of(project).pipe(Effect.mapError(() => fail("not-found", "no such source")))
+        const preset = project.presetId === null
+          ? yield* presets.getDefault
+          : yield* presets.get(project.presetId).pipe(Effect.mapError(() => fail("not-found", "the project's preset is gone")))
+        const moments = yield* dataOf(ctx.owner, "ranking-plan", RankingPlan)
+        yield* lostVideo(moments.entries, videos.length, "an entry")
+        const files = yield* Effect.forEach(videos, (v) =>
+          Effect.all({
+            path: fileOf(v.owner, "source-video"),
+            transcript: fileOf(v.owner, "transcript"),
+            excluded: Effect.succeed(v.excluded),
+            // each entry's channel, unless the footage is yours
+            channel: Effect.succeed(creditedChannels([v.source])[0] ?? null)
+          }))
+        const plan = assembleRanking({ slug: project.slug, plan: moments, preset: preset.config, videos: files })
+        if (project.musicTrackId !== null) yield* ctx.progress(null, "rankings keep each clip's own sound, so the music track isn't used")
+        const slot = yield* artifacts.allocate(ctx.owner, "ranking-render-plan")
+        yield* Schema.encodeEffect(RankingPlanJson)(plan).pipe(
+          Effect.flatMap((json) => fs.writeFileString(path.join(slot.dir, "ranking.json"), json)),
+          Effect.mapError((e) => fail("write", e.message))
+        )
+        yield* artifacts.record(slot, { data: plan, path: path.join(slot.relDir, "ranking.json"), stageRunId: ctx.stageRunId })
+      })
+
       return AssembleStage.of({
         narrated: { name: "assemble", artifact: "narrated-plan", gate: null, run: runNarrated },
-        cut: { name: "assemble", artifact: "cut-render-plan", gate: null, run: runCut }
+        cut: { name: "assemble", artifact: "cut-render-plan", gate: null, run: runCut },
+        ranking: { name: "assemble", artifact: "ranking-render-plan", gate: null, run: runRanking }
       })
     })
   ).pipe(Layer.provide([

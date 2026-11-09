@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type Artifact, CutRenderPlan, type GatePayload, NarratedPlan, RenderedShort } from "@viral/contracts"
+import { type Artifact, CutRenderPlan, type GatePayload, NarratedPlan, RankingRenderPlan, type RenderChecks, RenderedShort } from "@viral/contracts"
 import { Context, Effect, Layer, Option, Path, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -17,6 +17,7 @@ const CHECK_COLUMNS = 10
 export class RenderStage extends Context.Service<RenderStage, {
   readonly narrated: StageDefinition
   readonly cut: StageDefinition
+  readonly ranking: StageDefinition
 }>()("@viral/server/render/render-stage/RenderStage") {
   static readonly layer = Layer.effect(
     RenderStage,
@@ -40,7 +41,13 @@ export class RenderStage extends Context.Service<RenderStage, {
       const finish = Effect.fn("RenderStage.finish")(function*(
         ctx: StageContext,
         slot: { readonly dir: string; readonly relDir: string; readonly owner: Artifact["owner"]; readonly kind: Artifact["kind"]; readonly version: number },
-        rendered: { readonly output: string; readonly captions: string; readonly durationS: number; readonly parts: number }
+        rendered: {
+          readonly output: string
+          readonly captions: string
+          readonly durationS: number
+          readonly parts: number
+          readonly checks?: RenderChecks
+        }
       ) {
         yield* ctx.progress(95, "drawing the check sheet")
         const sheet = yield* checkSheet(rendered.output, rendered.durationS, path.join(slot.dir, "check.png"))
@@ -49,7 +56,8 @@ export class RenderStage extends Context.Service<RenderStage, {
           captions: rendered.captions,
           durationS: rendered.durationS,
           shots: rendered.parts,
-          checkSheet: sheet
+          checkSheet: sheet,
+          ...(rendered.checks === undefined ? {} : { checks: rendered.checks })
         }
         const captions = yield* artifacts.allocate(ctx.owner, "captions")
         // the srt is written next to the mp4, in the render's folder
@@ -85,6 +93,26 @@ export class RenderStage extends Context.Service<RenderStage, {
         yield* finish(ctx, slot, { ...rendered, parts: rendered.sections })
       })
 
+      // A ranking's mp4 is checked as it's rendered: black stretches, every shot's first and last frame, loudness.
+      const runRanking = Effect.fn("RenderStage.ranking")(function*(ctx: StageContext) {
+        const planArtifact = yield* artifacts.latest(ctx.owner, "ranking-render-plan")
+        const plan = yield* Effect.fromOption(Option.flatMap(planArtifact, (a) => Schema.decodeUnknownOption(RankingRenderPlan)(a.data))).pipe(
+          Effect.mapError(() => fail("not-ready", "the short hasn't been assembled"))
+        )
+        const slot = yield* artifacts.allocate(ctx.owner, "render")
+        const rendered = yield* engine.renderRanking(plan, slot.dir, path.join(slot.dir, `${plan.slug}.mp4`), ctx.progress).pipe(
+          Effect.mapError((e) => fail(e.code, e.message))
+        )
+        const { black, lufs } = rendered.checks
+        if (black.length > 0) {
+          yield* ctx.progress(null, `black frames at ${black.map(([s, e]) => `${s.toFixed(1)}–${e.toFixed(1)}s`).join(", ")}: look before approving`)
+        }
+        if (lufs !== null && Math.abs(lufs - (plan.lufs ?? -14)) > 1.5) {
+          yield* ctx.progress(null, `loudness measured ${lufs.toFixed(1)} LUFS (aimed for ${(plan.lufs ?? -14).toFixed(0)})`)
+        }
+        yield* finish(ctx, slot, { ...rendered, parts: rendered.shots })
+      })
+
       const gatePayload = (artifact: Artifact): GatePayload =>
         Option.match(Schema.decodeUnknownOption(RenderedShort)(artifact.data), {
           onNone: () => ({ _tag: "ArtifactGate", artifact }),
@@ -94,7 +122,8 @@ export class RenderStage extends Context.Service<RenderStage, {
 
       return RenderStage.of({
         narrated: { ...base, rejectTo: "shots", run: runNarrated },
-        cut: { ...base, rejectTo: "sections", run: runCut }
+        cut: { ...base, rejectTo: "sections", run: runCut },
+        ranking: { ...base, rejectTo: "moments", run: runRanking }
       })
     })
   ).pipe(Layer.provide([Artifacts.layer, RenderEngine.layer, NodeServices.layer]))

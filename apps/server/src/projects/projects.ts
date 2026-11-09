@@ -16,6 +16,7 @@ import {
   ProjectSourceInUse,
   ProjectSourcesInvalid,
   ProposalNotFound,
+  RankingPlan,
   SetProposalNotFound,
   Script,
   SetStory,
@@ -117,7 +118,13 @@ export class Projects extends Context.Service<Projects, {
   fromProposal(sourceId: SourceId, proposal: number, brief?: string | null): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
   // A short from a video set's proposal number `proposal` (0-based): its approach and title, the videos it uses in
   // set order, and the set's brief unless `brief` is given (editable later, like any short's).
-  fromSetProposal(setId: SourceSetId, proposal: number, brief?: string | null): Effect.Effect<Project, VideoSetNotFound | SetProposalNotFound>
+  // `approach` makes it another way than proposed; a ranking uses every video in the set.
+  fromSetProposal(
+    setId: SourceSetId,
+    proposal: number,
+    brief?: string | null,
+    approach?: ApproachName
+  ): Effect.Effect<Project, VideoSetNotFound | SetProposalNotFound | ProjectSourcesInvalid>
   setBrief(id: ProjectId, brief: string | null): Effect.Effect<Project, ProjectNotFound>
   setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
   setPreset(id: ProjectId, presetId: PresetId | null): Effect.Effect<Project, ProjectNotFound | PresetNotFound>
@@ -184,7 +191,8 @@ export class Projects extends Context.Service<Projects, {
 
       const create = Effect.fn("Projects.create")(function*(input: CreateProjectInput) {
         const brief = cleanBrief(input.brief)
-        const problem = sourcesProblem(input.sourceIds, brief)
+        const problem = sourcesProblem(input.sourceIds, brief) ??
+          (input.approach === "ranking" && input.sourceIds.length < 2 ? "a ranking has an entry per video, so it needs at least two videos" : null)
         if (problem !== null) return yield* new ProjectSourcesInvalid({ message: problem })
         // Check references up front so callers get a typed error instead of a foreign-key failure.
         yield* Effect.forEach(input.sourceIds, (id) => sources.get(id), { discard: true })
@@ -227,26 +235,34 @@ export class Projects extends Context.Service<Projects, {
         }).pipe(Effect.catchTag(["PresetNotFound", "MusicTrackNotFound", "ProjectSourcesInvalid"], Effect.die))
       })
 
-      const fromSetProposal = Effect.fn("Projects.fromSetProposal")(function*(setId: SourceSetId, proposal: number, brief?: string | null) {
+      const fromSetProposal = Effect.fn("Projects.fromSetProposal")(function*(
+        setId: SourceSetId,
+        proposal: number,
+        brief?: string | null,
+        approach?: ApproachName
+      ) {
         const set = yield* sets.get(setId)
         const story = yield* artifacts.latest({ _tag: "Set", id: setId }, "set-story")
         const chosen = Option.flatMap(story, (a) => Schema.decodeUnknownOption(SetStory)(a.data)).pipe(
           Option.flatMapNullishOr((s) => s.proposals[proposal])
         )
         if (Option.isNone(chosen)) return yield* new SetProposalNotFound({ setId, proposal })
-        // the proposal's videos in set order; one it names that the set no longer has is left out
-        const used = [...new Set(chosen.value.sources)].sort((a, b) => a - b).flatMap((i) => set.sourceIds[i] ?? [])
+        const as = approach ?? chosen.value.approach
+        // the proposal's videos in set order (one it names that the set no longer has is left out); a ranking has an
+        // entry for every video in the set
+        const used = as === "ranking" ? set.sourceIds : [...new Set(chosen.value.sources)].sort((a, b) => a - b).flatMap((i) => set.sourceIds[i] ?? [])
         const [first, ...rest] = used.length > 0 ? used : set.sourceIds
         if (first === undefined) return yield* new SetProposalNotFound({ setId, proposal })
         return yield* create({
           sourceIds: [first, ...rest],
-          title: chosen.value.title,
-          approach: chosen.value.approach,
+          // made as a ranking from another proposal, it's named after the set (a research's idea)
+          title: as === "ranking" && chosen.value.approach !== "ranking" ? set.title : chosen.value.title,
+          approach: as,
           presetId: null,
           musicTrackId: null,
           brief: cleanBrief(brief) ?? set.brief,
           setId
-        }).pipe(Effect.catchTag(["SourceNotFound", "PresetNotFound", "MusicTrackNotFound", "ProjectSourcesInvalid"], Effect.die))
+        }).pipe(Effect.catchTag(["SourceNotFound", "PresetNotFound", "MusicTrackNotFound"], Effect.die))
       })
 
       const list = Effect.fn("Projects.list")(function*(sourceId: SourceId | null) {
@@ -311,6 +327,7 @@ export class Projects extends Context.Service<Projects, {
           script: yield* latest("script", Script),
           shotPlan: yield* latest("shot-plan", ShotPlan),
           cutPlan: yield* latest("cut-plan", CutPlan),
+          rankingPlan: yield* latest("ranking-plan", RankingPlan),
           thumbnail: yield* latest("thumbnail", Thumbnail)
         }
       })

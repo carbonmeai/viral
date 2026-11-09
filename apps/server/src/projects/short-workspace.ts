@@ -5,6 +5,9 @@ import {
   type Project,
   type ProjectId,
   type ProjectNotFound,
+  RANKING_LIMITS,
+  RankingPlan,
+  type RankingProposal,
   PublishedShort,
   RenderedShort,
   Script,
@@ -21,6 +24,9 @@ import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { checkConfig } from "../thumbnail/thumbnail-rules.ts"
+import { checkRanking as checkRankingRules, framingKey, type RankingDraft, rankingMaxSeconds } from "../moments/moment-rules.ts"
+import { RankingFrames } from "../moments/ranking-frames.ts"
+import { VideoSets } from "../video-sets/video-sets.ts"
 import { ThumbnailRenderer } from "../thumbnail/thumbnail-renderer.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
@@ -31,6 +37,13 @@ import { type ProjectSource, ProjectSources } from "./project-sources.ts"
 import { Projects } from "./projects.ts"
 
 const TranscriptJson = Schema.fromJsonString(Transcript)
+
+// A checked ranking as the editor edits it again: the snapped shots without their words.
+const proposalOf = (draft: RankingDraft): RankingProposal => ({
+  title: draft.title,
+  order: draft.order,
+  entries: draft.entries.map((e) => ({ ...e, shots: e.shots.map(({ text: _text, ...shot }) => shot) }))
+})
 
 // A short's editor in one call: the short, its video, style and voice, its latest run with the gate it's waiting
 // on, and the latest version of everything the run has made (an artifact that no longer decodes is left out, so
@@ -45,6 +58,13 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
   checkSections(projectId: ProjectId, proposal: SectionsProposal): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
   // the thumbnail stage's own rules, for an edited thumbnail config before it's sent
   checkThumbnail(projectId: ProjectId, config: ThumbConfig): Effect.Effect<ReadonlyArray<string>, ProjectNotFound>
+  // the moments stage's own rules, for a ranking's edited moments before they're sent; the ranking comes back snapped
+  // to whole sentences, with its length
+  checkRanking(projectId: ProjectId, proposal: RankingProposal): Effect.Effect<{
+    readonly problems: ReadonlyArray<string>
+    readonly proposal: RankingProposal
+    readonly durationS: number
+  }, ProjectNotFound>
 }>()("@viral/server/projects/short-workspace/ShortWorkspaces") {
   static readonly layer = Layer.effect(
     ShortWorkspaces,
@@ -58,6 +78,8 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const path = yield* Path.Path
       const home = yield* ViralHome
       const thumbnails = yield* ThumbnailRenderer
+      const rankingFrames = yield* RankingFrames
+      const sets = yield* VideoSets
 
       // A file as the media route serves it: its path relative to the Viral home. Stages record absolute paths,
       // which go stale when the library moves, but always write the file into a known folder (the artifact's own,
@@ -92,6 +114,23 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
       const sectionSources = (sources: ReadonlyArray<ProjectSource>) =>
         sources.some((s) => Option.isNone(s.transcript)) ? Option.none<ReadonlyArray<ProjectSource>>() : Option.some(sources)
 
+      // What a ranking is checked against: each video's words, length, excluded ranges and detected framing, and the
+      // longest it may be (the research's length). None while a video isn't downloaded or transcribed.
+      const rankingContext = Effect.fn("ShortWorkspaces.rankingContext")(function*(project: Project, sources: ReadonlyArray<ProjectSource>) {
+        if (sources.some((s) => Option.isNone(s.transcript) || Option.isNone(s.video))) return Option.none()
+        const set = project.setId === null ? Option.none() : yield* sets.get(project.setId).pipe(Effect.option)
+        const length = Option.getOrNull(Option.map(Option.flatMapNullishOr(set, (s) => s.research), (r) => r.length))
+        const videos = yield* Effect.forEach(sources, (s) =>
+          Effect.map(rankingFrames.ofVideo(s.source.id, Option.getOrThrow(s.video)), (framing) => ({
+            words: s.words,
+            seconds: s.seconds,
+            excluded: s.excluded,
+            framing,
+            path: Option.getOrThrow(s.video)
+          })))
+        return Option.some({ videos, maxSeconds: rankingMaxSeconds(length) })
+      })
+
       const get = Effect.fn("ShortWorkspaces.get")(function*(projectId: ProjectId) {
         const project = yield* projects.get(projectId)
         const owner = { _tag: "Project", id: projectId } as const
@@ -119,6 +158,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         const words = yield* voiceoverWords(owner)
         const shotPlan = yield* latest("shot-plan", ShotPlan)
         const cutPlan = yield* latest("cut-plan", CutPlan)
+        const rankingPlan = yield* latest("ranking-plan", RankingPlan)
         const render = yield* latest("render", RenderedShort)
         const metadata = yield* latest("metadata", PublishedShort)
         const thumbnail = yield* latest("thumbnail", Thumbnail)
@@ -154,6 +194,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
             seconds: s.seconds
           })))
         const cut = project.format === "cut-down" ? sectionSources(sources) : Option.none<ReadonlyArray<ProjectSource>>()
+        const ranking = project.format === "ranking" ? yield* rankingContext(project, sources) : Option.none()
 
         return {
           project,
@@ -171,6 +212,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
           voiceover: Option.getOrNull(Option.map(voiceover, (a) => ({ version: a.version, path: a.path, voiceover: a.data, words }))),
           shotPlan: Option.getOrNull(Option.map(shotPlan, (a) => ({ version: a.version, path: a.path, plan: a.data }))),
           cutPlan: Option.getOrNull(Option.map(cutPlan, (a) => ({ version: a.version, path: a.path, plan: a.data }))),
+          rankingPlan: Option.getOrNull(Option.map(rankingPlan, (a) => ({ version: a.version, path: a.path, plan: a.data }))),
           render: Option.getOrNull(Option.map(render, (a) => ({
             version: a.version,
             path: a.path,
@@ -193,6 +235,16 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
               excluded: c.excluded.map((r) => ({ start: r.start, end: r.end }))
             })),
             limits: { minSection: SECTION_LIMITS.minSection, total: [...SECTION_LIMITS.total], hookWords: SECTION_LIMITS.hookWords }
+          }))),
+          rankingSource: Option.getOrNull(Option.map(ranking, (r) => ({
+            videos: r.videos.map((v) => ({
+              words: v.words,
+              sourceSeconds: v.seconds,
+              excluded: v.excluded.map((x) => ({ start: x.start, end: x.end })),
+              framing: v.framing
+            })),
+            maxSeconds: r.maxSeconds,
+            labelChars: RANKING_LIMITS.labelChars
           })))
         } satisfies ShortWorkspace
       })
@@ -251,7 +303,22 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         return checkConfig(config, ready)
       })
 
-      return ShortWorkspaces.of({ get, checkScript, checkShots, checkSections, checkThumbnail })
+      // Checked and snapped exactly as the moments gate checks an edit (with the framing detected at each new moment).
+      const checkRanking = Effect.fn("ShortWorkspaces.checkRanking")(function*(projectId: ProjectId, proposal: RankingProposal) {
+        const project = yield* projects.get(projectId)
+        if (project.format !== "ranking") return { problems: ["only rankings have moments"], proposal, durationS: 0 }
+        const context = yield* rankingContext(project, yield* sourcesFor(project))
+        if (Option.isNone(context)) return { problems: ["a video isn't downloaded and transcribed yet, so the ranking can't be checked"], proposal, durationS: 0 }
+        const detected = yield* rankingFrames.atShots(context.value.videos.map((v) => v.path), proposal)
+        const checked = checkRankingRules(proposal, {
+          videos: context.value.videos,
+          maxSeconds: context.value.maxSeconds,
+          framingAt: (source, start, end) => detected.get(framingKey(source, start, end)) ?? null
+        })
+        return { problems: checked.problems, proposal: proposalOf(checked.value), durationS: checked.value.durationS }
+      })
+
+      return ShortWorkspaces.of({ get, checkScript, checkShots, checkSections, checkThumbnail, checkRanking })
     })
   ).pipe(Layer.provide([
     Projects.layer,
@@ -260,6 +327,8 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
     Artifacts.layer,
     RunStore.layer,
     ThumbnailRenderer.layer,
+    RankingFrames.layer,
+    VideoSets.layer,
     ViralHome.layer,
     NodeServices.layer
   ]))

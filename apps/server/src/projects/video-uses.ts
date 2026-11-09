@@ -1,4 +1,4 @@
-import type { CutPlan, Script, ShotPlan, Thumbnail } from "@viral/contracts"
+import type { CutPlan, RankingPlan, Script, ShotPlan, Thumbnail } from "@viral/contracts"
 
 // A short's current work, as far as its videos go: the latest script, shot plan, sections and thumbnail (absent
 // when there's none yet).
@@ -6,12 +6,19 @@ export interface ShortWork {
   readonly script?: Script | null
   readonly shotPlan?: ShotPlan | null
   readonly cutPlan?: CutPlan | null
+  readonly rankingPlan?: RankingPlan | null
   readonly thumbnail?: Thumbnail | null
 }
 
 // The steps whose work names videos, in the order a short runs them.
-export type VideoStep = "script" | "shots" | "sections" | "thumbnail"
-const STEP_NAMES: Record<VideoStep, string> = { script: "the script", shots: "the shots", sections: "the sections", thumbnail: "the thumbnail" }
+export type VideoStep = "script" | "shots" | "sections" | "moments" | "thumbnail"
+const STEP_NAMES: Record<VideoStep, string> = {
+  script: "the script",
+  shots: "the shots",
+  sections: "the sections",
+  moments: "the ranking",
+  thumbnail: "the thumbnail"
+}
 
 // Which steps use each of the short's videos (by position, V1 = 0): a real line, a shot or real clip, a section, a
 // thumbnail layer. A video no step uses has no entry.
@@ -27,6 +34,7 @@ export const videoUses = (work: ShortWork): ReadonlyMap<number, ReadonlyArray<Vi
   const plan = work.shotPlan
   if (plan !== null && plan !== undefined) for (const clip of [...plan.shots, ...plan.inserts, ...plan.outro]) add("shots", clip.source)
   for (const section of work.cutPlan?.sections ?? []) add("sections", section.source)
+  for (const entry of work.rankingPlan?.entries ?? []) add("moments", entry.source)
   const thumbnail = work.thumbnail?.config
   if (thumbnail !== undefined) {
     if (thumbnail.layout !== "bold") add("thumbnail", thumbnail.background.source)

@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect"
 import { AdsStage } from "../ads/ads-stage.ts"
 import { AssembleStage } from "../assemble/assemble-stage.ts"
 import { MetadataStage } from "../metadata/metadata-stage.ts"
+import { MomentsStage } from "../moments/moments-stage.ts"
 import { Projects } from "../projects/projects.ts"
 import { RenderStage } from "../render/render-stage.ts"
 import { ResearchStage } from "../research/research-stage.ts"
@@ -23,7 +24,8 @@ import { StageFailure, StageRegistry } from "./stages.ts"
 // researches its videos and waits for you to approve them, before any is read); a short's run first reads any
 // of its videos after the first that haven't been (a video added to it);
 // a narrated short's run is script → voice → shots → assemble → render → metadata → thumbnail; a cut-down
-// short's is sections → assemble → render → metadata → thumbnail.
+// short's is sections → assemble → render → metadata → thumbnail; a ranking's is moments → assemble → render →
+// metadata → thumbnail.
 export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(function*() {
   const source = yield* SourceStages
   const ads = yield* AdsStage
@@ -35,6 +37,7 @@ export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(functio
   const render = yield* RenderStage
   const metadata = yield* MetadataStage
   const sections = yield* SectionsStage
+  const moments = yield* MomentsStage
   const thumbnail = yield* ThumbnailStage
   const projects = yield* Projects
   const setStory = yield* SetStoryStage
@@ -75,7 +78,8 @@ export const PipelineStagesLive = Layer.effect(StageRegistry, Effect.gen(functio
       Effect.mapError(() => new StageFailure({ stage: "script", code: "not-found", message: `no project ${owner.id}` }))
     )
     if (project.format === "cut-down") return [sections.stage, assemble.cut, render.cut, metadata.stage, thumbnail.stage]
+    if (project.format === "ranking") return [moments.stage, assemble.ranking, render.ranking, metadata.stage, thumbnail.stage]
     return [script.stage, voice.stage, shots.stage, assemble.narrated, render.narrated, metadata.stage, thumbnail.stage]
   })
   return StageRegistry.of({ stagesFor, prerequisites })
-})).pipe(Layer.provide([SourceStages.layer, AdsStage.layer, StoryStage.layer, ScriptStage.layer, VoiceStage.layer, ShotsStage.layer, AssembleStage.layer, RenderStage.layer, MetadataStage.layer, SectionsStage.layer, ThumbnailStage.layer, Projects.layer, SetStoryStage.layer, ResearchStage.layer, VideoSets.layer, Sources.layer]))
+})).pipe(Layer.provide([SourceStages.layer, AdsStage.layer, StoryStage.layer, ScriptStage.layer, VoiceStage.layer, ShotsStage.layer, AssembleStage.layer, RenderStage.layer, MetadataStage.layer, SectionsStage.layer, MomentsStage.layer, ThumbnailStage.layer, Projects.layer, SetStoryStage.layer, ResearchStage.layer, VideoSets.layer, Sources.layer]))

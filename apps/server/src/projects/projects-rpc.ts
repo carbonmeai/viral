@@ -7,7 +7,7 @@ export const ProjectsRpcLive = ProjectsRpcs.toLayer(Effect.gen(function*() {
   return ProjectsRpcs.of({
     CreateProject: (input) => projects.create(input),
     CreateProjectFromProposal: ({ sourceId, proposal, brief }) => projects.fromProposal(sourceId, proposal, brief),
-    CreateProjectFromSetProposal: ({ setId, proposal, brief }) => projects.fromSetProposal(setId, proposal, brief),
+    CreateProjectFromSetProposal: ({ setId, proposal, brief, approach }) => projects.fromSetProposal(setId, proposal, brief, approach),
     SetProjectBrief: ({ id, brief }) => projects.setBrief(id, brief),
     AddSourceToProject: ({ id, sourceId }) => projects.addSource(id, sourceId),
     RemoveSourceFromProject: ({ id, sourceId }) => projects.removeSource(id, sourceId),

@@ -10,6 +10,7 @@ export const SkillName = Schema.Literals([
   "approach-question-recap",
   "approach-claim-interleaved",
   "approach-cut-down",
+  "approach-ranking",
   "short-metadata",
   "thumbnails",
   "finding-source-videos"
