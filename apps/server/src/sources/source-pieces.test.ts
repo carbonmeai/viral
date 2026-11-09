@@ -1,7 +1,7 @@
 // A video found by research is downloaded as a 480p scan, and a short fetches only the seconds it plays in full
 // quality: against the fake yt-dlp (a small blue scan, larger green pieces, a sound that follows the video's clock).
 import type { SourceOrigin } from "@viral/contracts"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Exit, Layer, ManagedRuntime } from "effect"
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
@@ -26,7 +26,7 @@ before(() => {
   process.env["FAKE_YT_DURATION"] = "120"
 })
 after(() => {
-  for (const name of ["VIRAL_YT_DLP", "VIRAL_YT_RETRY_PAUSE_S", "FAKE_YT_LOG", "FAKE_YT_SECTIONS_403", "FAKE_YT_DURATION"]) delete process.env[name]
+  for (const name of ["VIRAL_YT_DLP", "VIRAL_YT_RETRY_PAUSE_S", "FAKE_YT_LOG", "FAKE_YT_SECTIONS_403", "FAKE_YT_DOWNLOAD_ERRORS", "FAKE_YT_DURATION"]) delete process.env[name]
   rmSync(home, { recursive: true, force: true })
 })
 
@@ -105,6 +105,48 @@ test("a found video is downloaded as a 480p scan, and a short fetches only its s
   assert.equal(blocked.problem, "YouTube refused the 1080p pieces twice (403)")
   assert.deepEqual(blocked.pieces.map((p) => [p.start, p.end]), [[9, 16]])
   delete process.env["FAKE_YT_SECTIONS_403"]
+  await rt.dispose()
+})
+
+// Your own links download in full through the same yt-dlp (Viral's own; the uv environment's copy can't solve YouTube's
+// JavaScript challenge), at 1080p first, with the same one retry for a 403 or a dropped connection, and never a third.
+test("your own link downloads in full through Viral's own yt-dlp, retrying a 403 or a dropped connection once", async () => {
+  const rt = runtime()
+  const own = "https://www.youtube.com/watch?v=fakeOwnLink"
+  let attempts: ReadonlyArray<ReadonlyArray<string>> = []
+  // a fresh log per case, so the fake counts this case's attempts
+  const attempt = async (errors: string) => {
+    process.env["FAKE_YT_LOG"] = join(home, `own-${errors || "ok"}.log`)
+    process.env["FAKE_YT_DOWNLOAD_ERRORS"] = errors
+    try {
+      return await rt.runPromiseExit(fetchSource({ _tag: "Url", url: own }))
+    } finally {
+      const tried = readFileSync(process.env["FAKE_YT_LOG"], "utf8").trim().split("\n").map((l) => JSON.parse(l) as Array<string>)
+      process.env["FAKE_YT_LOG"] = log
+      delete process.env["FAKE_YT_DOWNLOAD_ERRORS"]
+      attempts = tried
+    }
+  }
+
+  const ok = await attempt("")
+  assert.ok(Exit.isSuccess(ok), String(Exit.isFailure(ok) ? ok.cause : ""))
+  assert.equal(ok.value.fetched.scan, undefined, "a full download, not a scan")
+  assert.equal(ok.value.fetched.channel, "Fake Channel")
+  assert.ok(existsSync(ok.value.file))
+  assert.equal(attempts.length, 1)
+  assert.match(attempts[0]![attempts[0]!.indexOf("-f") + 1]!, /^bv\*\[height=1080\]/, "asked for 1080p first")
+  assert.ok(!attempts[0]!.includes("--download-sections"))
+
+  for (const errors of ["403", "reset"]) {
+    const retried = await attempt(errors)
+    assert.ok(Exit.isSuccess(retried), `${errors} once is retried: ${Exit.isFailure(retried) ? retried.cause : ""}`)
+    assert.equal(attempts.length, 2)
+  }
+
+  const blocked = await attempt("403,403,403")
+  assert.ok(Exit.isFailure(blocked))
+  assert.match(String(blocked.cause), /refused the download twice \(403\)/)
+  assert.equal(attempts.length, 2, "never a third try")
   await rt.dispose()
 })
 

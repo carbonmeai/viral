@@ -46,9 +46,8 @@ SCAN_FORMAT = "/".join([
 
 def yt_dlp_command() -> str:
     """Viral's own yt-dlp (first on the server's PATH); VIRAL_YT_DLP runs another (tests point it at a fake). The
-    script's own uv environment is skipped: fetch-source.py lists yt-dlp as a dependency, and that copy (put first on
-    the PATH by `uv run`) lacks the JavaScript challenge solver Viral's own has, so some videos come back "not
-    available" through it."""
+    script's own uv environment is skipped: a copy of yt-dlp there (put first on the PATH by `uv run`) lacks the
+    JavaScript challenge solver Viral's own has, so some videos come back "not available" through it."""
     override = os.environ.get("VIRAL_YT_DLP")
     if override:
         return override

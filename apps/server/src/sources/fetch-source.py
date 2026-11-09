@@ -1,18 +1,17 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["yt-dlp"]
+# dependencies = []
 # ///
 """Bring a long video into a source folder as <out-dir>/source.mp4 and report its metadata.
 
 Usage:
   uv run fetch-source.py (--url URL [--scan] | --file PATH) --out-dir DIR
 
-A URL is downloaded with yt-dlp at 1080p, else 720p, else the best there is below that (never above 1080p:
-shorts are 1080x1920, so more only costs disk), merged to mp4; yt-dlp is an inline dependency, so nothing
-needs installing. A local file is hard-linked when it is on the same disk, copied otherwise, and remuxed
-when it isn't already an mp4. `--scan` (videos found by research) downloads a 480p copy for reading instead, through
-Viral's own yt-dlp command (VIRAL_YT_DLP overrides it); a short then fetches only the seconds it uses in 1080p with
-fetch-pieces.py.
+A URL is downloaded with Viral's own yt-dlp command (VIRAL_YT_DLP overrides it) at 1080p, else 720p, else the best
+there is below that (never above 1080p: shorts are 1080x1920, so more only costs disk), merged to mp4. A local file
+is hard-linked when it is on the same disk, copied otherwise, and remuxed when it isn't already an mp4. `--scan`
+(videos found by research) downloads a 480p copy for reading instead; a short then fetches only the seconds it uses
+in 1080p with fetch-pieces.py.
 
 stdout, one JSON object per line:
   {"type": "progress", "pct": 42.0}
@@ -49,42 +48,11 @@ def probe(path: Path) -> dict:
     return {"duration_s": round(float(data["format"]["duration"]), 3), "width": stream.get("width"), "height": stream.get("height")}
 
 
-def from_url(url: str, out: Path) -> dict:
-    import yt_dlp
-
-    def hook(d: dict) -> None:
-        if d.get("status") == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate")
-            if total:
-                emit({"type": "progress", "pct": round(100 * d.get("downloaded_bytes", 0) / total, 1)})
-
-    opts = {
-        "format": FORMAT,
-        "merge_output_format": "mp4",
-        "outtmpl": str(out / "source.%(ext)s"),
-        "progress_hooks": [hook],
-        "quiet": True,
-        "no_warnings": True,
-        "noprogress": True,
-    }
-    info = download_with_retry(lambda: _download(yt_dlp, opts, url), time.sleep)
-    if not (out / "source.mp4").exists():
-        raise FetchFailure("download", "yt-dlp finished without producing source.mp4")
-    return {
-        "title": info.get("title"),
-        "channel": info.get("channel") or info.get("uploader"),
-        "url": info.get("webpage_url") or url,
-    }
-
-
-def _download(yt_dlp, opts: dict, url: str) -> dict:
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        return ydl.extract_info(url, download=True)
-
-
-def from_url_scan(url: str, out: Path) -> dict:
-    """A scan: the 480p copy a video found by research is read from, through Viral's own yt-dlp (the one research
-    searches with). A short later fetches the seconds it uses in 1080p (fetch-pieces.py)."""
+def from_url(url: str, out: Path, fmt: str) -> dict:
+    """A link, through Viral's own yt-dlp (the one research searches with; the uv environment's copy can't solve
+    YouTube's JavaScript challenge, so some videos come back "not available" through it): the whole video at `fmt`
+    (FULL_FORMAT for your own links, SCAN_FORMAT for a scan of a video found by research; a short later fetches the
+    seconds it uses in 1080p with fetch-pieces.py). One retry for a 403 or a dropped connection, never a workaround."""
     info: dict = {}
 
     def line(text: str) -> None:
@@ -98,7 +66,7 @@ def from_url_scan(url: str, out: Path) -> dict:
                 pass
 
     args = ["--quiet", "--progress", "--newline", "--progress-template", "download:%(progress._percent_str)s",
-            "-f", SCAN_FORMAT, "--merge-output-format", "mp4", "-o", str(out / "source.%(ext)s"),
+            "-f", fmt, "--merge-output-format", "mp4", "-o", str(out / "source.%(ext)s"),
             "--print", "after_move:%(.{title,channel,uploader,webpage_url})j", url]
     download_with_retry(lambda: run_yt_dlp(args, line) or info, time.sleep)
     if not (out / "source.mp4").exists():
@@ -150,7 +118,7 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     scan = bool(args.url and args.scan)
     if args.url:
-        meta = from_url_scan(args.url, out) if scan else from_url(args.url, out)
+        meta = from_url(args.url, out, SCAN_FORMAT if scan else FORMAT)
     else:
         meta = from_file(Path(args.file).expanduser().resolve(), out)
     video = probe(out / "source.mp4")

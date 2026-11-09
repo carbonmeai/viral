@@ -32,7 +32,7 @@ const Line = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("done"), ...FetchedSource.fields })
 ]))
 
-// Brings a long video into a folder as source.mp4: downloaded with yt-dlp for a URL (a 480p scan when the link
+// Brings a long video into a folder as source.mp4: downloaded with Viral's own yt-dlp for a URL (a 480p scan when the link
 // asks for one), hard-linked or copied for a local file.
 export class SourceFetcher extends Context.Service<SourceFetcher, {
   fetch(origin: SourceOrigin, outDir: string, progress: Progress): Effect.Effect<FetchedSource, FetchError>

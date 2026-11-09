@@ -24,7 +24,8 @@ apps/server/src/
                        rebuilds projects the same way so its format CHECK allows 'ranking')
   sources/             long videos: row + ~/.viral/sources/<id>/, shared by every short that uses them;
                        source-stages.ts defines the video-level stages (source, transcribe, contact-sheet).
-                       Links download at 1080p, else 720p, never higher; the size is kept in source-video. A video a
+                       Links download at 1080p, else 720p, never higher, through Viral's own yt-dlp CLI like scans and
+                       pieces (one retry for a 403 or a dropped connection); the size is kept in source-video. A video a
                        short or video set uses can't be deleted (SourceInUse, "used by N shorts").
                        Scans (R3): a link with `scan` (every video research adds) downloads 480p only, through Viral's
                        own yt-dlp CLI (fetch-source.py --scan; source-video `scan: true`), and everything reads it.

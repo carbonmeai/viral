@@ -9,6 +9,8 @@
 //   FAKE_YT_UNAVAILABLE  video ids that are removed ("Video unavailable")
 //   FAKE_YT_LIVE         video ids that are live streams
 //   FAKE_YT_SECTIONS_403 refuse this many piece downloads (counted in FAKE_YT_LOG) with a 403
+//   FAKE_YT_DOWNLOAD_ERRORS how whole-video downloads fail, one per attempt (counted in FAKE_YT_LOG): "403" or "reset",
+//                        e.g. "403" fails the first and lets the second through, "403,403" fails both
 //   FAKE_YT_DURATION     the length of a downloaded video not in the search log (default 60 s)
 import { execFileSync } from "node:child_process"
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs"
@@ -77,6 +79,13 @@ if (args.includes("-f")) {
       "-c:a", "aac", file])
   const template = value("-o") ?? "%(id)s.%(ext)s"
   if (sections.length === 0) {
+    const log = process.env["FAKE_YT_LOG"]
+    const attempt = log !== undefined && existsSync(log)
+      ? readFileSync(log, "utf8").split("\n").filter((l) => l.includes('"-f"') && !l.includes("--download-sections")).length
+      : 1
+    const error = env("FAKE_YT_DOWNLOAD_ERRORS")[attempt - 1]
+    if (error === "403") fail(`unable to download video data: HTTP Error 403: Forbidden`)
+    if (error === "reset") fail(`[download] Got error: [Errno 54] Connection reset by peer`)
     const file = template.replace("%(ext)s", "mp4")
     make(file, "0x2050FF", "128x72", 0, duration)
     process.stdout.write(`${JSON.stringify({ title: all.get(id)?.title ?? id, channel: all.get(id)?.channel ?? "Fake Channel", uploader: null, webpage_url: url })}\n`)
