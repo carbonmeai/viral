@@ -4,7 +4,9 @@ without yt-dlp installed.
 """
 import json
 import os
+import shutil
 import subprocess
+import sys
 import threading
 
 
@@ -43,8 +45,18 @@ SCAN_FORMAT = "/".join([
 
 
 def yt_dlp_command() -> str:
-    """Viral's own yt-dlp (first on the server's PATH); VIRAL_YT_DLP runs another (tests point it at a fake)."""
-    return os.environ.get("VIRAL_YT_DLP") or "yt-dlp"
+    """Viral's own yt-dlp (first on the server's PATH); VIRAL_YT_DLP runs another (tests point it at a fake). The
+    script's own uv environment is skipped: fetch-source.py lists yt-dlp as a dependency, and that copy (put first on
+    the PATH by `uv run`) lacks the JavaScript challenge solver Viral's own has, so some videos come back "not
+    available" through it."""
+    override = os.environ.get("VIRAL_YT_DLP")
+    if override:
+        return override
+    script_env = {os.path.realpath(os.path.join(sys.prefix, "bin"))}
+    if os.environ.get("VIRTUAL_ENV"):
+        script_env.add(os.path.realpath(os.path.join(os.environ["VIRTUAL_ENV"], "bin")))
+    path = os.pathsep.join(d for d in os.environ.get("PATH", "").split(os.pathsep) if d and os.path.realpath(d) not in script_env)
+    return shutil.which("yt-dlp", path=path) or "yt-dlp"
 
 
 STDERR_TAIL = 4000
