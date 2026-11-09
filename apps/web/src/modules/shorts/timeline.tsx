@@ -3,7 +3,8 @@ import { Captions, Image, Mic, Music, Quote } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "@viral/ui/cn"
 import { videoColor } from "../sets/set-values.ts"
-import { clockOf, type TimelineLayout, type TimelineSegment } from "./editor-values.ts"
+import { VideoDot } from "../sets/video-badge.tsx"
+import { clockOf, type SourceStretch, sourceStretches, type TimelineLayout, type TimelineSegment } from "./editor-values.ts"
 import type { ShotBlock } from "./shots/shots-values.ts"
 import { nameOf, useShortVideos } from "./short-videos.tsx"
 
@@ -52,6 +53,38 @@ export function Block({ start, end, total, color, label, title, dim }: {
       {label}
     </div>
   )
+}
+
+// A short from several videos, on its timeline: a thin strip per video (its colour dot and short name) marking the
+// stretches of the short that come from it. Nothing for a single-video short.
+export function SourceStrip({ pieces, videos, total }: {
+  // what plays when: each piece's start and end in the short's seconds and its video (by position)
+  readonly pieces: ReadonlyArray<{ readonly start: number; readonly end: number; readonly source: number }>
+  readonly videos: number
+  readonly total: number
+}) {
+  const named = useShortVideos()
+  if (videos < 2) return null
+  const strips = sourceStretches(pieces, videos)
+  const label = (v: number, s: SourceStretch) => `${nameOf(named, v)} · ${clockOf(s.start)}–${clockOf(s.end)}`
+  return strips.map((stretches, v) => (
+    <div key={v} className="contents">
+      <div className="flex h-3.5 min-w-0 items-center gap-1.5 pl-2 text-[11px] leading-none text-fg-2">
+        <VideoDot index={v} className="size-1.5" />
+        <span className="truncate">{nameOf(named, v)}</span>
+      </div>
+      <div className="relative h-1.5 rounded-full bg-ctl" aria-label={`Where ${nameOf(named, v)} plays`}>
+        {stretches.map((s, i) => (
+          <span
+            key={i}
+            title={label(v, s)}
+            className="absolute inset-y-0 rounded-full"
+            style={{ left: `${(s.start / total) * 100}%`, width: `max(2px, ${((s.end - s.start) / total) * 100}%)`, background: videoColor(v) }}
+          />
+        ))}
+      </div>
+    </div>
+  ))
 }
 
 // The shots as frames on the Shots track, at the times they play; clicking one selects it.
@@ -142,6 +175,15 @@ export function Timeline({ layout, head, captions, music, shots, shotBlocks, dro
             <span className="pointer-events-none absolute -top-[3px] -bottom-[5px] z-10 w-0.5 bg-lemon" style={{ left: `${(head / total) * 100}%` }} />
           )}
         </Lane>
+
+        <SourceStrip
+          videos={videos}
+          total={total}
+          pieces={[
+            ...(shotBlocks === null || shotBlocks === undefined ? [] : shotBlocks.blocks.map((b) => ({ start: b.start, end: b.end, source: shotBlocks.sourceOf?.(b.k) ?? 0 }))),
+            ...layout.reals.map((r) => ({ start: r.start, end: r.end, source: r.source }))
+          ]}
+        />
 
         <TrackName icon={Image} color="var(--t-shot)" name="Shots" />
         <Lane>

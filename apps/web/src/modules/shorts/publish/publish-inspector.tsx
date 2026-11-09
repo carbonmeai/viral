@@ -12,8 +12,9 @@ import { desktop } from "../../../config/server-url.ts"
 import { Detail } from "../../system/detail.tsx"
 import { InspectorBlock } from "../editor-frame.tsx"
 import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
+import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { StepDetails } from "../step-details.tsx"
-import { parseHashtags, republishLine, TITLE_CHARS, TITLE_LIMIT, titleChoices } from "./publish-values.ts"
+import { parseHashtags, republishLine, rightsNotes, TITLE_CHARS, TITLE_LIMIT, titleChoices } from "./publish-values.ts"
 import type { Publish } from "./use-publish.ts"
 
 export type PublishTab = "post" | "files"
@@ -139,10 +140,11 @@ function EditBox({ editing, draft, onDraft, problems, busy, onSave, onCancel }: 
 // The publish step's inspector: what publishing again would update, the title to post with (the agent's pick, an
 // alternate or your own; the count shows when a phone would cut it off), the description, hashtags and credit, a
 // reminder when the footage's rights aren't confirmed, and the files. Your choice and edits are saved on the short.
-export function PublishInspector({ metadata, slug, source, files, publish, stages, tab, onTab }: {
+export function PublishInspector({ metadata, slug, sources, files, publish, stages, tab, onTab }: {
   readonly metadata: PublishedShort
   readonly slug: string
-  readonly source: Source
+  // the short's videos, V1 first
+  readonly sources: ReadonlyArray<Source>
   readonly files: PublishedFiles
   readonly publish: Publish
   readonly stages: ReadonlyArray<StageRun>
@@ -152,7 +154,8 @@ export function PublishInspector({ metadata, slug, source, files, publish, stage
   const [editing, setEditing] = useState<Editing | null>(null)
   const [draft, setDraft] = useState("")
   const status = publish.status
-  const unconfirmed = source.rights === "unconfirmed"
+  const named = useShortVideos()
+  const notes = rightsNotes(sources.map((s, i) => ({ name: nameOf(named, i), rights: s.rights, channel: s.channel })))
 
   const startEdit = (field: Editing, post: PostText) => {
     publish.clearProblems()
@@ -242,18 +245,11 @@ export function PublishInspector({ metadata, slug, source, files, publish, stage
         </InspectorBlock>
         <InspectorBlock title="Credit">
           <span className="text-sm">
-            {status.credit !== null
-              ? `Credit: ${status.credit}`
-              : source.rights === "owned"
-              ? <span className="text-fg-2">None: the footage is yours.</span>
-              : <span className="text-fg-2">None: the video had no channel to credit. Add it on the video's page, then publish again.</span>}
+            {status.credit !== null ? `Credit: ${status.credit}` : <span className="text-fg-2">{notes.none}</span>}
           </span>
+          {status.credit !== null && notes.noChannel !== null ? <span className="text-xs text-fg-2">{notes.noChannel}</span> : null}
         </InspectorBlock>
-        {unconfirmed ? (
-          <span className="text-xs text-wait">
-            You haven't confirmed you own or have permission to use this footage. Set it on the video's page before you post.
-          </span>
-        ) : null}
+        {notes.unconfirmed === null ? null : <span className="text-xs text-wait">{notes.unconfirmed}</span>}
         <StepDetails stages={stages} names={["metadata"]} />
       </>
     )

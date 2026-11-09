@@ -16,9 +16,8 @@ import { Detail, useDetailed } from "../system/detail.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
 import { BriefButton } from "./brief-button.tsx"
-import { MultiVideoNote } from "./multi-video-note.tsx"
-import { videoNames } from "../sets/set-values.ts"
 import { ShortVideosProvider } from "./short-videos.tsx"
+import { VideosMenu } from "./videos-menu.tsx"
 import { EditorFrame } from "./editor-frame.tsx"
 import { EditorSkeleton } from "./editor-skeleton.tsx"
 import {
@@ -602,7 +601,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       <PublishInspector
         metadata={metadata.metadata}
         slug={ws.project.slug}
-        source={ws.source}
+        sources={ws.videos.map((v) => v.source)}
         files={{
           video: metadata.media.video === null ? null : homeFileUrl(serverUrl, metadata.media.video),
           captions: metadata.media.captions === null ? null : homeFileUrl(serverUrl, metadata.media.captions),
@@ -627,7 +626,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       const image = thumbnail.thumbnail.image
       stage = (
         <>
-          {stageBar(`${config.lines.map((l) => l.text).join(" ")}${ws.videos.length > 1 ? ` · pictures from the first video, ${videoNames(ws.videos.map((v) => v.source.title))[0]}, for now` : ""}`)}
+          {stageBar(config.lines.map((l) => l.text).join(" "))}
           <ThumbnailStage
             url={image === null ? null : artifactFileUrl(serverUrl, projectOwner, "thumbnail", thumbnail.version, image)}
             layout={config.layout ?? "classic"}
@@ -637,8 +636,8 @@ function Editor({ ws, progress, step, onStep, refresh }: {
       inspector = (
         <ThumbnailInspector
           config={config}
-          sourceId={ws.source.id}
-          stillUrl={stillUrl}
+          sourceIds={ws.videos.map((v) => v.source.id)}
+          stillUrl={videoStillUrl}
           words={words}
           onWords={(next) => {
             setThumbProblems([])
@@ -821,11 +820,12 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   }
 
   const captions = ws.preset.config.captions
+  const going = (progress.run ?? ws.run)?.status === "running" || (progress.run ?? ws.run)?.status === "waiting"
   return (
     <ShortVideosProvider titles={ws.videos.map((v) => v.source.title)}>
       <TitleBar title={titleOf(ws)}>
-        <MultiVideoNote count={ws.project.sourceIds.length} format={ws.project.format} />
-        <BriefButton project={ws.project} running={(progress.run ?? ws.run)?.status === "running" || (progress.run ?? ws.run)?.status === "waiting"} onSaved={refresh} />
+        <VideosMenu project={ws.project} running={going} onChanged={refresh} />
+        <BriefButton project={ws.project} running={going} onSaved={refresh} />
         {status}
       </TitleBar>
       <EditorFrame

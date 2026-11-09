@@ -5,7 +5,7 @@ import { VideoDot } from "../../sets/video-badge.tsx"
 import { videoColor } from "../../sets/set-values.ts"
 import { clockOf } from "../editor-values.ts"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
-import { Block, Lane, TrackName } from "../timeline.tsx"
+import { Block, Lane, SourceStrip, TrackName } from "../timeline.tsx"
 import { BEATS, type CutVideo, type EditSection, lengthOf, sectionBlocks } from "./sections-values.ts"
 
 // A cut-down short on one timeline: its sections end to end (coloured by beat, with their frames), the captions,
@@ -38,6 +38,8 @@ export function CutTimeline({ sections, videos, stillOf, selected, onSelect, hea
         <div className="relative h-5 text-[11px] text-fg-3">
           {ticks.map((t) => <span key={t} className="absolute -translate-x-1/2" style={{ left: `${(t / total) * 100}%` }}>{clockOf(t)}</span>)}
         </div>
+
+        <SourceStrip videos={videos.length} total={total} pieces={blocks} />
 
         <TrackName icon={Scissors} color="var(--t-shot)" name="Sections" />
         <Lane>

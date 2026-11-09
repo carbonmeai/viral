@@ -57,3 +57,35 @@ export const republishLine = (status: Pick<PublishStatus, "changes" | "rerender"
   const line = and(parts)
   return line === "" ? "" : `${line[0]!.toUpperCase()}${line.slice(1)}.`
 }
+
+// What the Publish step says about the credit and the rights, over every video the short uses: why there's no
+// credit line, the videos you haven't confirmed you may use, and credited videos with no channel to name.
+export interface RightsNotes {
+  // shown when there's no credit line
+  readonly none: string
+  // the warning to confirm the rights first, or null when every video is confirmed
+  readonly unconfirmed: string | null
+  // "Heidi Klum has no channel to credit…", or null
+  readonly noChannel: string | null
+}
+
+export const rightsNotes = (videos: ReadonlyArray<{ readonly name: string; readonly rights: string; readonly channel: string | null }>): RightsNotes => {
+  const several = videos.length > 1
+  const unconfirmed = videos.filter((v) => v.rights === "unconfirmed").map((v) => v.name)
+  const nameless = videos.filter((v) => v.rights !== "owned" && (v.channel === null || v.channel.trim() === "")).map((v) => v.name)
+  return {
+    none: videos.every((v) => v.rights === "owned")
+      ? "None: the footage is yours."
+      : several
+      ? "None: the videos had no channel to credit. Add it on each video's page, then publish again."
+      : "None: the video had no channel to credit. Add it on the video's page, then publish again.",
+    unconfirmed: unconfirmed.length === 0
+      ? null
+      : several
+      ? `You haven't confirmed you own or have permission to use the footage of ${and(unconfirmed)}. Set it on each video's page before you post.`
+      : "You haven't confirmed you own or have permission to use this footage. Set it on the video's page before you post.",
+    noChannel: !several || nameless.length === 0 || nameless.length === videos.length
+      ? null
+      : `${and(nameless)} ${nameless.length === 1 ? "has" : "have"} no channel to credit. Add it on the video's page, then publish again.`
+  }
+}

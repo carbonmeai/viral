@@ -1,7 +1,7 @@
 import type { Script, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { editorSteps, layoutTimeline, narratedWords, narrationEnds, openingStep, realLines, shortTimeOf, stepStates } from "./editor-values.ts"
+import { editorSteps, layoutTimeline, narratedWords, narrationEnds, openingStep, realLines, shortTimeOf, sourceStretches, stepStates } from "./editor-values.ts"
 
 const stage = (name: StageRun["stage"], status: StageRun["status"], attempt = 1) => ({ stage: name, status, attempt }) as StageRun
 
@@ -53,4 +53,15 @@ test("the timeline plays real lines after their narration, back to back, and the
   // the voiceover's 2s mark plays after both inserts
   assert.equal(shortTimeOf(layout, 2), 3.5)
   assert.equal(shortTimeOf(layout, 1), 1)
+})
+
+test("the source strip joins each video's touching pieces of the short", () => {
+  const strip = sourceStretches([
+    { start: 0, end: 2, source: 0 },
+    { start: 2, end: 3.5, source: 0 },
+    { start: 3.5, end: 5, source: 1 },
+    { start: 5, end: 6, source: 0 },
+    { start: 7, end: 7, source: 1 }
+  ], 3)
+  assert.deepEqual(strip, [[{ start: 0, end: 3.5 }, { start: 5, end: 6 }], [{ start: 3.5, end: 5 }], []])
 })

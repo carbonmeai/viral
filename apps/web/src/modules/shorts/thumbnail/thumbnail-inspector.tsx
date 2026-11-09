@@ -6,6 +6,7 @@ import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { Image, MessageSquare } from "lucide-react"
 import { AskBox } from "../ask-box.tsx"
+import { ClipBadge } from "../clip-badge.tsx"
 import { clockOf } from "../editor-values.ts"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
@@ -20,31 +21,39 @@ const TABS: ReadonlyArray<InspectorTab<ThumbnailTab>> = [
   { id: "ask", label: "Ask the thumbnail agent", icon: MessageSquare }
 ]
 
-// The still of the long video at one moment, small.
-function Moment({ sourceId, name, t, stillUrl }: {
+// The still of a video at one moment, small; in a short from several videos, with that video's colour and name.
+function Moment({ sourceId, name, t, source, videos, stillUrl }: {
   readonly sourceId: SourceId
   readonly name: string
   readonly t: number
-  readonly stillUrl: (path: string) => string
+  // which of the short's videos (by position), and how many it has
+  readonly source: number
+  readonly videos: number
+  readonly stillUrl: (path: string, source: number) => string
 }) {
   const frames = Option.getOrNull(AsyncResult.value(useAtomValue(framesAroundAtom(framesKey(sourceId, t, 0)))))
   const frame = frames?.frames[0] ?? null
   return (
     <div className="grid gap-1">
       <div className="aspect-video overflow-hidden rounded-[6px] bg-ctl-active">
-        {frame === null ? null : <img src={stillUrl(frame.path)} alt={`${name} at ${clockOf(t)}`} className="size-full object-cover" />}
+        {frame === null ? null : <img src={stillUrl(frame.path, source)} alt={`${name} at ${clockOf(t)}`} className="size-full object-cover" />}
       </div>
-      <span className="text-xs text-fg-2">{name} · {clockOf(t)}</span>
+      <span className="flex min-w-0 flex-wrap items-center gap-1 text-xs text-fg-2">
+        {name} · {clockOf(t)}
+        <ClipBadge source={source} videos={videos} />
+      </span>
     </div>
   )
 }
 
-// The thumbnail step's inspector: its words (edit them and send the edit, checked first), the moments of the
-// video it's made from, and a note to the thumbnail agent.
-export function ThumbnailInspector({ config, sourceId, stillUrl, words, onWords, problems, onRevert, onSend, stages, gate, tab, onTab }: {
+// The thumbnail step's inspector: its words (edit them and send the edit, checked first), the moments it's made from
+// (each from its own video, in a short from several), and a note to the thumbnail agent.
+export function ThumbnailInspector({ config, sourceIds, stillUrl, words, onWords, problems, onRevert, onSend, stages, gate, tab, onTab }: {
   readonly config: ThumbConfig
-  readonly sourceId: SourceId
-  readonly stillUrl: (path: string) => string
+  // the short's videos, by position (the first first)
+  readonly sourceIds: ReadonlyArray<SourceId>
+  // a still's file of one of the short's videos (by position)
+  readonly stillUrl: (path: string, source: number) => string
   readonly words: ThumbnailWords
   readonly onWords: (words: ThumbnailWords) => void
   readonly problems: ReadonlyArray<string>
@@ -85,7 +94,17 @@ export function ThumbnailInspector({ config, sourceId, stillUrl, words, onWords,
             </InspectorBlock>
             <InspectorBlock title="Made from">
               <div className="grid grid-cols-2 gap-2">
-                {momentsOf(config).map((m) => <Moment key={m.name} sourceId={sourceId} name={m.name} t={m.t} stillUrl={stillUrl} />)}
+                {momentsOf(config).map((m) => (
+                  <Moment
+                    key={m.name}
+                    sourceId={sourceIds[m.source] ?? sourceIds[0]!}
+                    name={m.name}
+                    t={m.t}
+                    source={m.source}
+                    videos={sourceIds.length}
+                    stillUrl={stillUrl}
+                  />
+                ))}
               </div>
             </InspectorBlock>
             <InspectorBlock title="Layout">

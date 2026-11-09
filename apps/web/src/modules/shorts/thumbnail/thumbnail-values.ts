@@ -18,9 +18,10 @@ export const withWords = (config: ThumbConfig, words: ThumbnailWords): ThumbConf
     .filter((line) => line.text !== "")
 })
 
-// The moments of the long video the thumbnail is made from, in source seconds.
+// The moments the thumbnail is made from: each one's time in its own video's seconds, and which of the short's
+// videos it's from (`source`, by position; the first = 0).
 export const momentsOf = (config: ThumbConfig) => [
-  { name: "Hero", t: config.hero.src },
-  ...(config.inset === undefined ? [] : [{ name: "Face", t: config.inset.src }]),
-  ...(config.layout === "bold" ? [] : [{ name: "Background", t: config.background.src }])
+  { name: "Hero", t: config.hero.src, source: config.hero.source ?? 0 },
+  ...(config.inset === undefined ? [] : [{ name: "Face", t: config.inset.src, source: config.inset.source ?? 0 }]),
+  ...(config.layout === "bold" ? [] : [{ name: "Background", t: config.background.src, source: config.background.source ?? 0 }])
 ]

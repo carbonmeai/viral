@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { listChanges, parseHashtags, postText, republishLine, TITLE_CHARS, titleChoices } from "./publish-values.ts"
+import { TITLE_CHARS, listChanges, parseHashtags, postText, republishLine, rightsNotes, titleChoices } from "./publish-values.ts"
 
 const metadata = {
   title: "He Put 7 Tastes Into 1 Candy",
@@ -42,4 +42,19 @@ test("what publishing again does, in plain words", () => {
   assert.equal(republishLine({ changes: ["credit", "video"], rerender: true }), "Re-renders the video with the new credit (no agent work; you approve it), then replaces the files.")
   assert.equal(republishLine({ changes: ["video", "missing"], rerender: false }), "Copies the latest render.")
   assert.equal(republishLine({ changes: ["hashtags", "missing"], rerender: false }), "Rewrites the post text with the new hashtags and puts back the missing files.")
+})
+
+test("the rights notes cover every video: unconfirmed ones named, and a credited video with no channel", () => {
+  const one = rightsNotes([{ name: "Candy", rights: "unconfirmed", channel: "NileBlue" }])
+  assert.match(one.unconfirmed ?? "", /use this footage/)
+  assert.equal(one.noChannel, null)
+  assert.equal(rightsNotes([{ name: "Candy", rights: "owned", channel: null }]).none, "None: the footage is yours.")
+  const two = rightsNotes([
+    { name: "Candy", rights: "owned", channel: "Me" },
+    { name: "Heidi Klum", rights: "unconfirmed", channel: null },
+    { name: "Gum", rights: "licensed", channel: "Mark Rober" }
+  ])
+  assert.match(two.unconfirmed ?? "", /footage of Heidi Klum\. Set it on each video's page/)
+  assert.equal(two.noChannel, "Heidi Klum has no channel to credit. Add it on the video's page, then publish again.")
+  assert.equal(rightsNotes([{ name: "A", rights: "owned", channel: null }, { name: "B", rights: "licensed", channel: "B" }]).unconfirmed, null)
 })

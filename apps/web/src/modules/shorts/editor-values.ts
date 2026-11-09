@@ -194,3 +194,24 @@ export const clockOf = (seconds: number) => {
   const s = Math.max(0, Math.round(seconds))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
+
+// One video's stretch of the finished short: from `start` to `end` in the short's seconds.
+export interface SourceStretch {
+  readonly start: number
+  readonly end: number
+}
+
+// Which stretches of the short come from which video, for the timeline's source strip: one list per video (by
+// position), pieces that touch (within `gap` seconds) joined into one.
+export const sourceStretches = (
+  pieces: ReadonlyArray<{ readonly start: number; readonly end: number; readonly source: number }>,
+  videos: number,
+  gap = 0.05
+): ReadonlyArray<ReadonlyArray<SourceStretch>> =>
+  Array.from({ length: videos }, (_, v) =>
+    [...pieces].filter((p) => p.source === v && p.end > p.start).sort((a, b) => a.start - b.start).reduce<Array<SourceStretch>>((out, p) => {
+      const last = out.at(-1)
+      if (last !== undefined && p.start <= last.end + gap) out[out.length - 1] = { start: last.start, end: Math.max(last.end, p.end) }
+      else out.push({ start: p.start, end: p.end })
+      return out
+    }, []))

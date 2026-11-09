@@ -27,3 +27,8 @@ test("a bold thumbnail is made from the hero and the face; classic also uses a b
   assert.deepEqual(momentsOf(config).map((m) => m.name), ["Hero", "Face"])
   assert.deepEqual(momentsOf({ ...config, layout: "classic" }).map((m) => [m.name, m.t]), [["Hero", 1632], ["Face", 1694.25], ["Background", 5]])
 })
+
+test("each moment says which of the short's videos it's from", () => {
+  const two: ThumbConfig = { ...config, sources: ["/x/two.mp4"], inset: { ...config.inset!, source: 1 } }
+  assert.deepEqual(momentsOf(two).map((m) => [m.name, m.source]), [["Hero", 0], ["Face", 1]])
+})
