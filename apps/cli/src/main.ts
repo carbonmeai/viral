@@ -63,7 +63,10 @@ const program = Effect.gen(function*() {
     MusicArrangementInvalid: (e) => Console.error(`the arrangement can't be played:\n${e.problems.map((p) => `  - ${p}`).join("\n")}`),
     SchemaError: (e) => Console.error(e.message),
     RunNotFound: (e) => Console.error(`no run ${e.id}`),
-    RequestNotPending: (e) => Console.error(`request ${e.id} isn't waiting for an answer`)
+    RequestNotPending: (e) => Console.error(`request ${e.id} isn't waiting for an answer`),
+    NotPublished: (e) => Console.error(`short ${e.id} hasn't been published yet; run it to the end first`),
+    PostTextInvalid: (e) => Console.error(`the post text can't be used:\n${e.problems.map((p) => `  - ${p}`).join("\n")}`),
+    PublishUnavailable: (e) => Console.error(`can't publish: ${e.message}`)
   }),
   Effect.provide([Client.layer, NodeServices.layer])
 )

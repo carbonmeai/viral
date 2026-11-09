@@ -71,6 +71,14 @@ apps/server/src/
   metadata/            the metadata stage (Haiku): title, alternates, description, hashtags; publishes the mp4,
                        srt and <slug>.md into ~/.viral/renders/. Several videos: each one labelled with what it
                        brings (the set story's line, else its own story), and the credit lists every channel
+                       publishing.ts (Publishing): the text you post with (a title you chose among the agent's, or
+                       typed: 1–100 chars, YouTube's limit; your description and hashtags) is kept per short under
+                       project.<id>.publish.post (new agent metadata clears it); GetPublishStatus says what "Publish
+                       again" would update; PublishAgain (`project publish <id>`) rewrites <slug>.mp4/.srt/.md from
+                       the latest render with your text and the credit as it is now, recorded as a new metadata
+                       version with no stage run. When the credit drawn on the video changed (rights, channel or
+                       style), it first re-runs assemble and render only (RunManager.start's forceThrough; later
+                       stages reuse approved work, the run stops at one with none) and publishes when that run ends
   thumbnail/           the thumbnail stage, last in both pipelines (gated): a vision agent (thumbnails skill) picks
                        the layout, the hero moment and crop, the strongest reaction face, the colours and the words,
                        with `contact_sheet` and `preview_thumbnail`; crops are frame fractions turned into pixels.
@@ -229,7 +237,9 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
 
                        render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows, the
                        check sheet, "Send back" to Shots/Sections or Style via Reject.to). publish/: the post
-                       text (choose a title, copy it all), the files, and a rights reminder. thumbnail/: the
+                       text (choose or write a title, edit the description and hashtags from ⋯, copy it all; saved on
+                       the short with SetPostText), "Publish again" with what it will update, the files, and a
+                       rights reminder. thumbnail/: the
                        thumbnail in a phone frame, its moments, and word edits checked with CheckThumbnailEdit.
                        The Sections step of a cut-down short has no view yet
                        library/: Styles (cards with a CSS 9:16 preview of each style; the editor at ?edit=<id>, whose

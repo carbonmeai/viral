@@ -28,7 +28,7 @@ test("reports long titles, missing alternates, and malformed hashtags", () => {
 })
 
 test("the post notes carry the credit when the footage isn't yours", () => {
-  const notes = postNotes({ metadata: good, credit: "NileBlue", approach: "claim-interleaved", style: "Headline full-bleed", durationS: 49.5 })
+  const notes = postNotes({ post: good, alternates: good.alternates, credit: "NileBlue", approach: "claim-interleaved", style: "Headline full-bleed", durationS: 49.5 })
   assert.match(notes, /^# He Put 7 Tastes Into 1 Candy/)
   assert.match(notes, /\*\*Length:\*\* 49\.5s/)
   assert.match(notes, /Credit: NileBlue\n\n#shorts #science/)

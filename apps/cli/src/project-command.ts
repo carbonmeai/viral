@@ -1,4 +1,14 @@
-import { ApproachName, MusicArrangement, MusicTrackId, PresetId, Project, ProjectId, SourceId, StageName } from "@viral/contracts"
+import {
+  ApproachName,
+  MusicArrangement,
+  MusicTrackId,
+  PresetId,
+  Project,
+  ProjectId,
+  type PublishStatus,
+  SourceId,
+  StageName
+} from "@viral/contracts"
 import { Console, Effect, FileSystem, Path, Schema } from "effect"
 import { option, positionals } from "./args.ts"
 import { Client } from "./client.ts"
@@ -17,6 +27,11 @@ export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <tit
                                           re-runs from assemble)
   project voice <id> <voice-id|preset>   (the voiceover's voice; "preset" goes back to the preset's)
   project run <id> [--from <stage>]
+  project post <id>                       (the post text and what publishing again would update)
+  project publish <id> [--title "<title>"|--title agent]
+                                          (rewrites the short's files in ~/.viral/renders/: your title, the credit
+                                          as it is now; re-renders first, no agents, when the credit is drawn on
+                                          the video)
   project list [--source <id>] | show <id> | delete <id>`
 
 const describe = (project: Project) => `${project.id}  ${project.approach.padEnd(17)} ${project.slug}`
@@ -24,6 +39,26 @@ const describe = (project: Project) => `${project.id}  ${project.approach.padEnd
 const decodeApproach = Schema.decodeUnknownEffect(ApproachName)
 const decodeStage = Schema.decodeUnknownEffect(StageName)
 const decodeArrangement = Schema.decodeEffect(Schema.fromJsonString(MusicArrangement))
+
+const CHANGES: Record<PublishStatus["changes"][number], string> = {
+  title: "the title",
+  description: "the description",
+  hashtags: "the hashtags",
+  credit: "the credit",
+  video: "the video",
+  missing: "missing files"
+}
+
+const printPost = (status: PublishStatus) =>
+  Console.log([
+    `title        ${status.post.title}${status.edited ? "  (yours)" : ""}`,
+    `description  ${status.post.description}`,
+    `hashtags     ${status.post.hashtags.join(" ")}`,
+    `credit       ${status.credit ?? "(none)"}`,
+    status.changes.length === 0
+      ? "published    up to date"
+      : `publish again updates ${status.changes.map((c) => CHANGES[c]).join(", ")}${status.rerender ? " (re-renders the video first)" : ""}`
+  ].join("\n"))
 
 const orNull = <A>(value: string | undefined, make: (value: string) => A) => value === undefined ? null : make(value)
 
@@ -87,6 +122,21 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
         from: from === undefined ? null : yield* decodeStage(from)
       })
       return yield* follow(run.id)
+    }
+    case "post":
+      return yield* printPost(yield* client.GetPublishStatus({ projectId: ProjectId.make(first ?? "") }))
+    case "publish": {
+      if (first === undefined) return yield* Console.error(PROJECT_USAGE)
+      const projectId = ProjectId.make(first)
+      const title = option("--title")
+      if (title !== undefined) {
+        const { post } = yield* client.GetPublishStatus({ projectId })
+        yield* client.SetPostText({ projectId, post: title === "agent" ? null : { ...post, title } })
+      }
+      const result = yield* client.PublishAgain({ projectId })
+      if (result._tag === "Published") return yield* printPost(result.status)
+      yield* Console.log("the credit is drawn on the video: re-rendering it; approve the render and the files are replaced")
+      return yield* follow(result.run.id)
     }
     case "list": {
       const projects = yield* client.ListProjects({ sourceId: orNull(option("--source"), SourceId.make) })

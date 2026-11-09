@@ -1,4 +1,4 @@
-import type { ShortMetadata } from "@viral/contracts"
+import type { PostText, ShortMetadata } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 
 export const TITLE_CHARS = 40
@@ -31,18 +31,25 @@ export const checkMetadata = (metadata: ShortMetadata): Checked<ShortMetadata> =
 }
 
 export interface PostNotes {
-  readonly metadata: ShortMetadata
+  // the title, description and hashtags you post with
+  readonly post: PostText
+  // the other titles to A/B test with: the agent's pick and alternates you didn't choose
+  readonly alternates: ReadonlyArray<string>
   readonly credit: string | null
   readonly approach: string
   readonly style: string
   readonly durationS: number
 }
 
+// The agent's titles other than the one you post with.
+export const otherTitles = (metadata: Pick<ShortMetadata, "title" | "alternates">, title: string) =>
+  [metadata.title, ...metadata.alternates].filter((t) => t !== title)
+
 // The post text as markdown, kept next to the video in ~/.viral/renders/.
-export const postNotes = ({ metadata, credit, approach, style, durationS }: PostNotes) =>
+export const postNotes = ({ post, alternates, credit, approach, style, durationS }: PostNotes) =>
   [
-    `# ${metadata.title}`,
+    `# ${post.title}`,
     `**Approach:** ${approach} · **Style:** ${style} · **Length:** ${durationS.toFixed(1)}s`,
-    `## Title\n\n${metadata.title}\n\nAlternates:\n${metadata.alternates.map((a) => `- ${a}`).join("\n")}`,
-    `## Description\n\n${metadata.description}${credit === null ? "" : `\n\nCredit: ${credit}`}\n\n${metadata.hashtags.join(" ")}`
+    `## Title\n\n${post.title}${alternates.length === 0 ? "" : `\n\nAlternates:\n${alternates.map((a) => `- ${a}`).join("\n")}`}`,
+    `## Description\n\n${post.description}${credit === null ? "" : `\n\nCredit: ${credit}`}\n\n${post.hashtags.join(" ")}`
   ].join("\n\n") + "\n"

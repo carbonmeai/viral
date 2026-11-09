@@ -25,6 +25,16 @@ interface Published {
 
 const APPROVED = new Set(["succeeded", "reused"])
 
+// How a run started with `from` goes, beyond the usual (every stage from `from` on made again).
+export interface StartOptions {
+  // only the stages from `from` through this one are made again; the later ones reuse their approved work, and the
+  // run ends at the first that has none (a re-render to publish again never makes a title or a thumbnail)
+  readonly forceThrough?: StageName
+  // runs once every stage is done, before the run counts as completed; a failure fails the run. Not kept: a run
+  // resumed after a restart doesn't do it.
+  readonly andThen?: Effect.Effect<void, StageFailure>
+}
+
 // A rejection a stage sends back to an earlier one.
 type SentBack = { readonly stage: StageName; readonly note: string }
 
@@ -34,7 +44,7 @@ type SentBack = { readonly stage: StageName; readonly note: string }
 // cancelling it stops the running stage's agent session or child processes. Stage-level events are stored
 // with a sequence number and published live, with progress, to subscribers.
 export class RunManager extends Context.Service<RunManager, {
-  start(owner: RunOwner, from: StageName | null): Effect.Effect<Run, StageFailure>
+  start(owner: RunOwner, from: StageName | null, options?: StartOptions): Effect.Effect<Run, StageFailure>
   cancel(runId: RunId): Effect.Effect<boolean>
   resume(runId: RunId): Effect.Effect<Run, RunNotFound | StageFailure>
   respond(requestId: RequestId, response: GateResponse): Effect.Effect<RunRequest, RequestNotPending>
@@ -222,7 +232,11 @@ export class RunManager extends Context.Service<RunManager, {
         }
       })
 
-      const execute: (run: Run, through?: StageName | null) => Effect.Effect<void> = Effect.fn("RunManager.execute")(function*(run: Run, through: StageName | null = null) {
+      const execute: (run: Run, through?: StageName | null, options?: StartOptions) => Effect.Effect<void> = Effect.fn("RunManager.execute")(function*(
+        run: Run,
+        through: StageName | null = null,
+        options: StartOptions = {}
+      ) {
         const current = yield* Ref.make<StageRun | null>(null)
         const finish = Effect.fn("RunManager.finish")(function*(status: Run["status"], error: string | null) {
           const stageRun = yield* Ref.get(current)
@@ -243,11 +257,15 @@ export class RunManager extends Context.Service<RunManager, {
           yield* Effect.forEach(needs, fulfil, { concurrency: 2, discard: true })
           const stages = yield* stagesUpTo(run.owner, through)
           let forcedFrom = run.fromStage === null ? stages.length : Option.getOrElse(findStage(stages, run.fromStage), () => 0)
+          const forcedTo = options.forceThrough === undefined
+            ? stages.length
+            : Option.getOrElse(findStage(stages, options.forceThrough), () => stages.length)
           const sessions = new Map<StageName, string>()
           const sentBack: { current: { readonly index: number; readonly note: string } | null } = { current: null }
           for (let i = 0; i < stages.length;) {
             const stage = stages[i]!
-            const back: Option.Option<SentBack> = yield* runStage(run, stage, i >= forcedFrom, current, sessions, sentBack.current?.index === i ? sentBack.current : null)
+            if (options.forceThrough !== undefined && i > forcedTo && !(yield* isApproved(run.owner, stage))) break
+            const back: Option.Option<SentBack> = yield* runStage(run, stage, i >= forcedFrom && i <= forcedTo, current, sessions, sentBack.current?.index === i ? sentBack.current : null)
             if (Option.isNone(back)) {
               i++
               continue
@@ -261,6 +279,7 @@ export class RunManager extends Context.Service<RunManager, {
             forcedFrom = i
             sentBack.current = { index: i, note: back.value.note }
           }
+          if (options.andThen !== undefined) yield* options.andThen
           yield* finish("completed", null)
         }).pipe(
           Effect.catchTag("StageFailure", (failure) => finish("failed", `${failure.stage} (${failure.code}): ${failure.message}`)),
@@ -271,14 +290,14 @@ export class RunManager extends Context.Service<RunManager, {
         )
       })
 
-      const start = Effect.fn("RunManager.start")(function*(owner: RunOwner, from: StageName | null) {
+      const start = Effect.fn("RunManager.start")(function*(owner: RunOwner, from: StageName | null, options: StartOptions = {}) {
         const stages = yield* registry.stagesFor(owner)
         if (from !== null && Option.isNone(findStage(stages, from))) {
           return yield* new StageFailure({ stage: from, code: "unknown-stage", message: `this run has no ${from} stage` })
         }
         const run = yield* store.createRun(owner, from)
         yield* publish(run.id, { _tag: "RunStarted", run })
-        yield* FiberMap.run(fibers, run.id, execute(run))
+        yield* FiberMap.run(fibers, run.id, execute(run, null, options))
         return run
       })
 

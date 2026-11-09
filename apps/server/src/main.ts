@@ -10,6 +10,8 @@ import { Artifacts } from "./artifacts/artifacts.ts"
 import { ArtifactsRpcLive } from "./artifacts/artifacts-rpc.ts"
 import { MusicBeds } from "./music-bed/music-beds.ts"
 import { MusicBedsRpcLive } from "./music-bed/music-beds-rpc.ts"
+import { Publishing } from "./metadata/publishing.ts"
+import { PublishRpcLive } from "./metadata/publish-rpc.ts"
 import { MusicLibrary } from "./music-library/music-library.ts"
 import { MusicLibraryRpcLive } from "./music-library/music-library-rpc.ts"
 import { Presets } from "./presets/presets.ts"
@@ -101,7 +103,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     SourceOverviewRpcLive,
     ShortWorkspaceRpcLive,
     VideoSetsRpcLive,
-    MusicBedsRpcLive.pipe(Layer.provide(MusicBeds.layer))
+    MusicBedsRpcLive.pipe(Layer.provide(MusicBeds.layer)),
+    PublishRpcLive.pipe(Layer.provide(Publishing.layer))
   ]),
   Layer.provide(RunsLive),
   Layer.provide(RpcSerialization.layerJson)

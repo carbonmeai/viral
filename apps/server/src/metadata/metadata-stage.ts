@@ -1,18 +1,20 @@
 import { NodeServices } from "@effect/platform-node"
-import { CutPlan, type ProjectId, type PublishedShort, RenderedShort, Script, SetStory, type SourceId, StoryMap } from "@viral/contracts"
+import { CutPlan, type ProjectId, PublishedShort, RenderedShort, Script, SetStory, type SourceId, StoryMap } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Presets } from "../presets/presets.ts"
-import { creditedChannels } from "../projects/credits.ts"
 import { Projects, sourcesOf } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
-import { checkMetadata, postNotes } from "./metadata-rules.ts"
+import { Settings } from "../settings/settings.ts"
+import { checkMetadata } from "./metadata-rules.ts"
 import { metadataTask } from "./metadata-task.ts"
+import { writePublished } from "./publish-files.ts"
+import { agentPost, postCredit, postKey } from "./publish-rules.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "metadata", code, message })
 
@@ -39,6 +41,7 @@ export class MetadataStage extends Context.Service<MetadataStage, {
       const home = yield* ViralHome
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
+      const settings = yield* Settings
 
       const run = Effect.fn("MetadataStage.run")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
@@ -57,6 +60,9 @@ export class MetadataStage extends Context.Service<MetadataStage, {
               Effect.mapError(() => fail("not-ready", `no ${kind} yet`))
             ))
         const render = yield* latest("render", RenderedShort)
+        const renderArtifact = yield* Effect.flatMap(artifacts.latest(ctx.owner, "render"), Effect.fromOption).pipe(
+          Effect.mapError(() => fail("not-ready", "no render yet"))
+        )
         const storyOf = (id: SourceId) =>
           Effect.map(artifacts.latest({ _tag: "Source", id }, "story-map"), Option.flatMap((a) => Schema.decodeUnknownOption(StoryMap)(a.data)))
         const story = yield* storyOf(source.id)
@@ -97,28 +103,30 @@ export class MetadataStage extends Context.Service<MetadataStage, {
             : {})
         }), (proposed) => Effect.succeed(checkMetadata(proposed))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
 
-        // publish: the finished files side by side in ~/.viral/renders/
-        // every channel whose footage isn't yours ("NileBlue · Mark Rober"); one video reads as before
-        const credit = several
-          ? creditedChannels(videos).join(" · ") || null
-          : source.rights !== "owned" ? source.channel : null
-        const notes = postNotes({ metadata, credit, approach: project.approach, style: preset.name, durationS: render.durationS })
-        const video = path.join(home.renders, `${project.slug}.mp4`)
-        const captions = path.join(home.renders, `${project.slug}.srt`)
-        const notesFile = path.join(home.renders, `${project.slug}.md`)
-        yield* Effect.all([
-          fs.copyFile(render.video, video),
-          fs.copyFile(render.captions, captions),
-          fs.writeFileString(notesFile, notes)
-        ], { discard: true }).pipe(Effect.mapError((e) => fail("publish", e.message)))
+        // publish: the finished files side by side in ~/.viral/renders/, posted with the agent's text (new titles
+        // replace a title you chose for the old ones)
+        yield* settings.remove(postKey(project.id))
+        const previous = Option.flatMap(yield* artifacts.latest(ctx.owner, "metadata"), (a) => Schema.decodeUnknownOption(PublishedShort)(a.data))
+        const { published, notes } = yield* writePublished({ artifacts, fs, path }, {
+          slug: project.slug,
+          rendersDir: home.renders,
+          render,
+          renderArtifact,
+          metadata,
+          post: agentPost(metadata),
+          // every channel whose footage isn't yours ("NileBlue · Mark Rober")
+          credit: postCredit(videos),
+          approach: project.approach,
+          style: preset.name,
+          previous: Option.getOrNull(previous)
+        }).pipe(Effect.mapError((e) => fail("publish", e.message)))
 
         const slot = yield* artifacts.allocate(ctx.owner, "metadata")
         yield* fs.writeFileString(path.join(slot.dir, `${project.slug}.md`), notes).pipe(Effect.mapError((e) => fail("write", e.message)))
-        const published: PublishedShort = { ...metadata, credit, video, captions, notes: notesFile }
         yield* artifacts.record(slot, { data: published, path: path.join(slot.relDir, `${project.slug}.md`), stageRunId: ctx.stageRunId })
       })
 
       return MetadataStage.of({ stage: { name: "metadata", artifact: "metadata", gate: null, run } })
     })
-  ).pipe(Layer.provide([Projects.layer, Sources.layer, VideoSets.layer, Presets.layer, Artifacts.layer, ViralHome.layer, NodeServices.layer]))
+  ).pipe(Layer.provide([Projects.layer, Sources.layer, VideoSets.layer, Presets.layer, Artifacts.layer, Settings.layer, ViralHome.layer, NodeServices.layer]))
 }

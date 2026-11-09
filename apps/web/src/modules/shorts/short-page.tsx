@@ -50,6 +50,7 @@ import {
 import { useArrangeDraft } from "./music/use-arrange-draft.ts"
 import { PublishInspector, type PublishTab } from "./publish/publish-inspector.tsx"
 import { postText } from "./publish/publish-values.ts"
+import { usePublish } from "./publish/use-publish.ts"
 import { RenderInspector, type RenderTab } from "./render/render-inspector.tsx"
 import { ShortPlayer } from "./render/short-player.tsx"
 import { ScriptInspector, type ScriptTab } from "./script/script-inspector.tsx"
@@ -164,13 +165,12 @@ function Editor({ ws, progress, step, onStep, refresh }: {
   const [candidate, setCandidate] = useState<PickedFrame | null>(null)
   const [draft, setDraft] = useState<ReadonlyMap<number, ShotChange>>(new Map())
   const [shotProblems, setShotProblems] = useState<ReadonlyArray<string>>([])
-  // Render, Publish and Thumbnail: the inspector's tab, where the player is, the title you'll post with, and the
-  // thumbnail's words as you edit them
+  // Render, Publish and Thumbnail: the inspector's tab, where the player is, and the thumbnail's words as you edit
+  // them
   const [renderTab, setRenderTab] = useState<RenderTab>("check")
   const [publishTab, setPublishTab] = useState<PublishTab>("post")
   const [thumbTab, setThumbTab] = useState<ThumbnailTab>("thumbnail")
   const [playTime, setPlayTime] = useState<number | null>(null)
-  const [chosenTitle, setChosenTitle] = useState<string | null>(null)
   const [thumbWords, setThumbWords] = useState<ThumbnailWords | null>(null)
   const [thumbProblems, setThumbProblems] = useState<ReadonlyArray<string>>([])
   const [copied, setCopied] = useState(false)
@@ -400,10 +400,12 @@ function Editor({ ws, progress, step, onStep, refresh }: {
     else setScriptTab("ask")
   }
   const metadata = ws.metadata
-  const title = chosenTitle ?? metadata?.metadata.title ?? ws.project.title
+  // the post text you chose and edited, saved on the short, and publishing it again
+  const publish = usePublish(ws, refresh)
+  const title = publish.status?.post.title ?? metadata?.metadata.title ?? ws.project.title
   const copyPost = () => {
     if (metadata === null) return
-    void navigator.clipboard.writeText(postText(metadata.metadata, title)).then(() => {
+    void navigator.clipboard.writeText(postText(publish.status?.post ?? metadata.metadata, publish.status?.credit ?? metadata.metadata.credit)).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)
     })
@@ -591,7 +593,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
         {stageBar(title)}
         {video === null
           ? <div className="grid flex-1 place-items-center text-fg-2">The published file isn't in the library.</div>
-          : <ShortPlayer url={homeFileUrl(serverUrl, video)} onTime={setPlayTime} />}
+          : <ShortPlayer url={`${homeFileUrl(serverUrl, video)}?v=${metadata?.version ?? 0}`} onTime={setPlayTime} />}
       </>
     )
     inspector = metadata === null ? null : (
@@ -606,8 +608,7 @@ function Editor({ ws, progress, step, onStep, refresh }: {
           thumbnail: metadata.media.thumbnail === null ? null : homeFileUrl(serverUrl, metadata.media.thumbnail),
           folder: metadata.files.folder
         }}
-        chosen={title}
-        onChoose={setChosenTitle}
+        publish={publish}
         stages={stages}
         tab={publishTab}
         onTab={setPublishTab}
