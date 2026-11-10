@@ -526,7 +526,8 @@ def main() -> None:
             if b - a > 0.02:
                 piece = tmp / f"narr_{k:02d}.mp4"
                 af = ["-af", fade_filter(b - a, NARRATION_FADES)] if soft else []
-                run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{a:.3f}", "-to", f"{b:.3f}", *af,
+                # seek on the input, so the piece starts at 0 for its fades (as the skill cuts it)
+                run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}", "-i", str(narr), *af,
                      "-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
                 segs.append(piece)
                 caption_words += [{"w": w["w"], "s": piece_out[k] + w["s"] - a, "e": piece_out[k] + w["e"] - a}

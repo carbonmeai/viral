@@ -118,5 +118,14 @@ test("soft joins fade the clip in and out; without them it starts at full level"
   assert.ok(rise(soft) < 0.5, `soft join fades in (${rise(soft).toFixed(2)})`)
   const fall = (file: string) => rms(file, 1.87, 0.025) / rms(file, 1.3, 0.1)
   assert.ok(fall(soft) < 0.5, `and fades out (${fall(soft).toFixed(2)})`)
+  // the narration after the clip is heard, at its own pitch and level, with or without the joins
+  assert.ok(Math.abs(pitch(soft, 2.2, 0.6) - 500) < 40, "the narration after the clip")
+  assert.ok(rms(soft, 2.2, 0.6) > 0.5 * rms(hard, 2.2, 0.6), "as loud as without the joins")
   assert.ok(Math.abs(softRender.durationS - hardRender.durationS) < 0.05, "the same length")
+})
+
+test("with soft joins, the narration after a late clip still plays (each piece fades on its own clock)", { timeout: 120_000 }, async () => {
+  // the clip after "four" (1.9 s): the last piece is 1.9–3.0 s of voiceover, played from 2.9 s
+  const out = await ok(plan({ soft_joins: true }, { after_word: 3, after_word_text: "four" }), "late")
+  assert.ok(Math.abs(pitch(out.output, 3.1, 0.6) - 500) < 40, "the last narration piece is heard")
 })
