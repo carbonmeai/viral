@@ -98,7 +98,7 @@ test("the sections stage fixes a rejected plan, snaps it to words and draws a st
   }))
 
   assert.equal(asked.length, 2)
-  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_sections", "tell_creator"])
+  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_sections"])
   assert.match(asked[1]!.message, /first section must be the hook/)
 
   const { plan, storyboard, rendered } = await rt.runPromise(Effect.gen(function*() {

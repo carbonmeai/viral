@@ -15,8 +15,10 @@ export type CheckedTask<S extends Schema.Top> = Omit<AgentTask<S>, "message" | "
 const FIX_ATTEMPTS = 2
 
 // When the agent is offered `tell_creator` (Decision 10 of the redesign plan): on every turn, or only when it revises
-// after your note. Kept on every turn while the evals show no drop in first-try passes.
-export const TELL_CREATOR_ON: "all" | "revisions" = "all"
+// after your note. The evals with the tool on every turn (2026-11-10, Haiku on the Claude CLI and the AI Gateway, 3
+// runs each) kept script's first-try passes (3/3 and 0→1/3) but metadata on the CLI went 3/3 → 2/3 (a description over
+// 300 characters), so by the decision's rule it's offered on revisions only; a first version shows the server's line.
+export const TELL_CREATOR_ON = "revisions" as "all" | "revisions"
 
 export const TELL_CREATOR = "tell_creator"
 

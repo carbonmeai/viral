@@ -168,14 +168,16 @@ test("a short's chat: the agent's words and checks, a note at the gate, a redo w
     return yield* m.start(owner, null)
   }))
 
-  // the first version: the agent's own words (tell_creator), the server's checks, no change card, then the gate
+  // the first version: the server's line (tell_creator is offered on revisions, decision 10), its checks, no change
+  // card, then the gate
   let items = await until(rt, projectId, gateOpen("sections"))
   assert.deepEqual(tags(items), ["AgentMade", "Gate"])
   const first = agentMade(items)[0]!
-  assert.equal(first.reply, "I opened on her best line.")
+  assert.equal(first.reply, null)
+  assert.equal(first.summary, "The sections: 2, 12.0s in all.")
   assert.equal(first.change, null)
   assert.ok(first.checks.some((c) => c.text === "The hook comes first"))
-  assert.ok(asked[0]!.tools?.some((t) => t.name === "tell_creator"), "every agent turn is offered tell_creator")
+  assert.ok(!asked[0]!.tools?.some((t) => t.name === "tell_creator"))
 
   // a message at the gate is a rejection with the note; the agent continues its conversation and the card shows the change
   const atGate = await send(rt, projectId, "sections", "Start on a later line")
@@ -187,6 +189,7 @@ test("a short's chat: the agent's words and checks, a note at the gate, a redo w
   assert.match(revised.change?.lines[0]?.new ?? "", /Hook · Heidi 0:30–0:33/)
   assert.equal(asked.at(-1)!.resumeSession, "replay-sections")
   assert.match(asked.at(-1)!.message, /^Revise it: Start on a later line/)
+  assert.ok(asked.at(-1)!.tools?.some((t) => t.name === "tell_creator"), "a revision is offered tell_creator")
 
   // while the run is busy elsewhere (the render waits), a message to sections offers "Stop and redo"
   await approve(rt)
