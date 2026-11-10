@@ -204,6 +204,10 @@ export const NarratedPlan = Schema.Struct({
   inserts: Schema.optionalKey(Schema.Array(NarratedInsert)),
   outro: Schema.optionalKey(Schema.Array(NarratedOutro)),
   annotations: Schema.optionalKey(Schema.Array(NarratedAnnotation)),
+  // a narrated ranking's rank cards: a big "#N" at the top of the picture from the voiceover word the narrator says
+  // "Number" on (red, #1 yellow; the skill's rescues5 look: size 0.3 of the width, y 0.16 of the band, 1.6 s); absent =
+  // no cards, and the render is exactly as before
+  rank_cards: Schema.optionalKey(Schema.Array(Schema.Struct({ rank: Schema.Int, word: Schema.Int, word_text: Schema.String }))),
   // absent = no sound effects, and the render is exactly as before
   sfx: Schema.optionalKey(Schema.Array(SfxCue)),
   sfx_gain: Schema.optionalKey(Schema.Finite),

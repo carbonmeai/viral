@@ -430,6 +430,13 @@ def main() -> None:
             if item.get("word_text") and re.sub(r"\W", "", item["word_text"].lower()) != re.sub(r"\W", "", w["w"].lower()):
                 fail("anchor-mismatch", f"word {item['word']} is {w['w']!r}, plan expects {item['word_text']!r}")
             item["at"] = 0.0 if int(item["word"]) == 0 else round(w["s"] + float(item.get("offset", 0)), 3)
+    # a narrated ranking's rank cards (opt-in; absent = no cards): the skill's "#N" text on each entry's "Number" word,
+    # red, #1 yellow, size 0.3 of the width at the top of the band for 1.6 s (rescues5)
+    if plan.get("rank_cards"):
+        plan["annotations"] = list(plan.get("annotations", [])) + [
+            {"type": "text", "word": int(c["word"]), "word_text": c.get("word_text", ""), "text": f"#{int(c['rank'])}",
+             "x": 0.5, "y": 0.16, "size": 0.3, "dur": 1.6, "color": "#FFD400" if int(c["rank"]) == 1 else "#E8202A"}
+            for c in plan["rank_cards"]]
     for item in plan["shots"] + plan.get("annotations", []):
         anchor(item)
 
