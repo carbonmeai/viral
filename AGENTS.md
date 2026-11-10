@@ -187,7 +187,9 @@ apps/server/src/
                        whole transcripts under ~160k characters, else outlines + the transcript tools); agents
                        answer with 1-based `video` numbers (ProposedScript, ProposedShots), stored as 0-based
                        `source`. Every step uses every video (script, shots, sections, assemble, render, metadata,
-                       thumbnail). GetShortWorkspace's `videos` lists each one (position = colour index).
+                       thumbnail). GetShortWorkspace's `videos` lists each one (position = colour index), and its
+                       `folder` is the short's own folder (the editor's Show in Finder). RenameProject (CLI `project
+                       rename`) sets the title only; the folder and files keep their names.
                        AddSourceToProject / RemoveSourceFromProject (CLI `project add-video | remove-video`): adding
                        re-runs nothing; a short's run first reads its videos after V1 that aren't read (prerequisites,
                        through ads). Removal is refused (ProjectSourceInUse, video-uses.ts names the steps) while the
@@ -357,13 +359,33 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        (add-video-dialog.tsx: the library, or a link/file with its rights; just add, or add and
                        re-run from Script/Sections). With several videos the timeline has a thin strip per video
                        (SourceStrip) marking which stretches of the short come from it
-                       shorts/: a short's editor, one fixed frame for every step (editor-frame.tsx: step bar, stage,
-                       inspector, timeline), from GetShortWorkspace and the run followed live. The title bar's Brief
-                       button edits the brief (just save, or save and re-run from Script/Sections). Script and Voice
-                       answer their gates (approve, ask with a note, edit; a script edit is checked first with
-                       CheckScriptEdit so a bad one never fails the run); editor-values.ts lays the short out on
-                       its timeline the way the renderer plays it. shots/: the Shots step (preview in the style's
-                       framing, storyboard, a frame picker over ListFramesAround stills, framing/crop/speed); its
+                       shorts/: a short's editor, filling the window (no app sidebar on /shorts/*), one fixed frame
+                       for every step (editor-frame.tsx): the top bar (editor-top-bar.tsx: back, the title renamed
+                       in place with RenameProject, the videos' dots opening VideosMenu, the slim StepBar that folds
+                       to numbers when the names don't fit, 9:16, ⋯ Brief… / Videos… / Show in Finder (the short's
+                       `folder`) / theme / Simple–Detailed, and the primary: the waiting step's Approve, else Publish
+                       or Publish again, disabled with a reason until a render exists); the rail (editor-rail.tsx,
+                       railFor: Library, Script/Ranks/Sections, Captions or Titles, Voice, Music, Style; a dot where
+                       the waiting step lives) opening one panel (panel.tsx shell) without changing the step, each
+                       step opening its own (panelForStep: Shots and Render → Library, Publish → Post, Thumbnail →
+                       its panel); the player (editor-player.tsx: "Waiting for you · what to check" with Ask in chat
+                       and Approve, the step's stage, "1080×1920 · style"); the chat column (editor-side.tsx: the
+                       run's line and Stop, the gate card with Approve / Ask for changes / Edit it myself, and a
+                       message box that sends Reject{note} at the open step's gate, with Back to Shots/Sections/
+                       Ranking or Style on Render; the agent's own replies are M4); below about 1100px it's an
+                       overlay the top bar opens. The timeline sits under rail, panel and player. State lives in
+                       use-editor-state.ts (gateFor(step), each step's selection and draft, the open panel); each
+                       step's player and panel in <step>/<step>-step.tsx; library-panel.tsx (This short: videos,
+                       frames, real lines, song, voice; Your library; Explore's shared voices; type chips, search,
+                       + Video / + Used / + Rights; a frame opens Library › Shot n with the frame picker and
+                       framing), captions-panel.tsx (read-only style settings, highlighted words, the captions as
+                       they'll be shown; a ranking's titles), style-panel.tsx (SetProjectPreset, then a re-render
+                       from assemble once the steps before the render are approved). The Script panel holds the
+                       lines (edit a line at the gate; CheckScriptEdit first so a bad one never fails the run) and
+                       the rules and headline; its player previews the selected line 9:16 (script-preview.tsx).
+                       editor-values.ts lays the short out on its timeline the way the renderer plays it.
+                       shots/: the Shots step (preview in the style's framing or the storyboard in the player; the
+                       selected shot in Library › Shot n: a frame picker over ListFramesAround stills, framing/crop/speed); its
                        changes collect into one edit, checked with CheckShotsEdit before it answers the gate.
                        Edits to an approved short's shots aren't supported yet (only at the gate).
                        music/: the Music step (narrated shorts only; it opens once assemble has run): the fitted bed
@@ -381,8 +403,9 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        (music-values.ts mirrors the bed's layout) and on the server: Preview plays a
                        PreviewMusicArrangement bed on the stage, Apply calls ArrangeMusic and follows the re-run
 
-                       render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows, the
-                       check sheet, "Send back" to Shots/Sections or Style via Reject.to). publish/: the post
+                       render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows; the
+                       check sheet toggled under it; sending back to Shots/Sections/Ranking or Style via Reject.to
+                       from the chat column). publish/: the post
                        text (choose or write a title, edit the description and hashtags from ⋯, copy it all; saved on
                        the short with SetPostText), "Publish again" with what it will update, the files, and a
                        rights reminder. thumbnail/: the
