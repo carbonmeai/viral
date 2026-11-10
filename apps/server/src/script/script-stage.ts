@@ -5,6 +5,7 @@ import { AgentSession } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ProjectSources } from "../projects/project-sources.ts"
+import { Presets } from "../presets/presets.ts"
 import { Projects, sourcesOf } from "../projects/projects.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { transcriptTools } from "../set-story/transcript-tools.ts"
@@ -37,6 +38,7 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       const transcripts = yield* Transcripts
       const sets = yield* VideoSets
       const agent = yield* AgentSession
+      const presets = yield* Presets
 
       // What the script is checked against: the approach's limits, and each video's transcript and ad ranges.
       const context = Effect.fn("ScriptStage.context")(function*(ctx: StageContext) {
@@ -53,7 +55,12 @@ export class ScriptStage extends Context.Service<ScriptStage, {
             : `${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} no transcript; read ${missing.length === 1 ? "it" : "them"} first`)
         }
         const [v1] = sources
-        return { project, limits, sources, v1, transcript: Option.getOrThrow(v1.transcript) }
+        // the style's "End with a comment question": the script must end with a Cta beat (and have none without it)
+        const preset = project.presetId === null
+          ? yield* presets.getDefault
+          : yield* presets.get(project.presetId).pipe(Effect.catch(() => presets.getDefault))
+        const closing = preset.config.commentQuestion === true
+        return { project, limits, sources, v1, transcript: Option.getOrThrow(v1.transcript), closing }
       })
 
       // V1's story proposal for this short's approach, if the video has a story map; a short made another way from a
@@ -72,7 +79,7 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       })
 
       const run = Effect.fn("ScriptStage.run")(function*(ctx: StageContext) {
-        const { project, limits, sources, v1, transcript } = yield* context(ctx)
+        const { project, limits, sources, v1, transcript, closing } = yield* context(ctx)
         const source = v1.source
         const several = sources.length > 1
         // one video: its own story proposal; several: the set's proposal and beats, or each video's own beats
@@ -92,12 +99,13 @@ export class ScriptStage extends Context.Service<ScriptStage, {
           transcript: transcripts.timedText(transcript),
           excluded: v1.excluded,
           angle,
+          closingQuestion: closing,
           ...(several ? { videos, beats: story?.beats ?? [] } : {})
         })
         // long transcripts come as outlines, read further with the transcript tools
         const tools = several && !fitsInline(videos) ? transcriptTools(videos, "short") : []
         const script = yield* runChecked(agent, ctx, tools.length === 0 ? task : { ...task, tools, maxTurns: 24 }, (proposed) => Effect.sync(() => {
-          const checked = checkScript(fromProposedScript(proposed), limits, sources)
+          const checked = checkScript(fromProposedScript(proposed), limits, sources, closing)
           return { value: checked.script, problems: checked.problems }
         })).pipe(Effect.mapError((error) => fail(error.code, error.message)))
         yield* record(ctx, script)
@@ -105,8 +113,8 @@ export class ScriptStage extends Context.Service<ScriptStage, {
 
       const applyEdit = Effect.fn("ScriptStage.applyEdit")(function*(ctx: StageContext, edited: unknown) {
         const script = yield* Schema.decodeUnknownEffect(Script)(edited).pipe(Effect.mapError((e) => fail("invalid-edit", e.message)))
-        const { limits, sources } = yield* context(ctx)
-        const checked = checkScript(script, limits, sources)
+        const { limits, sources, closing } = yield* context(ctx)
+        const checked = checkScript(script, limits, sources, closing)
         if (checked.problems.length > 0) return yield* fail("invalid-edit", checked.problems.join("; "))
         yield* record(ctx, checked.script)
       })
@@ -125,5 +133,5 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       }
       return ScriptStage.of({ stage })
     })
-  ).pipe(Layer.provide([Projects.layer, ProjectSources.layer, Artifacts.layer, Transcripts.layer, VideoSets.layer, NodeServices.layer]))
+  ).pipe(Layer.provide([Presets.layer, Projects.layer, ProjectSources.layer, Artifacts.layer, Transcripts.layer, VideoSets.layer, NodeServices.layer]))
 }

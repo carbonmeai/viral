@@ -7,11 +7,19 @@ test("the stage prompt names the tool and defers to the skills", () => {
   assert.match(SCRIPT_WRITER_PROMPT, /approach\s+skill/)
 })
 
-test("the stage prompt asks for the whole story, set-ups the real lines answer, whole sentences, and no closing beat", () => {
+test("the stage prompt asks for the whole story, set-ups the real lines answer, whole sentences, and the closing question as its own beat", () => {
   assert.match(SCRIPT_WRITER_PROMPT, /cover the story's stages in order/)
   assert.match(SCRIPT_WRITER_PROMPT, /write the set-up it\s+answers/)
   assert.match(SCRIPT_WRITER_PROMPT, /whole sentences: it starts on a sentence's first word and ends on a sentence's last word/)
-  assert.match(SCRIPT_WRITER_PROMPT, /the closing question is\s+not one of its beats/)
+  assert.match(SCRIPT_WRITER_PROMPT, /- Cta: the closing question, only when the brief asks for one: always the last beat/)
+  assert.match(SCRIPT_WRITER_PROMPT, /outside the approach's word and real-line counts/)
+  assert.match(SCRIPT_WRITER_PROMPT, /never a Narration line/)
+})
+
+test("the brief says whether the style ends with a comment question", () => {
+  const base = { title: "Extreme candy", channel: null, transcript: "[0.0–2.2] Hi.", excluded: [], angle: null }
+  assert.match(buildScriptPrompt({ ...base, closingQuestion: true }), /ends with a comment question: after the payoff, end the script with a Cta beat/)
+  assert.match(buildScriptPrompt(base), /has no closing question: don't write a Cta beat/)
 })
 
 test("the brief carries the video, its excluded ranges and the timed transcript", () => {

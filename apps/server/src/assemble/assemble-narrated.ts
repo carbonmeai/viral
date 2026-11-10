@@ -47,6 +47,10 @@ export interface NarratedInput {
   readonly music: { readonly track: MusicTrack; readonly file: string } | null
   // the voiceover word the music drops on (the start of the last narrated line)
   readonly dropWord: number | null
+  // the take's closing line (the script's Cta beat, voiced last): where the story's narration ends and the closing line
+  // does, and its question for the end card when the style ends with one (null = the style has it off, so the line is
+  // only cut out); null when the take has no closing line
+  readonly closing?: { readonly narrationEnd: number; readonly voEnd: number; readonly question: string | null } | null
 }
 
 const marker = (m: ShotPlan["markers"][number], words: ReadonlyArray<TranscriptWord>, labels: boolean): ReadonlyArray<NarratedAnnotation> => {
@@ -151,6 +155,11 @@ export const assembleNarrated = (input: NarratedInput): NarratedPlan => {
     // the style's opt-ins, written only when on so a plan without them renders exactly as before
     ...(preset.softJoins === true ? { soft_joins: true, insert_pad: INSERT_PAD } : {}),
     ...(preset.voiceLevel === undefined ? {} : { voice_gain: preset.voiceLevel.gain }),
+    // the closing line is cut out of the narration; with the style's comment question it plays under the end card
+    ...(input.closing == null ? {} : { narration_end: input.closing.narrationEnd }),
+    ...(input.closing == null || input.closing.question === null
+      ? {}
+      : { cta: { question: input.closing.question, vo_start: input.closing.narrationEnd, vo_end: input.closing.voEnd } }),
     lufs: preset.loudnessLufs
   }
 }

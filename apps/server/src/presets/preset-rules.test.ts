@@ -7,6 +7,10 @@ test("the built-in styles pass their own checks", () => {
   for (const preset of BUILT_IN_PRESETS) assert.deepEqual(checkPresetConfig(preset.config), [], preset.name)
 })
 
+test("every built-in style ends with a comment question (Decision 5)", () => {
+  for (const preset of BUILT_IN_PRESETS) assert.equal(preset.config.commentQuestion, true, preset.name)
+})
+
 test("out-of-range and malformed values are each reported", () => {
   const base = BUILT_IN_PRESETS[1]!.config
   const problems = checkPresetConfig({

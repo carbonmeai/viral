@@ -18,6 +18,7 @@ import { ContactSheets, ContactSheetSet } from "../contact-sheet/contact-sheets.
 import { detailSheetTool } from "../contact-sheet/detail-sheet-tool.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { ProjectSources } from "../projects/project-sources.ts"
+import { Presets } from "../presets/presets.ts"
 import { Projects } from "../projects/projects.ts"
 import { fitsInline } from "../projects/videos-brief.ts"
 import type { SourceContext } from "../projects/source-context.ts"
@@ -91,6 +92,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       const contactSheets = yield* ContactSheets
       const scripts = yield* ScriptRunner
       const agent = yield* AgentSession
+      const presets = yield* Presets
       const home = yield* ViralHome
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
@@ -113,7 +115,12 @@ export class SectionsStage extends Context.Service<SectionsStage, {
         const videos = sources.map((s) => Option.getOrThrow(s.video))
         const transcript = Option.getOrThrow(v1.transcript)
         const sectionContext: SourceContext = v1
-        return { project, source: v1.source, sourceOwner: v1.owner, videos, transcript, sources, sectionContext }
+        // the style's "End with a comment question": the plan carries the end card's question
+        const preset = project.presetId === null
+          ? yield* presets.getDefault
+          : yield* presets.get(project.presetId).pipe(Effect.catch(() => presets.getDefault))
+        const closing = preset.config.commentQuestion === true
+        return { project, source: v1.source, sourceOwner: v1.owner, videos, transcript, sources, sectionContext, closing }
       })
 
       // Draws a plan's frames (frames/section-NN.jpg) and their storyboard into `dir`; null when it couldn't.
@@ -135,14 +142,14 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       })
 
       // The agent's self-check: the plan's problems, or each section's first frame drawn so it can see them.
-      const previewTool = (videos: ReadonlyArray<string>, sources: ReadonlyArray<SourceContext>, root: string, attempt: number) => {
+      const previewTool = (videos: ReadonlyArray<string>, sources: ReadonlyArray<SourceContext>, closing: boolean, root: string, attempt: number) => {
         let drawn = 0
         return agentTool({
           name: "preview_sections",
           description: "Check a cut-down plan and draw each section's first frame. Returns the problems to fix, or the storyboard and frame files to Read.",
           schema: ProposedSections,
           run: Effect.fn("SectionsStage.preview")(function*(proposed: ProposedSections) {
-            const checked = checkSections(fromProposedSections(proposed), sources)
+            const checked = checkSections(fromProposedSections(proposed), sources, closing)
             if (checked.problems.length > 0) return `Fix these first:\n${checked.problems.map((p) => `- ${p}`).join("\n")}`
             const dir = path.join(root, `attempt-${attempt}-${++drawn}`)
             yield* fs.makeDirectory(dir, { recursive: true })
@@ -166,6 +173,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
         const storyboard = yield* draw(videos, draft, slot.dir)
         const plan: CutPlan = {
           hookText: draft.hookText,
+          ...(draft.question === undefined ? {} : { question: draft.question }),
           sections: draft.sections.map((s, k) => ({ ...s, frame: storyboard === null ? null : frameFile(k) })),
           storyboard
         }
@@ -222,6 +230,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
           sourceSeconds: c.sectionContext.seconds,
           sheets: overviews[0]!.sheets,
           transcript: transcripts.timedText(c.transcript),
+          closingQuestion: c.closing,
           ...(several ? { videos: briefVideos, beats: shortStory?.beats ?? [] } : {})
         })
         // long transcripts come as outlines, read further with the transcript tools
@@ -234,13 +243,13 @@ export class SectionsStage extends Context.Service<SectionsStage, {
           output: { tool: "propose_sections", description: "Submit the whole cut-down plan.", schema: ProposedSections },
           tools: [
             detailSheetTool(contactSheets, path, c.sources.map((s, i) => ({ video: c.videos[i]!, seconds: s.seconds })), c.sectionContext.seconds, detailRoot),
-            previewTool(c.videos, c.sources, previewRoot, ctx.attempt),
+            previewTool(c.videos, c.sources, c.closing, previewRoot, ctx.attempt),
             ...readers
           ],
           defaultModel: null,
           readDirs: [...overviews.flatMap((o) => Option.toArray(o.dir)), detailRoot, previewRoot],
           maxTurns: 60
-        }, (proposed) => Effect.succeed(checkSections(fromProposedSections(proposed), c.sources))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        }, (proposed) => Effect.succeed(checkSections(fromProposedSections(proposed), c.sources, c.closing))).pipe(Effect.mapError((e) => fail(e.code, e.message)))
         yield* record(ctx, c.videos, draft)
       })
 
@@ -248,7 +257,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       const applyEdit = Effect.fn("SectionsStage.applyEdit")(function*(ctx: StageContext, edited: unknown) {
         const proposal = yield* Schema.decodeUnknownEffect(SectionsProposal)(edited).pipe(Effect.mapError(failWith("invalid-edit")))
         const c = yield* context(ctx)
-        const checked = checkSections(proposal, c.sources)
+        const checked = checkSections(proposal, c.sources, c.closing)
         if (checked.problems.length > 0) return yield* fail("invalid-edit", checked.problems.join("; "))
         yield* record(ctx, c.videos, checked.value)
       })
@@ -268,6 +277,7 @@ export class SectionsStage extends Context.Service<SectionsStage, {
       return SectionsStage.of({ stage })
     })
   ).pipe(Layer.provide([
+    Presets.layer,
     Projects.layer,
     ProjectSources.layer,
     Artifacts.layer,

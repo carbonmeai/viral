@@ -69,3 +69,12 @@ test("a single-video plan has no videos list or per-video ranges", () => {
   assert.equal("sources" in out, false)
   assert.equal("exclude_by_source" in out, false)
 })
+
+test("the style's comment question: the end card alone after the last section, never without the switch", () => {
+  const asked = { ...input(recap), plan: { ...plan, question: "Would you have quit?" } }
+  const out = assembleCut(asked)
+  Schema.decodeSync(CutRenderPlan)(out, { onExcessProperty: "error" })
+  assert.deepEqual(out.cta, { question: "Would you have quit?", seconds: 3 })
+  assert.equal("cta" in assembleCut({ ...asked, preset: { ...recap!, commentQuestion: false } }), false)
+  assert.equal("cta" in assembleCut(input(recap)), false, "no question, no card")
+})

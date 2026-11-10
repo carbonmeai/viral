@@ -98,8 +98,9 @@ export class MetadataStage extends Context.Service<MetadataStage, {
           ? (yield* latest("cut-plan", CutPlan)).sections.map((s) =>
             several ? `CREATOR (V${(s.source ?? 0) + 1}, ${s.beat}): "${s.text}"` : `CREATOR (${s.beat}): "${s.text}"`
           ).join("\n")
-          : (yield* latest("script", Script)).beats.map((b) =>
-            b._tag === "Narration" ? `NARRATOR: ${b.text}` : several ? `REAL (V${(b.source ?? 0) + 1}): "${b.quote}"` : `REAL: "${b.quote}"`
+          : (yield* latest("script", Script)).beats.flatMap((b) =>
+            // the closing question isn't part of the story the post text describes
+            b._tag === "Cta" ? [] : b._tag === "Narration" ? [`NARRATOR: ${b.text}`] : [several ? `REAL (V${(b.source ?? 0) + 1}): "${b.quote}"` : `REAL: "${b.quote}"`]
           ).join("\n")
         const metadata = yield* runChecked(agent, ctx, metadataTask({
           creatorBrief: project.brief,

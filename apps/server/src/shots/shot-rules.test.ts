@@ -1,7 +1,7 @@
 import type { Script, ShotProposal } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { checkShots, narrationEnds, placeReals } from "./shot-rules.ts"
+import { checkShots, closingWord, narrationEndOf, narrationEnds, placeReals, storyTake } from "./shot-rules.ts"
 
 // "This guy tasted the spicy cold mix. It hurt. So he tried again." at one word per second
 const heard = ["This", "guy", "tasted", "the", "spicy", "cold", "mix.", "It", "hurt.", "So", "he", "tried", "again."]
@@ -113,4 +113,20 @@ test("shots start where the narration resumes, never in the skipped words, and r
   const text = checkShots(shotsAt([0, 2, 4, 8, 13]), skipCtx).problems.join("\n")
   assert.match(text, /shot on word 8 "said" is in narration the short skips after "It hurts so much."; start it on word 11 or later/)
   assert.match(text, /start a new shot on word 11 "So", where the narration resumes/)
+})
+
+test("the closing question is the take's last words: the shots see the story only, and it's never a real clip", () => {
+  // the take goes on with "Would you try it? Tell us…" after "again." (words 13–17)
+  const take = [...words, ...["Would", "you", "try", "it?", "Tell"].map((w, i) => ({ w, s: 13.5 + i, e: 14.3 + i }))]
+  const closing: Script = { ...script, beats: [...script.beats, { _tag: "Cta", question: "Would you try it?" }] }
+  assert.equal(closingWord(closing, take), 13)
+  // 0.12 s before "Would" (13.5), never into "again." (ends 12.8)
+  assert.equal(narrationEndOf(closing, take, 19), 13.38)
+  const story = storyTake(closing, take, 19)
+  assert.equal(story.words.length, 13)
+  assert.equal(story.seconds, 13.38)
+  assert.deepEqual(placeReals(closing, story.words), placeReals(script, words), "the real lines are placed exactly as before")
+  // without a closing question the take is the story
+  assert.equal(closingWord(script, words), null)
+  assert.deepEqual(storyTake(script, words, 13), { words, seconds: 13 })
 })

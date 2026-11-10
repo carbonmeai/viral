@@ -14,7 +14,8 @@ approach-cut-down skill and the story-arc skill below.
    Use several short sections to jump-cut filler out of a beat. Total ${SECTION_LIMITS.total[0]}–${SECTION_LIMITS.total[1]} seconds.
    Every section is whole sentences: it starts on a sentence's first word and ends on a sentence's last word (only a
    pause over 1.5 s ends a sentence). Never end on a half-answer; if a reply runs long, keep it and cut elsewhere.
-   The last section ends on the payoff; the closing question isn't a section.
+   The last section ends on the payoff; the closing question isn't a section (when the brief asks for one, it's the
+   plan's \`question\`, shown on an end card after the last section).
 3. Look at what's on screen: the overview contact sheets (Read the files listed), and \`contact_sheet\` for a frame
    every second around a moment. Set framing "blur" for a section whose frame shouldn't be cropped (a screen share,
    a wide shot), and cropX when the speaker sits off-centre.
@@ -43,7 +44,15 @@ export interface SectionsBrief {
   readonly videos?: ReadonlyArray<SectionsVideo>
   // with several videos: the story beats in them, `source` = position
   readonly beats?: ReadonlyArray<SetStoryBeat>
+  // the style ends with a comment question: the plan carries the end card's `question`; absent or false = none
+  readonly closingQuestion?: boolean
 }
+
+// Whether to write the end card's question, said last in the brief.
+const closingPart = (brief: SectionsBrief) =>
+  brief.closingQuestion === true
+    ? "This short's style ends with a comment question: write `question`, one question for the comments about the viewer, tied to this short (\"Would you have quit?\"). An end card shows it after the last section with a subscribe button; nobody says it (see story-arc's \"The closing question\")."
+    : "This short's style has no closing question: leave `question` out."
 
 export interface SectionsVideo extends BriefVideo {
   // one line per overview sheet: its file and time range
@@ -73,7 +82,8 @@ const severalVideosBrief = (brief: SectionsBrief, videos: ReadonlyArray<Sections
     angleText(brief.angle),
     brief.beats === undefined || brief.beats.length === 0 ? "" : `Story beats across the videos:\n${brief.beats.map(beatLine).join("\n")}`,
     inline ? "" : "The transcripts are long, so each video has an outline: find moments with `search_transcript` and read around them with `read_transcript`.",
-    ...sections
+    ...sections,
+    closingPart(brief)
   ].filter((part) => part !== "").join("\n\n")
 }
 
@@ -89,5 +99,6 @@ export const buildSectionsBrief = (brief: SectionsBrief) =>
       }`,
     brief.excluded.length === 0 ? "" : `Excluded ranges (never use): ${brief.excluded.map((r) => `${fmt(r.start)}–${fmt(r.end)}s`).join(", ")}`,
     brief.sheets.length === 0 ? "" : `Overview contact sheets (a frame every 5s):\n${brief.sheets.join("\n")}`,
-    `Transcript (source seconds):\n${brief.transcript}`
+    `Transcript (source seconds):\n${brief.transcript}`,
+    closingPart(brief)
   ].filter((part) => part !== "").join("\n\n")

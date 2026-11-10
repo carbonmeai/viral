@@ -16,11 +16,15 @@ A script is a list of beats in playing order:
   getting electrocuted." after the real "It's like getting electrocuted"). It's voiced, so the narrator's delivery
   flows around the cut, but the short jumps from the real line to the narration after it. Only right after a real
   line, and only when more narration follows.
+- Cta: the closing question, only when the brief asks for one: always the last beat, after the payoff, with just the
+  \`question\` (one short question for the comments about the viewer, tied to this short: "What's the hottest pepper
+  you've ever eaten?"). The narrator says it and adds "Tell us in the comments, and subscribe for more.", over an end
+  card. It's outside the approach's word and real-line counts.
 
 Read the whole transcript first and cover the story's stages in order; before each real line, write the set-up it
 answers. Every real line is whole sentences: it starts on a sentence's first word and ends on a sentence's last word
-(only a pause over 1.5 s ends a sentence), never mid-thought. The script ends on the payoff; the closing question is
-not one of its beats.
+(only a pause over 1.5 s ends a sentence), never mid-thought. The story ends on the payoff; the closing question, when
+the brief asks for it, is the Cta beat after it, never a Narration line.
 
 Also write the headline: the open loop in 7 words or fewer, split over two lines (a short first line, a
 longer second), in capitals.
@@ -43,7 +47,15 @@ export interface ScriptBrief {
   readonly videos?: ReadonlyArray<BriefVideo>
   // with several videos: the story beats in them (from the set's story, or each video's own), `source` = position
   readonly beats?: ReadonlyArray<SetStoryBeat>
+  // the style ends with a comment question: the script ends with a Cta beat; absent or false = no Cta beat
+  readonly closingQuestion?: boolean
 }
+
+// Whether to write the closing question, said last in the brief.
+const closingPart = (brief: ScriptBrief) =>
+  brief.closingQuestion === true
+    ? "This short's style ends with a comment question: after the payoff, end the script with a Cta beat holding one question for the comments (see story-arc's \"The closing question\")."
+    : "This short's style has no closing question: don't write a Cta beat."
 
 const angleLine = (angle: ScriptBrief["angle"]) =>
   angle === null
@@ -62,7 +74,8 @@ const severalVideosPrompt = (brief: ScriptBrief, videos: ReadonlyArray<BriefVide
     brief.beats === undefined || brief.beats.length === 0 ? "" : `Story beats across the videos:\n${brief.beats.map(beatLine).join("\n")}`,
     inline ? "" : "The transcripts are long, so each video has an outline: find lines with `search_transcript` and read around them with `read_transcript` before you quote them.",
     ...sections,
-    "Write the script for this short, following the approach skill. Never use anything in a video's excluded ranges. Every real line names its video (`video`: its V number) and gives that video's seconds; introduce each new video with a narrated line the first time it plays."
+    "Write the script for this short, following the approach skill. Never use anything in a video's excluded ranges. Every real line names its video (`video`: its V number) and gives that video's seconds; introduce each new video with a narrated line the first time it plays.",
+    closingPart(brief)
   ].filter((part) => part !== "").join("\n\n")
 }
 
@@ -75,5 +88,6 @@ export const buildScriptPrompt = (brief: ScriptBrief) =>
       : `Never use these ranges (sponsor reads, ads, end screens): ${brief.excluded.map((r) => `${r.start.toFixed(0)}–${r.end.toFixed(0)}s`).join(", ")}`,
     angleLine(brief.angle),
     `Transcript (source seconds):\n${brief.transcript}`,
-    "Write the script for this video, following the approach skill."
+    "Write the script for this video, following the approach skill.",
+    closingPart(brief)
   ].filter((part) => part !== "").join("\n\n")

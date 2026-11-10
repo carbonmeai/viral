@@ -1,12 +1,13 @@
 import type { CutPlan, ProposedSections, SectionsProposal, SourceIndex, TranscriptWord } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 import { clipSource, type SourceContext, sourceField } from "../projects/source-context.ts"
+import { checkClosingQuestion } from "../script/script-rules.ts"
 import { LONG_SENTENCE, type Sentence, sentencesOf, snapToSentences } from "../transcribe/sentences.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
 // A cut-down short before its frames are drawn.
-export type CutDraft = Pick<CutPlan, "hookText"> & {
+export type CutDraft = Pick<CutPlan, "hookText" | "question"> & {
   readonly sections: ReadonlyArray<Omit<CutPlan["sections"][number], "frame">>
 }
 
@@ -52,6 +53,7 @@ export const snapSection = (start: number, end: number, words: ReadonlyArray<Tra
 // The agent's plan (each section's video by its V number) as it's checked and stored (by position; V1 left out).
 export const fromProposedSections = (proposed: ProposedSections): SectionsProposal => ({
   hookText: proposed.hookText,
+  ...(proposed.question === undefined ? {} : { question: proposed.question }),
   sections: proposed.sections.map(({ video, ...section }) => ({
     ...section,
     ...sourceField(video === undefined ? undefined : (video - 1) as SourceIndex)
@@ -63,8 +65,9 @@ const countWords = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w
 
 // Checks a proposed cut-down short against the short's videos (V1 first), and snaps each section to whole sentences
 // (then whole words, with a little air) of its own video, adding the words it says. The renderer plays the snapped
-// times as they are.
-export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray<SourceContext>): Checked<CutDraft> => {
+// times as they are. `closing`: the style ends with a comment question, so the plan needs the end card's `question`
+// (and without it, the question is dropped).
+export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray<SourceContext>, closing: boolean = false): Checked<CutDraft> => {
   const problems: Array<string> = []
   if (proposal.sections.length === 0) problems.push("there are no sections")
   if (proposal.sections[0] !== undefined && proposal.sections[0].beat !== "hook") {
@@ -128,5 +131,10 @@ export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray
   if (hookText !== null && countWords(hookText) > SECTION_LIMITS.hookWords) {
     problems.push(`the hook text is ${countWords(hookText)} words; keep it to ${SECTION_LIMITS.hookWords}`)
   }
-  return { value: { hookText, sections }, problems }
+  const question = proposal.question == null || proposal.question.trim() === "" ? null : proposal.question.trim()
+  if (closing && question === null) {
+    problems.push("this style ends with a comment question: write `question`, one question for the comments about the viewer (\"Would you have quit?\"); the end card shows it")
+  }
+  if (closing && question !== null) problems.push(...checkClosingQuestion(question))
+  return { value: { hookText, sections, ...(closing && question !== null ? { question } : {}) }, problems }
 }

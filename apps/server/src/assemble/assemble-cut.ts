@@ -1,5 +1,8 @@
 import type { CutPlan, CutRenderPlan, PresetConfig } from "@viral/contracts"
 
+// How long a cut-down short's end card holds (no narrator reads it, so long enough to read the question).
+export const CUT_END_CARD_SECONDS = 3
+
 export interface CutInput {
   readonly slug: string
   readonly title: string
@@ -56,6 +59,10 @@ export const assembleCut = (input: CutInput): CutRenderPlan => {
       ...(s.cropX === undefined ? {} : { crop_x: s.cropX }),
       ...(s.framing === undefined ? {} : { framing: s.framing })
     })),
+    // the style's comment question: the end card alone (Decision 6: no narrator in a cut-down)
+    ...(preset.commentQuestion === true && plan.question != null && plan.question.trim() !== ""
+      ? { cta: { question: plan.question.trim(), seconds: CUT_END_CARD_SECONDS } }
+      : {}),
     lufs: preset.loudnessLufs
   }
 }

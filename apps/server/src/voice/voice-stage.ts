@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type Artifact, type GatePayload, type ProjectId, Script, Transcript, Voiceover } from "@viral/contracts"
+import { type Artifact, closingLine, type GatePayload, type ProjectId, Script, Transcript, Voiceover } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -21,9 +21,10 @@ const projectOf = (ctx: StageContext): ProjectId => {
 const TranscriptJson = Schema.fromJsonString(Transcript)
 
 // The script's narrated lines as one take; the real lines play in the creator's voice between them. Skipped lines are
-// in it (voiced, then jumped over in the short), so they're billed too.
+// in it (voiced, then jumped over in the short), so they're billed too. The closing question comes last, with its ask
+// ("Tell us in the comments, and subscribe for more."), and plays under the end card.
 export const narrationText = (script: Script) =>
-  script.beats.flatMap((beat) => beat._tag === "Narration" ? [beat.text.trim()] : []).join(" ")
+  script.beats.flatMap((beat) => beat._tag === "Narration" ? [beat.text.trim()] : beat._tag === "Cta" ? [closingLine(beat.question)] : []).join(" ")
 
 // Speaks the approved script's narration with ElevenLabs in one take, trims the leading silence, speeds it to
 // the preset's pace with atempo (and levels it to the style's loudness when it asks), and transcribes the result for word timings (local Whisper, like the approved

@@ -58,6 +58,7 @@ export const fromProposedScript = (proposed: ProposedScript): Script => ({
   headline: proposed.headline,
   beats: proposed.beats.map((beat) => {
     if (beat._tag === "Narration") return beat.skipped === true ? beat : { _tag: "Narration", text: beat.text }
+    if (beat._tag === "Cta") return { _tag: "Cta", question: beat.question }
     const { video, ...rest } = beat
     return { ...rest, ...sourceField(video === undefined ? undefined : (video - 1) as SourceIndex) }
   })
@@ -82,11 +83,55 @@ const endingRun = (beats: ReadonlyArray<ScriptBeat>): ReadonlyArray<number> => {
   return run
 }
 
+// The closing question (story-arc's "The closing question"): one short question about the viewer, tied to the topic.
+// The narrator adds "Tell us in the comments, and subscribe for more." after it, so the question carries no ask.
+export const CLOSING_WORDS: readonly [number, number] = [3, 14]
+
+export const checkClosingQuestion = (question: string): ReadonlyArray<string> => {
+  const text = question.trim()
+  const problems: Array<string> = []
+  const words = countWords(text)
+  if (!text.endsWith("?")) problems.push(`the closing question "${short(text, 60)}" must be one question, ending in "?"`)
+  else if ((text.match(/\?/g) ?? []).length > 1) problems.push(`the closing question "${short(text, 60)}" asks more than one question; ask one`)
+  if (words < CLOSING_WORDS[0] || words > CLOSING_WORDS[1]) {
+    problems.push(`the closing question is ${words} words; keep it to ${CLOSING_WORDS[0]}–${CLOSING_WORDS[1]}`)
+  }
+  if (/\b(subscribe|comments?|like and)\b/i.test(text)) {
+    problems.push("write only the question; the narrator adds \"Tell us in the comments, and subscribe for more.\" after it")
+  }
+  return problems
+}
+
 // Checks a script against its approach and the short's videos (V1 first), and snaps every real line to its own
 // video's exact word timings, widened to whole sentences when the approach says so. With an `ending`, the real lines
-// that end the script close together merge into one take, everything said between them included. Returns the snapped
-// script and a list of problems, empty when the script is good.
+// that end the script close together merge into one take, everything said between them included. `closing`: the
+// style ends with a comment question, so the script must end with one Cta beat (and without it, must have none). The
+// Cta beat sits outside every other check: the word and real-line budgets, "ends on the payoff", "real lines only at
+// the end". Returns the snapped script and a list of problems, empty when the script is good.
 export const checkScript = (
+  script: Script,
+  limits: ScriptLimits,
+  sources: ReadonlyArray<Pick<SourceContext, "words" | "excluded">>,
+  closing: boolean = false
+): { readonly script: Script; readonly problems: ReadonlyArray<string> } => {
+  const ctas = script.beats.flatMap((beat, i) => beat._tag === "Cta" ? [{ beat, i }] : [])
+  const story = checkStory({ headline: script.headline, beats: script.beats.filter((b) => b._tag !== "Cta") }, limits, sources)
+  const problems = [...story.problems]
+  const cta = ctas.at(-1)?.beat
+  if (closing && cta === undefined) {
+    problems.push("this style ends with a closing question: add a Cta beat after the payoff with one question for the comments about the viewer (\"What's the hottest pepper you've ever eaten?\")")
+  } else if (!closing && cta !== undefined) {
+    problems.push("this style doesn't end with a closing question; leave out the Cta beat")
+  }
+  if (ctas.length > 1) problems.push(`there are ${ctas.length} closing questions; write one, as the last beat`)
+  else if (ctas.length === 1 && ctas[0]!.i !== script.beats.length - 1) problems.push("the closing question goes last, after the payoff")
+  if (closing && cta !== undefined) problems.push(...checkClosingQuestion(cta.question))
+  const beats = closing && cta !== undefined ? [...story.script.beats, { _tag: "Cta" as const, question: cta.question.trim() }] : story.script.beats
+  return { script: { headline: story.script.headline, beats }, problems }
+}
+
+// The story's own checks: every beat but the closing question.
+const checkStory = (
   script: Script,
   limits: ScriptLimits,
   sources: ReadonlyArray<Pick<SourceContext, "words" | "excluded">>
@@ -95,7 +140,7 @@ export const checkScript = (
   const perBeat: Array<Array<string>> = script.beats.map(() => [])
   // each real line found in its video: its words (by index), before any length checks
   const located = script.beats.map((beat, i) => {
-    if (beat._tag === "Narration") return null
+    if (beat._tag !== "Real") return null
     const video = clipSource(sources, beat.source, `beat ${i + 1}`)
     if (video.problem !== null) {
       perBeat[i]!.push(video.problem)
@@ -114,7 +159,7 @@ export const checkScript = (
 
   const snapped: Array<ScriptBeat> = script.beats.map((beat, i) => {
     const at = located[i]
-    if (beat._tag === "Narration" || at === null || at === undefined) return beat
+    if (beat._tag !== "Real" || at === null || at === undefined) return beat
     const span = spanOf(at.words, at.first, at.last)
     return { _tag: "Real", quote: span.words, start: span.start, end: span.end, ...sourceField(beat.source) }
   })

@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type ArtifactKind, type ArtifactOwner, CutPlan, CutRenderPlan, MusicArrangement, NarratedPlan, type ProjectId, RankingPlan, RankingRenderPlan, Script, ShotPlan, Transcript } from "@viral/contracts"
+import { type ArtifactKind, type ArtifactOwner, closingOf, CutPlan, CutRenderPlan, MusicArrangement, NarratedPlan, type ProjectId, RankingPlan, RankingRenderPlan, Script, ShotPlan, Transcript } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ViralHome } from "../home/viral-home.ts"
@@ -14,7 +14,7 @@ import { Projects } from "../projects/projects.ts"
 import { sourceLabel } from "../projects/source-context.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Settings } from "../settings/settings.ts"
-import { narrationEnds } from "../shots/shot-rules.ts"
+import { closingWord, narrationEndOf, narrationEnds } from "../shots/shot-rules.ts"
 import { assembleCut } from "./assemble-cut.ts"
 import { assembleRanking } from "./assemble-ranking.ts"
 import { assembleNarrated } from "./assemble-narrated.ts"
@@ -105,6 +105,19 @@ export class AssembleStage extends Context.Service<AssembleStage, {
         const picked = Option.filter(yield* settings.get(dropWordKey(project.id), Schema.Int), (w) => w >= 0 && w < words.length)
         const dropWord = Option.isSome(picked) ? picked.value : ends.length === 0 ? null : ends.length === 1 ? 0 : ends.at(-2)! + 1
 
+        // the take's closing line (voiced after the story): cut out of the narration, and played under the end card when
+        // the style ends with a comment question
+        const closingAt = closingWord(script, words)
+        const closingQuestion = closingOf(script)
+        const closing = closingAt === null || closingQuestion === null ? null : {
+          narrationEnd: narrationEndOf(script, words, words.at(-1)!.e),
+          voEnd: Math.round((words.at(-1)!.e + 0.3) * 1000) / 1000,
+          question: preset.config.commentQuestion === true ? closingQuestion : null
+        }
+        if (closingAt === null && closingQuestion !== null && preset.config.commentQuestion === true) {
+          yield* ctx.progress(null, "the voiceover doesn't say the closing question, so this short has no end card")
+        }
+
         const assembled = assembleNarrated({
           slug: project.slug,
           title: project.title,
@@ -121,7 +134,8 @@ export class AssembleStage extends Context.Service<AssembleStage, {
           // every channel whose footage plays, in the order it first appears
           credit: creditLine(videos.map((v) => v.source), appearanceOrder({ _tag: "Narrated", plan: shots })),
           music: track === null ? null : { track, file: path.join(home.music, track.path) },
-          dropWord
+          dropWord,
+          closing
         })
         if (track !== null && assembled.music === undefined) {
           yield* ctx.progress(null, `"${track.title}" has no BPM or drop yet, so this short goes without music`)

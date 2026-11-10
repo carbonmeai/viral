@@ -33,7 +33,9 @@ const VIRAL_RECAP: PresetConfig = {
   credit: false,
   pace: { shotSeconds: 1.3 },
   music: CANDY_MUSIC,
-  loudnessLufs: -14
+  loudnessLufs: -14,
+  // every short ends with a comment question and a subscribe ask on an end card (the skills since 10 Nov, Decision 5)
+  commentQuestion: true
 }
 
 // The presentation of the competitor's candy short (10k views to the first short's 2.5k): full-bleed
@@ -64,7 +66,8 @@ const STORY_RECAP: PresetConfig = {
 }
 
 // Ensured by name on every start: missing ones are added, ones you've edited (or already have) are left alone, so a
-// change here reaches new libraries only.
+// change here reaches new libraries only (a library's existing styles keep the comment question off until it's switched
+// on in the Style editor).
 export const BUILT_IN_PRESETS: ReadonlyArray<{ readonly name: string; readonly config: PresetConfig }> = [
   { name: "Viral recap", config: VIRAL_RECAP },
   { name: "Headline full-bleed", config: HEADLINE_FULL_BLEED },

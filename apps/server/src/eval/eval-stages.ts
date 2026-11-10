@@ -77,10 +77,11 @@ export const evalStages = (fixture: EvalFixture, fixtureDir: string, path: Path.
     ),
     script: evalStage(
       "script",
-      scriptTask(short.approach, { title: source.title, channel: source.channel, transcript, excluded, angle: short.angle }),
+      // the built-in styles end with a comment question, so the eval asks for one too
+      scriptTask(short.approach, { title: source.title, channel: source.channel, transcript, excluded, angle: short.angle, closingQuestion: true }),
       (p) => {
         if (limits === undefined) return { value: p, problems: [`${short.approach} shorts have no narrated script`] }
-        const checked = checkScript(fromProposedScript(p), limits, [{ words, excluded }])
+        const checked = checkScript(fromProposedScript(p), limits, [{ words, excluded }], true)
         return { value: checked.script, problems: checked.problems }
       }
     ),
@@ -93,7 +94,7 @@ export const evalStages = (fixture: EvalFixture, fixtureDir: string, path: Path.
         approach: short.approach,
         durationS: short.durationS,
         workingTitle: short.title,
-        lines: short.script.beats.map((b) => b._tag === "Narration" ? `NARRATOR: ${b.text}` : `REAL: "${b.quote}"`).join("\n")
+        lines: short.script.beats.flatMap((b) => b._tag === "Narration" ? [`NARRATOR: ${b.text}`] : b._tag === "Real" ? [`REAL: "${b.quote}"`] : []).join("\n")
       }),
       checkMetadata
     )

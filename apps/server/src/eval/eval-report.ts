@@ -1,4 +1,4 @@
-import { AdRanges, AgentProvider, Script, SetStory, ShortMetadata, StoryMap } from "@viral/contracts"
+import { AdRanges, AgentProvider, closingLine, Script, SetStory, ShortMetadata, StoryMap } from "@viral/contracts"
 import { Option, Schema } from "effect"
 import type { EvalRunResult } from "./eval-runner.ts"
 import { EvalStageName } from "./eval-stages.ts"
@@ -233,6 +233,8 @@ const renderOutput = (stage: EvalStageName, value: unknown, videos: Videos = [])
           `<ol class=beats>${s.beats.map((b) =>
             b._tag === "Narration"
               ? `<li class=narration>${escape(b.text)}</li>`
+              : b._tag === "Cta"
+              ? `<li class=narration>${escape(closingLine(b.question))}</li>`
               : `<li class=real><q>${escape(b.quote)}</q> <span class=muted>${clock(b.start)}</span></li>`
           ).join("")}</ol>`
       })

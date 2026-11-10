@@ -58,6 +58,8 @@ export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>)
       narrated++
       return
     }
+    // the closing question is narration after the story, played under the end card
+    if (beat._tag === "Cta") return
     const clip = { start: beat.start, end: beat.end, quote: beat.quote, ...sourceField(beat.source) }
     if (i > lastNarration || narrated < 0) {
       outro.push(clip)
@@ -74,6 +76,31 @@ export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>)
     })
   })
   return { inserts, outro }
+}
+
+// The closing question's first voiceover word: the take says it after the last narrated line. null when the script has
+// no closing question (or the take ends before it).
+export const closingWord = (script: Script, words: ReadonlyArray<TranscriptWord>): number | null => {
+  if (script.beats.at(-1)?._tag !== "Cta") return null
+  const first = (narrationEnds(script, words).at(-1) ?? -1) + 1
+  return first > 0 && first < words.length ? first : null
+}
+
+// Where the story's narration ends in the take: just before the closing question (0.12 s before its first word, never
+// into the last narrated word), or the take's end when there's none. The shots run to here; the closing line plays
+// under the end card.
+export const narrationEndOf = (script: Script, words: ReadonlyArray<TranscriptWord>, takeSeconds: number): number => {
+  const first = closingWord(script, words)
+  if (first === null) return takeSeconds
+  const before = words[first - 1]!.e
+  const start = words[first]!.s
+  return Math.round(Math.max(before, start - 0.12) * 1000) / 1000
+}
+
+// The take as the shots see it: the story's words and length, without the closing question.
+export const storyTake = (script: Script, words: ReadonlyArray<TranscriptWord>, takeSeconds: number) => {
+  const first = closingWord(script, words)
+  return { words: first === null ? words : words.slice(0, first), seconds: narrationEndOf(script, words, takeSeconds) }
 }
 
 // The voiceover word the narration picks up from after an insert.

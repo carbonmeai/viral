@@ -37,7 +37,8 @@ const TRANSCRIPT = {
 const narration = (n: number) => ({ _tag: "Narration", text: Array.from({ length: n }, () => "word").join(" ") })
 const real = (quote: string, start: number) => ({ _tag: "Real", quote, start, end: start + 1 })
 
-// The replayed agent: first an invented quote and too few reactions, then a fixed script.
+// The replayed agent: first an invented quote, too few reactions and no closing question (the default style ends with
+// one), then a fixed script.
 const asked: Array<string> = []
 const replay = AgentSession.replay((task: AgentTask<Schema.Top>) => {
   asked.push(task.message)
@@ -45,7 +46,8 @@ const replay = AgentSession.replay((task: AgentTask<Schema.Top>) => {
     ? { headline: ["THIS CANDY", "HITS EVERY TASTE"], beats: [narration(70), real("it tastes amazing", 150)] }
     : {
       headline: ["THIS CANDY", "HITS EVERY TASTE"],
-      beats: [narration(70), real("it's like glue", 99), real("it worked", 199), real("way too spicy", 398), real("so nasty", 301)]
+      beats: [narration(70), real("it's like glue", 99), real("it worked", 199), real("way too spicy", 398), real("so nasty", 301),
+        { _tag: "Cta", question: "Which taste would you try first?" }]
     }
 })
 
@@ -103,6 +105,7 @@ test("the script stage fixes rejected scripts, snaps real lines, and waits for a
   assert.equal(asked.length, 2, "the agent was asked once and then to fix")
   assert.match(asked[1]!, /isn't in the transcript near 150\.0s/)
   assert.match(asked[1]!, /there are 1 real lines; this approach needs 4–9/)
+  assert.match(asked[1]!, /this style ends with a closing question: add a Cta beat after the payoff/)
   const scriptDone = updates.findLast((u) => u._tag === "Event" && u.event._tag === "StageFinished" && u.event.stageRun.stage === "script")
   assert.ok(scriptDone?._tag === "Event" && scriptDone.event._tag === "StageFinished" && scriptDone.event.stageRun.status === "succeeded")
 
@@ -111,6 +114,7 @@ test("the script stage fixes rejected scripts, snaps real lines, and waits for a
     return yield* Schema.decodeUnknownEffect(Script)(artifact.data)
   }))
   assert.deepEqual(script.beats[1], { _tag: "Real", quote: "It's like glue.", start: 99.95, end: 101.05 }, "snapped to the transcript")
+  assert.deepEqual(script.beats.at(-1), { _tag: "Cta", question: "Which taste would you try first?" }, "the closing question last")
   await rt.dispose()
 })
 
@@ -134,7 +138,7 @@ test("a short from two videos: the agent sees both, each real line is checked in
     return briefs.length === 1
       // V1's line said to be in V2, and V2's sponsor read
       ? { headline: null, beats: [...base, { ...real("so nasty", 300), video: 2 }, { ...real("buy our gum", 50), video: 2 }] }
-      : { headline: null, beats: [...base, real("so nasty", 300), { ...real("pure citric acid", 5), video: 2 }] }
+      : { headline: null, beats: [...base, real("so nasty", 300), { ...real("pure citric acid", 5), video: 2 }, { _tag: "Cta", question: "Would you eat pure citric acid?" }] }
   })
   const rt = runtime(twoVideos)
   const project = await rt.runPromise(Effect.gen(function*() {

@@ -1,16 +1,18 @@
-import type { ApproachName, Change, ChatCheck, Script, ScriptBeat } from "@viral/contracts"
+import { type ApproachName, type Change, type ChatCheck, closingOf, type Script, type ScriptBeat } from "@viral/contracts"
 import { align, capped, changed, changeOf, countHeadline, noted, passed, plural } from "../chat/change-lines.ts"
 import { narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
 
 const textOf = (beat: ScriptBeat) =>
-  beat._tag === "Real" ? `“${beat.quote}”` : beat.skipped === true ? `${beat.text} (skipped: the real line says it)` : beat.text
+  beat._tag === "Real" ? `“${beat.quote}”`
+  : beat._tag === "Cta" ? `${beat.question} (the closing question)`
+  : beat.skipped === true ? `${beat.text} (skipped: the real line says it)` : beat.text
 const reals = (script: Script) => script.beats.filter((b) => b._tag === "Real").length
 
 // What changed between two versions of a script, beat by beat: the old line struck through and the new one
 // highlighted, plus the word and real-line counts when they moved. `videoName` names a real line's video.
 export const describeScriptChange = (before: Script, after: Script, videoName: (source: number) => string): Change | null => {
   const label = (beat: ScriptBeat, at: number) =>
-    beat._tag === "Narration" ? `Line ${at + 1}` : `Line ${at + 1} · real, ${videoName(beat.source ?? 0)}`
+    beat._tag === "Narration" ? `Line ${at + 1}` : beat._tag === "Cta" ? "Closing question" : `Line ${at + 1} · real, ${videoName(beat.source ?? 0)}`
   const pairs = align(before.beats, after.beats, textOf)
   const lines = pairs.flatMap((p) =>
     p._tag === "Same" ? [] : p._tag === "Changed"
@@ -54,7 +56,8 @@ export const scriptChecks = (script: Script, approach: ApproachName): ReadonlyAr
     ...(limits?.ending == null ? [] : [passed(`Ends on one real take of ${limits.ending.seconds[0]}–${limits.ending.seconds[1]}s`)]),
     passed("None inside an ad, a sponsor read or an end screen"),
     ...(limits?.realsOnlyAtEnd === true ? [passed("Real lines only after the narration")] : []),
-    passed("Headline under 8 words")
+    passed("Headline under 8 words"),
+    ...(closingOf(script) === null ? [] : [passed("Ends with the closing question, outside the word and real-line counts")])
   ]
 }
 

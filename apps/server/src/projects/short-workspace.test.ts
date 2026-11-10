@@ -284,7 +284,9 @@ test("a cut-down short's workspace carries what its sections are cut from, and a
       narrated: yield* workspaces.get(story.id),
       good: yield* workspaces.checkSections(cut.id, {
         hookText: "It worked",
-        sections: [section("hook", 10, 15), section("rising_action", 18, 32), section("payoff", 38, 50)]
+        sections: [section("hook", 10, 15), section("rising_action", 18, 32), section("payoff", 38, 50)],
+        // the default style ends with a comment question
+        question: "Would you have tried it?"
       }),
       refused: yield* workspaces.checkSections(cut.id, {
         hookText: null,
@@ -304,5 +306,6 @@ test("a cut-down short's workspace carries what its sections are cut from, and a
   assert.match(text, /first section must be the hook/)
   assert.match(text, /sections 1 and 2 overlap/)
   assert.match(text, /excluded range \(55\.0–60\.0s\)/)
+  assert.match(text, /this style ends with a comment question: write `question`/)
   await rt.dispose()
 })

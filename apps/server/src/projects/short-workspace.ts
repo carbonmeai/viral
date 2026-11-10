@@ -32,7 +32,7 @@ import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { checkScript as checkScriptRules, SCRIPT_LIMITS } from "../script/script-rules.ts"
 import { checkSections as checkSectionsRules, SECTION_LIMITS } from "../sections/section-rules.ts"
-import { checkShots as checkShotsRules, placeReals } from "../shots/shot-rules.ts"
+import { checkShots as checkShotsRules, placeReals, storyTake } from "../shots/shot-rules.ts"
 import { type ProjectSource, ProjectSources } from "./project-sources.ts"
 import { Projects } from "./projects.ts"
 
@@ -263,7 +263,10 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         if (limits === undefined) return [`${project.approach} shorts don't have a narrated script`]
         const sources = yield* sourcesFor(project)
         if (sources.some((s) => Option.isNone(s.transcript))) return ["the video has no transcript to check the real lines against"]
-        return checkScriptRules(script, limits, sources).problems
+        const preset = project.presetId === null
+          ? yield* presets.getDefault
+          : yield* presets.get(project.presetId).pipe(Effect.catch(() => presets.getDefault))
+        return checkScriptRules(script, limits, sources, preset.config.commentQuestion === true).problems
       })
 
       // Checked against the voiceover as spoken, the video's length and ads, and where the script's real lines
@@ -274,12 +277,15 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         const script = Option.flatMap(yield* artifacts.latest(owner, "script"), (a) => Schema.decodeUnknownOption(Script)(a.data))
         const voiceover = Option.flatMap(yield* artifacts.latest(owner, "voiceover"), (a) => Schema.decodeUnknownOption(Voiceover)(a.data))
         if (Option.isNone(script) || Option.isNone(voiceover)) return ["the short needs its script and voiceover before its shots"]
-        const words = yield* voiceoverWords(owner)
-        if (words.length === 0) return ["the voiceover has no word timings yet"]
+        const all = yield* voiceoverWords(owner)
+        if (all.length === 0) return ["the voiceover has no word timings yet"]
+        // the story's words only: the closing question plays under the end card, with no shots
+        const take = storyTake(script.value, all, voiceover.value.durationS)
+        const words = take.words
         const reals = placeReals(script.value, words)
         return checkShotsRules(proposal, {
           words,
-          voiceoverSeconds: voiceover.value.durationS,
+          voiceoverSeconds: take.seconds,
           sources: yield* sourcesFor(project),
           inserts: reals.inserts
         }).problems
@@ -291,7 +297,10 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         if (project.format !== "cut-down") return ["only cut-down shorts have sections"]
         const sources = sectionSources(yield* sourcesFor(project))
         if (Option.isNone(sources)) return ["the video has no transcript to check the sections against"]
-        return checkSectionsRules(proposal, sources.value).problems
+        const preset = project.presetId === null
+          ? yield* presets.getDefault
+          : yield* presets.get(project.presetId).pipe(Effect.catch(() => presets.getDefault))
+        return checkSectionsRules(proposal, sources.value, preset.config.commentQuestion === true).problems
       })
 
       // Checked against each layer's video (its frame size, length and ads), exactly as the thumbnail gate checks an

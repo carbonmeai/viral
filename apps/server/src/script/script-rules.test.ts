@@ -149,3 +149,61 @@ test("story-recap: an ending take over 25 s is too long", () => {
   const script: Script = { headline: null, beats: [narration(180), real("s1w3 s1w4", 101.5), real("s2w3", 111.5), real("s3w3", 121.5)] }
   assert.match(checkScript(script, recap, [{ words, excluded: [] }]).problems.join("\n"), /the ending \(beats 2–4\): the payoff take lasts 28\.\ds; this approach ends on one continuous real take of 10–25s/)
 })
+
+// the closing question (a style's "End with a comment question"): its own beat, last, outside every other check
+const cta = (question: string) => ({ _tag: "Cta" as const, question })
+const fourReals = Array.from({ length: 4 }, () => ({ _tag: "Real" as const, quote: "it's like glue", start: 98, end: 99 }))
+
+test("the closing question sits outside the word and real-line budgets", () => {
+  // 100 narrated words is the top of claim-interleaved's budget; the closing question's words don't count
+  const script: Script = { headline: null, beats: [narration(100), ...fourReals, cta("What's the stickiest candy you've ever eaten?")] }
+  const { script: checked, problems } = checkScript(script, limits, [{ words: transcript, excluded: [] }], true)
+  assert.deepEqual(problems, [])
+  assert.deepEqual(checked.beats.at(-1), cta("What's the stickiest candy you've ever eaten?"))
+  assert.equal(checked.beats.filter((b) => b._tag === "Real").length, 4)
+})
+
+test("question-recap's real lines at the end still pass with the closing question after them", () => {
+  const script: Script = {
+    headline: null,
+    beats: [narration(90), { _tag: "Real", quote: "it's like glue", start: 100, end: 101 }, cta("Would you eat it?")]
+  }
+  const { problems } = checkScript(script, SCRIPT_LIMITS["question-recap"]!, [{ words: transcript, excluded: [] }], true)
+  assert.deepEqual(problems, [])
+})
+
+test("story-recap still ends on the payoff take, with the closing question after it", () => {
+  const words = Array.from({ length: 40 }, (_, i) => w(i % 8 === 7 ? "end." : "word", 500 + i * 0.5))
+  const real = (start: number, end: number) => ({ _tag: "Real" as const, quote: "word", start, end })
+  const script: Script = {
+    headline: null,
+    beats: [narration(40), real(500, 501), narration(40), real(504, 505), narration(40), real(508, 509), narration(40), real(512, 513),
+      narration(20), real(516, 517), narration(5), real(500, 519.8), cta("What's the hottest pepper you've ever eaten?")]
+  }
+  const text = checkScript(script, SCRIPT_LIMITS["story-recap"]!, [{ words, excluded: [] }], true).problems.join("\n")
+  assert.doesNotMatch(text, /ends on the payoff/)
+  assert.doesNotMatch(text, /closing question/)
+})
+
+test("the style decides: a closing question is required with it on and refused with it off", () => {
+  const source = [{ words: transcript, excluded: [] }]
+  const without: Script = { headline: null, beats: [narration(70), ...fourReals] }
+  assert.match(checkScript(without, limits, source, true).problems.join("\n"), /this style ends with a closing question: add a Cta beat after the payoff/)
+  assert.deepEqual(checkScript(without, limits, source, false).problems, [])
+  const withIt: Script = { headline: null, beats: [narration(70), ...fourReals, cta("Would you eat it?")] }
+  const off = checkScript(withIt, limits, source, false)
+  assert.match(off.problems.join("\n"), /doesn't end with a closing question; leave out the Cta beat/)
+  assert.equal(off.script.beats.some((b) => b._tag === "Cta"), false)
+  assert.deepEqual(checkScript(withIt, limits, source).problems, off.problems, "off by default")
+})
+
+test("the closing question goes last, once, as one short question without the ask", () => {
+  const source = [{ words: transcript, excluded: [] }]
+  const check = (beats: Script["beats"]) => checkScript({ headline: null, beats }, limits, source, true).problems.join("\n")
+  assert.match(check([narration(70), cta("Would you eat it?"), ...fourReals]), /the closing question goes last, after the payoff/)
+  assert.match(check([narration(70), ...fourReals, cta("Would you?"), cta("Would you eat it?")]), /there are 2 closing questions/)
+  assert.match(check([narration(70), ...fourReals, cta("Tell us what you think.")]), /must be one question, ending in "\?"/)
+  assert.match(check([narration(70), ...fourReals, cta("Would you eat it? Subscribe for more?")]), /asks more than one question/)
+  assert.match(check([narration(70), ...fourReals, cta("Which one? Tell us in the comments?")]), /write only the question; the narrator adds/)
+  assert.match(check([narration(70), ...fourReals, cta("Why?")]), /the closing question is 1 words; keep it to 3–14/)
+})

@@ -36,7 +36,7 @@ const replay = AgentSession.replay((task) => {
   ]
   return asked.length === 1
     ? { hookText: "Does it work?", sections }
-    : { hookText: "Does it work?", sections: [{ beat: "hook", start: 50, end: 53, note: "the line" }, ...sections] }
+    : { hookText: "Does it work?", sections: [{ beat: "hook", start: 50, end: 53, note: "the line" }, ...sections], question: "Would you have kept going?" }
 })
 
 const runtime = (agent: Layer.Layer<AgentSession> = replay) =>
@@ -100,6 +100,8 @@ test("the sections stage fixes a rejected plan, snaps it to words and draws a st
   assert.equal(asked.length, 2)
   assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_sections"])
   assert.match(asked[1]!.message, /first section must be the hook/)
+  assert.match(asked[0]!.message, /style ends with a comment question: write `question`/, "the default style asks for the end card's question")
+  assert.match(asked[1]!.message, /this style ends with a comment question: write `question`/)
 
   const { plan, storyboard, rendered } = await rt.runPromise(Effect.gen(function*() {
     const artifacts = yield* Artifacts
@@ -123,6 +125,8 @@ test("the sections stage fixes a rejected plan, snaps it to words and draws a st
   assert.equal(rendered.sections.length, 3)
   assert.deepEqual(rendered.exclude, [[0, 2]])
   assert.equal(rendered.snap, false, "the renderer plays the snapped times as they are")
+  assert.equal(plan.question, "Would you have kept going?")
+  assert.deepEqual(rendered.cta, { question: "Would you have kept going?", seconds: 3 }, "the end card alone, no narrator")
   await rt.dispose()
 })
 
@@ -134,7 +138,7 @@ test("a cut-down short from two videos: sections name their video, are checked a
     return seen.length === 1
       // V2's section starts in V2's intro
       ? { hookText: null, sections: [...v1, { beat: "payoff", start: 1, end: 9, video: 2, note: "the other video" }] }
-      : { hookText: null, sections: [...v1, { beat: "payoff", start: 10, end: 18, video: 2, note: "the other video" }] }
+      : { hookText: null, sections: [...v1, { beat: "payoff", start: 10, end: 18, video: 2, note: "the other video" }], question: "Which one convinced you?" }
   })
   const rt = runtime(twoVideos)
   const projectId = await rt.runPromise(Effect.gen(function*() {
@@ -228,7 +232,8 @@ test("a cut-down short from two videos: sections name their video, are checked a
       { beat: "hook", start: 50, end: 53, note: "a" },
       { beat: "rising_action", start: 5, end: 25, note: "b" },
       { beat: "payoff", start: 10, end: 18, video: 2, note: "c" }
-    ]
+    ],
+    question: "Which one convinced you?"
   }), (a) => a.text))
   assert.match(drawn, /section 3 \(payoff, V2 9\.9.*–18\.0s/)
   await rt.dispose()

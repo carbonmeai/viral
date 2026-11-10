@@ -62,7 +62,11 @@ export const PresetConfig = Schema.Struct({
   softJoins: Schema.optionalKey(Schema.Boolean),
   // the voiceover take normalised to `lufs` (the skill's −10, since a raw take sits near −27 against clips near −9)
   // and played at `gain` in the mix (1.7), so narration and clips sit level; absent = the take as spoken, gain 1
-  voiceLevel: Schema.optionalKey(Schema.Struct({ lufs: Schema.Finite, gain: Schema.Finite }))
+  voiceLevel: Schema.optionalKey(Schema.Struct({ lufs: Schema.Finite, gain: Schema.Finite })),
+  // "End with a comment question": after the payoff, a question for the comments plus a subscribe ask on an end card
+  // over a held last frame (narrated shorts: the narrator says it; cut-down: the card only). On in the built-in styles
+  // of new libraries; absent = off, so a library's existing styles and the goldens' fixed plans are unchanged
+  commentQuestion: Schema.optionalKey(Schema.Boolean)
 })
 export type PresetConfig = typeof PresetConfig.Type
 

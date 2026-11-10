@@ -29,7 +29,7 @@ import { fitsInline } from "../projects/videos-brief.ts"
 import { transcriptTools } from "../set-story/transcript-tools.ts"
 import { loadShortStory } from "../video-sets/short-story.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
-import { checkShots, fromProposedShots, narrationEnds, placeReals, type ShotContext, type ShotDraft } from "./shot-rules.ts"
+import { checkShots, fromProposedShots, narrationEnds, placeReals, type ShotContext, type ShotDraft, storyTake } from "./shot-rules.ts"
 import { buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "shots", code, message })
@@ -139,14 +139,16 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           Effect.flatMap(Schema.decodeEffect(TranscriptJson)),
           Effect.mapError(failWith("not-ready"))
         )
-        const words = voTranscript.segments.flatMap((s) => s.words)
+        // the story's words only: the closing question plays under the end card, with no shots
+        const take = storyTake(script, voTranscript.segments.flatMap((s) => s.words), voiceover.durationS)
+        const words = take.words
         if (sources.some((s) => s.source.durationS === null && Option.isNone(s.transcript))) {
           return yield* fail("not-ready", "the source has no transcript")
         }
         const excluded = v1.excluded
         const sourceSeconds = v1.seconds
         const reals = placeReals(script, words)
-        const shotContext: ShotContext = { words, voiceoverSeconds: voiceover.durationS, sources, inserts: reals.inserts }
+        const shotContext: ShotContext = { words, voiceoverSeconds: take.seconds, sources, inserts: reals.inserts }
         return { project, source, sources, sourceOwner: v1.owner, video, videos, script, words, excluded, sourceSeconds, reals, shotContext }
       })
 

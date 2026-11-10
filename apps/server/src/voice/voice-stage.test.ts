@@ -17,6 +17,7 @@ import { RunStore } from "../runs/run-store.ts"
 import { Sources } from "../sources/sources.ts"
 import { Transcriber } from "../transcribe/transcriber.ts"
 import { ElevenLabs, type SpeechRequest } from "./eleven-labs.ts"
+import { narrationText } from "./voice-stage.ts"
 
 let home: string
 let take: Uint8Array
@@ -183,4 +184,17 @@ test("a style that levels the voice normalises the take to its loudness", async 
   const levelled = loudness(file)
   assert.ok(Math.abs(levelled - -10) < 1.5, `the take is at ${levelled} LUFS (raw ${raw})`)
   await rt.dispose()
+})
+
+test("the take ends with the closing question and its ask; real lines are never in it, skipped lines are", () => {
+  assert.equal(narrationText({
+    headline: null,
+    beats: [
+      { _tag: "Narration", text: "He made a candy." },
+      { _tag: "Real", quote: "It worked.", start: 1, end: 2 },
+      { _tag: "Narration", text: "It worked.", skipped: true },
+      { _tag: "Narration", text: "Then it melted." },
+      { _tag: "Cta", question: "Would you eat it?" }
+    ]
+  }), "He made a candy. It worked. Then it melted. Would you eat it? Tell us in the comments, and subscribe for more.")
 })

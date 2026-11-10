@@ -136,4 +136,5 @@ subscribe ask**, on a held last frame with the question on screen. It's on by de
 - **The line:** the question, then "Tell us in the comments, and subscribe for more." About 10–16 words in all.
 - **Never a question the short already answered**, never a generic "like and subscribe" without a question, and
   never before the payoff: the story ends first.
-- It's written in its own place when a stage asks for it, never as one of the story's beats or real lines.
+- It's written in its own place when a stage asks for it (a script's last beat, `Cta`, with just the question; a
+  cut-down plan's `question`), never as one of the story's beats, narrated lines or real lines.

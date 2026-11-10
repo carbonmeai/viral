@@ -1,4 +1,4 @@
-import type { GatePayload, RunUpdate } from "@viral/contracts"
+import { closingLine, type GatePayload, type RunUpdate } from "@viral/contracts"
 import { Console, Effect } from "effect"
 import { describeShortlist } from "./shortlist-text.ts"
 
@@ -16,10 +16,12 @@ const describePayload = (payload: GatePayload | null): string => {
     case "ScriptGate": {
       const { script, narrationWords } = payload
       const headline = script.headline === null ? "" : `  HEADLINE  ${script.headline.join(" / ")}\n`
-      const video = videoLabels(script.beats.flatMap((beat) => beat._tag === "Narration" ? [] : [beat]))
+      const video = videoLabels(script.beats.flatMap((beat) => beat._tag === "Real" ? [beat] : []))
       const beats = script.beats.map((beat) =>
         beat._tag === "Narration"
           ? `  NARRATOR  ${beat.text}`
+          : beat._tag === "Cta"
+          ? `  CLOSING   ${closingLine(beat.question)}`
           : `    REAL    "${beat.quote}"  (${video(beat.source)}${beat.start.toFixed(1)}–${beat.end.toFixed(1)}s)`
       ).join("\n")
       return `${headline}${beats}\n  ${narrationWords} narrated words\n`

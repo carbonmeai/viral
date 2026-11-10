@@ -8,8 +8,18 @@ import { SourceIndex, VideoNumber } from "./sources.ts"
 // the cut, and the creator can let the narrator say it after all without a new take. Absent = played.
 const Narration = Schema.TaggedStruct("Narration", { text: Schema.String, skipped: Schema.optionalKey(Schema.Boolean) })
 
+// The closing question (a style's "End with a comment question"): the narrator's last line, after the payoff, asking
+// viewers one question for the comments and to subscribe. Its own beat type, always last, outside the approach's word
+// and real-line budgets. The agent writes only the question; the narrator says it with CLOSING_ASK after it, and the
+// end card shows it over a held last frame.
+const Cta = Schema.TaggedStruct("Cta", { question: Schema.String })
+export const CLOSING_ASK = "Tell us in the comments, and subscribe for more."
+// What the narrator says for a closing question.
+export const closingLine = (question: string) => `${question.trim()} ${CLOSING_ASK}`
+
 export const ScriptBeat = Schema.Union([
   Narration,
+  Cta,
   Schema.TaggedStruct("Real", {
     // the words exactly as spoken in the video
     quote: Schema.String,
@@ -28,10 +38,17 @@ export const Script = Schema.Struct({
 })
 export type Script = typeof Script.Type
 
+// The script's closing question, when it ends with one.
+export const closingOf = (script: Script): string | null => {
+  const last = script.beats.at(-1)
+  return last?._tag === "Cta" ? last.question : null
+}
+
 // What the script agent sends: the same beats, with a real line's video numbered as the agent reads it (V2 = 2;
 // absent = V1). The server checks it and stores a Script, whose `source` is the position (V2 = 1).
 export const ProposedScriptBeat = Schema.Union([
   Narration,
+  Cta,
   Schema.TaggedStruct("Real", {
     quote: Schema.String,
     start: Schema.Finite,

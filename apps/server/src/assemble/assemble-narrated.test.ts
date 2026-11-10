@@ -127,3 +127,19 @@ test("an insert whose next line is skipped resumes on the word after it", () => 
   Schema.decodeSync(NarratedPlan)(plan, { onExcessProperty: "error" })
   assert.deepEqual(plan.inserts, [{ start: 1144, end: 1146, after_word: 3, after_word_text: "it.", resume_word: 6, resume_word_text: "friend", note: "pain" }])
 })
+
+test("the closing line is cut out of the narration and plays under the end card when the style asks for it", () => {
+  const closing = { narrationEnd: 2.88, voEnd: 3.7, question: "Would you eat it?" }
+  const plan = assembleNarrated({ ...input(recap), closing })
+  Schema.decodeSync(NarratedPlan)(plan, { onExcessProperty: "error" })
+  assert.equal(plan.narration_end, 2.88)
+  assert.deepEqual(plan.cta, { question: "Would you eat it?", vo_start: 2.88, vo_end: 3.7 })
+  // the style has it off: the line is only cut out, so it's never heard over the last shot
+  const off = assembleNarrated({ ...input(recap), closing: { ...closing, question: null } })
+  assert.equal(off.narration_end, 2.88)
+  assert.equal("cta" in off, false)
+  // no closing line: neither key, the plan exactly as before
+  const none = assembleNarrated(input(recap))
+  assert.equal("narration_end" in none, false)
+  assert.equal("cta" in none, false)
+})

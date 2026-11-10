@@ -214,7 +214,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
           })
           : Option.match(yield* latestData(ctx.owner, "script", Script), {
             onNone: () => [],
-            onSome: (s) => s.beats.map((b) => b._tag === "Narration" ? `NARRATOR: ${b.text}` : c.several ? `REAL (V${(b.source ?? 0) + 1}): "${b.quote}"` : `REAL: "${b.quote}"`)
+            onSome: (s) => s.beats.flatMap((b) => b._tag === "Cta" ? [] : b._tag === "Narration" ? [`NARRATOR: ${b.text}`] : [c.several ? `REAL (V${(b.source ?? 0) + 1}): "${b.quote}"` : `REAL: "${b.quote}"`])
           })
         const overviews = yield* Effect.forEach(c.sources, (s) => overviewSheets(s.owner))
 

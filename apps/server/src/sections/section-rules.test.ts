@@ -108,3 +108,19 @@ test("a section that cuts a sentence stretches to keep it whole, or moves past t
   assert.deepEqual(problems.filter((p) => p.includes("sentence")), [])
   assert.equal(value.sections[0]!.text, "It totally worked and everyone cheered.")
 })
+
+test("a style with the comment question needs the end card's question; without it the question is dropped", () => {
+  const proposal: SectionsProposal = {
+    hookText: null,
+    sections: [{ beat: "hook", start: 60, end: 64, note: "hook" }, { beat: "payoff", start: 10, end: 40, note: "story" }]
+  }
+  assert.match(checkSections(proposal, ctx, true).problems.join("\n"), /this style ends with a comment question: write `question`/)
+  const asked = checkSections({ ...proposal, question: " Would you have quit? " }, ctx, true)
+  assert.deepEqual(asked.problems, [])
+  assert.equal(asked.value.question, "Would you have quit?")
+  assert.match(checkSections({ ...proposal, question: "Subscribe for more" }, ctx, true).problems.join("\n"), /ending in "\?"/)
+  const off = checkSections({ ...proposal, question: "Would you have quit?" }, ctx)
+  assert.deepEqual(off.problems, [])
+  assert.equal("question" in off.value, false)
+  assert.equal(fromProposedSections({ hookText: null, sections: [], question: "Why not?" }).question, "Why not?")
+})
