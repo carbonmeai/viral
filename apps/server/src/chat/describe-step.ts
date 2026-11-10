@@ -29,7 +29,7 @@ import { describeScriptChange, scriptChecks, scriptSummary } from "../script/scr
 import { describeSectionsChange, sectionsChecks, sectionsSummary } from "../sections/sections-changes.ts"
 import { describeShotsChange, shotsChecks, shotsSummary } from "../shots/shots-changes.ts"
 import { Sources } from "../sources/sources.ts"
-import { describeThumbnailChange, thumbnailChecks, thumbnailSummary } from "../thumbnail/thumbnail-changes.ts"
+import { aiThumbnailChecks, describeThumbnailChange, thumbnailChecks, thumbnailSummary } from "../thumbnail/thumbnail-changes.ts"
 import { passed, plural, seconds } from "./change-lines.ts"
 
 // One agent stage: the artifact it makes, how to read it, and what the chat says about a version of it.
@@ -65,7 +65,7 @@ const AGENT_STAGES: Partial<Record<StageName, AgentStageView<unknown>>> = {
     schema: Thumbnail as never,
     summary: thumbnailSummary,
     change: describeThumbnailChange,
-    checks: () => thumbnailChecks
+    checks: (t) => t.generated === undefined ? thumbnailChecks : aiThumbnailChecks(t.generated)
   }),
   metadata: view<ShortMetadata>({
     kind: "metadata",

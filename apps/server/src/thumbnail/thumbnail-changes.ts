@@ -45,6 +45,16 @@ export const describeThumbnailChange = (before: Thumbnail, after: Thumbnail, vid
   return changeOf(lines.length === 1 ? `Changed the ${lines[0]!.label.toLowerCase()}` : "Changed the thumbnail", lines)
 }
 
+// An AI round's checks: real frames only, and how the faces matched (the agent's scores).
+export const aiThumbnailChecks = (g: NonNullable<Thumbnail["generated"]>): ReadonlyArray<ChatCheck> => {
+  const made = g.options.filter((o) => o.image !== null)
+  const best = made.reduce<number | null>((n, o) => o.faces === null ? n : Math.max(n ?? 0, o.faces), null)
+  return [
+    passed(`Made from ${g.inputs.length} real frames, inside their videos and outside ads and end screens`),
+    passed(`${made.length} of ${g.options.length} options made${best === null ? "" : `; best face match ${Math.round(best)}/10`}`)
+  ]
+}
+
 export const thumbnailChecks: ReadonlyArray<ChatCheck> = [
   passed("Every moment is inside its video, outside ads and end screens"),
   passed("Crops stay sharp and fit their slots"),
