@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
+import { CliName, CliPreset, CliSetup } from "./cli-setup.ts"
 import { KeyProvider } from "./model-catalog.ts"
 import { PresetNotFound } from "./presets.ts"
 
@@ -334,6 +335,18 @@ export class SettingsRpcs extends RpcGroup.make(
   // whose result is kept for Accounts.
   Rpc.make("TestSecret", { payload: { name: KeyName, value: Schema.NullOr(Schema.String) }, success: KeyCheck, error: SettingsError }),
   Rpc.make("RemoveSecret", { payload: { name: KeyName }, success: Account, error: SettingsError }),
+  // How each signed-in CLI runs: on your sign-in, or on a key you saved (a preset), plus your own variables.
+  Rpc.make("GetCliSetups", { success: Schema.Array(CliSetup) }),
+  // Runs a CLI on a preset (one of its own; it reuses a key saved in Model keys), or back on your sign-in (null).
+  Rpc.make("SetCliPreset", { payload: { cli: CliName, preset: Schema.NullOr(CliPreset) }, success: CliSetup, error: SettingsError }),
+  // Adds or replaces one of a CLI's environment variables. A secret value goes to the secret store and never comes
+  // back; names that would change how the process starts (PATH, NODE_OPTIONS, DYLD_*…) are refused.
+  Rpc.make("SetCliEnvVar", {
+    payload: { cli: CliName, name: Schema.String, value: Schema.String, secret: Schema.Boolean },
+    success: CliSetup,
+    error: SettingsError
+  }),
+  Rpc.make("RemoveCliEnvVar", { payload: { cli: CliName, name: Schema.String }, success: CliSetup, error: SettingsError }),
   Rpc.make("GetSettings", { success: AppSettings }),
   // The provider and model for every step that hasn't got its own. A key provider needs a model.
   Rpc.make("SetDefaultAgent", { payload: { agent: AgentChoice }, success: AppSettings, error: SettingsError }),

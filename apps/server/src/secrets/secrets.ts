@@ -55,6 +55,11 @@ export class Secrets extends Context.Service<Secrets, {
   info(name: SecretName): Effect.Effect<SecretInfo>
   set(name: SecretName, value: Redacted.Redacted<string>): Effect.Effect<void, SecretsError>
   remove(name: SecretName): Effect.Effect<void, SecretsError>
+  // Other secrets saved under their own account name, with no environment variable in front of them: a CLI's
+  // secret variables ("cli.claude.env.MY_TOKEN"). Same store, same rules: never logged, never returned whole.
+  readStored(account: string): Effect.Effect<Option.Option<Redacted.Redacted<string>>>
+  writeStored(account: string, value: Redacted.Redacted<string>): Effect.Effect<void, SecretsError>
+  removeStored(account: string): Effect.Effect<void, SecretsError>
 }>()("@viral/server/secrets/secrets") {
   static readonly make = Effect.gen(function*() {
     const store = yield* SecretStore
@@ -92,7 +97,11 @@ export class Secrets extends Context.Service<Secrets, {
 
     const remove = (name: SecretName) => store.delete(name)
 
-    return Secrets.of({ get, source, info, set, remove })
+    const readStored = (account: string) => Effect.map(store.read(account), Option.map(Redacted.make))
+    const writeStored = (account: string, value: Redacted.Redacted<string>) => store.write(account, Redacted.value(value))
+    const removeStored = (account: string) => store.delete(account)
+
+    return Secrets.of({ get, source, info, set, remove, readStored, writeStored, removeStored })
   })
 
   // the Keychain store; tests point `security` at a fake

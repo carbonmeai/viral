@@ -1,8 +1,9 @@
 import { NodeServices } from "@effect/platform-node"
-import { AgentStage, KEY_PROVIDERS, type KeyProvider, PROVIDER_KEY, resolveAgentRoute } from "@viral/contracts"
+import { AgentStage, KEY_PROVIDERS, type KeyProvider, priceOf, PROVIDER_KEY, resolveAgentRoute, tokenCostUsd } from "@viral/contracts"
 import { Config, Context, Effect, Layer, Option, Path, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SkillPack } from "../agent-skills/skill-pack.ts"
+import { CLI_OF, type CliProvider, CliSetups } from "../cli-setup/cli-setup.ts"
 import { ViralHome } from "../home/viral-home.ts"
 import { Secrets } from "../secrets/secrets.ts"
 import { AppSettingsStore } from "../settings/app-settings.ts"
@@ -13,7 +14,7 @@ import { makeCodexProvider } from "@viral/provider-codex"
 import { makeOpencodeProvider } from "@viral/provider-opencode"
 import { replayRun } from "@viral/provider-testing"
 import type { LanguageModel } from "ai"
-import type { AgentError, AgentHooks, AgentRoute, AgentRun, AgentTask } from "./agent-task.ts"
+import type { AgentCost, AgentError, AgentHooks, AgentRoute, AgentRun, AgentTask } from "./agent-task.ts"
 import { MODEL_KEY_CHECKS } from "./model-key-checks.ts"
 
 export {
@@ -31,6 +32,20 @@ export {
 export interface AgentSessionOptions {
   // a key provider's language model behind an id; tests pass a mock
   readonly keyModel?: (provider: KeyProvider, modelId: string, apiKey: string) => LanguageModel
+  // a CLI provider in place of the real one; tests pass a stand-in that records what a run was given
+  readonly cliRuns?: Partial<Record<CliProvider, AgentRun>>
+}
+
+const isCliProvider = (provider: AgentRoute["provider"]): provider is CliProvider => provider in CLI_OF
+
+// Codex reports tokens, never dollars. On your OpenAI key that's real money, priced from Viral's table (an estimate;
+// a model without a price keeps its tokens and an unknown cost).
+const priced = (provider: AgentRoute["provider"], billing: "billed" | "subscription", cost: AgentCost): AgentCost => {
+  if (provider !== "codex" || billing !== "billed") return cost
+  const price = cost.model === null ? undefined : priceOf("openai", cost.model)
+  return price === undefined
+    ? { ...cost, costUsd: null, costBasis: "unknown" }
+    : { ...cost, costUsd: tokenCostUsd(price, cost), costBasis: "estimate" }
 }
 
 // Runs every agent stage on the provider chosen for it (Settings › Agents; an eval passes `task.route`). The
@@ -46,7 +61,8 @@ export class AgentSession extends Context.Service<AgentSession, {
       const secrets = yield* Secrets
       const home = yield* ViralHome
       const path = yield* Path.Path
-      const claude = yield* makeClaudeCliProvider
+      const cliSetups = yield* CliSetups
+      const claude = options.cliRuns?.["claude-cli"] ?? (yield* makeClaudeCliProvider)
       // One AI SDK provider per model key (packages/provider-ai-sdk), each with its vendor's model ids. The key is read
       // per run and passed only to that call; it never goes into process.env. A vendor's address moves only when its
       // *_API_URL override is set (tests point it at a fake server), the same override its key check uses.
@@ -63,18 +79,14 @@ export class AgentSession extends Context.Service<AgentSession, {
         })
       })
       const keyRuns = yield* Effect.forEach(KEY_PROVIDERS, (provider) => Effect.map(keyProvider(provider), (run) => [provider, run] as const))
-      const codex = yield* makeCodexProvider()
-      const opencode = yield* makeOpencodeProvider()
+      const codex = options.cliRuns?.codex ?? (yield* makeCodexProvider())
+      const opencode = options.cliRuns?.opencode ?? (yield* makeOpencodeProvider())
       const providers: Record<AgentRoute["provider"], AgentRun> = {
         "claude-cli": claude,
         codex,
         opencode,
         ...(Object.fromEntries(keyRuns) as Record<KeyProvider, AgentRun>)
       }
-      // a CLI with an API key bills per use; signed in to a Claude plan, its reported cost is the plan's value
-      const cliBilling = Option.isSome(yield* Config.option(Config.String("ANTHROPIC_API_KEY")).pipe(Effect.orDie))
-        ? "billed" as const
-        : "subscription" as const
 
       // The step's own choice, or the default for every step (Settings › Agents); a null CLI model is the
       // stage's own default (e.g. Haiku for ads).
@@ -91,15 +103,18 @@ export class AgentSession extends Context.Service<AgentSession, {
 
       const run = Effect.fn("AgentSession.run")(function*<S extends Schema.Top>(task: AgentTask<S>, hooks: AgentHooks) {
         const route = task.route ?? (yield* routeFor(task))
+        // A CLI runs on your sign-in or on a key (its setup in Settings › Accounts), resolved for this run only: a
+        // CLI on a key bills per use; on a Claude plan, its reported cost is the plan's value; Codex on your
+        // ChatGPT plan counts against it. The key providers always bill.
+        const cliRun = isCliProvider(route.provider) ? yield* cliSetups.resolve(route.provider) : null
+        const billing = cliRun?.billing ?? "billed"
         // every cost is recorded with who ran it and whether it's real money
-        // Codex reports tokens, never dollars: its runs count against your ChatGPT plan
-        const billing = route.provider === "claude-cli" ? cliBilling : route.provider === "codex" ? "subscription" as const : "billed" as const
         const stamped: AgentHooks = {
           ...hooks,
-          recordCost: (cost) => hooks.recordCost({ ...cost, provider: route.provider, billing })
+          recordCost: (cost) => hooks.recordCost({ ...priced(route.provider, billing, cost), ...(cliRun?.costBasis ? { costBasis: cliRun.costBasis } : {}), provider: route.provider, billing })
         }
         const system = skillPack.systemPrompt({ prompt: task.instructions, skills: task.skills })
-        return yield* providers[route.provider](task, stamped, route.model, system)
+        return yield* providers[route.provider](task, stamped, route.model, system, cliRun?.environment)
       })
 
       return AgentSession.of({ run })
@@ -108,6 +123,7 @@ export class AgentSession extends Context.Service<AgentSession, {
   static readonly layer = Layer.effect(AgentSession, AgentSession.make()).pipe(
     Layer.provide([
       NodeServices.layer,
+      CliSetups.layer,
       SkillPack.layer,
       Settings.layer,
       AppSettingsStore.layer,

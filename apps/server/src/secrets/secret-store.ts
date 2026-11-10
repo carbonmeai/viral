@@ -43,12 +43,12 @@ export class SecretStore extends Context.Service<SecretStore, {
         )
       )
 
-    const shaped = (value: string) =>
-      TOKEN.test(value) ? Effect.void : Effect.fail(new SecretsError({ code: "invalid", message: "the Keychain can't hold that value" }))
+    const shaped = (value: string, shape: RegExp = TOKEN) =>
+      shape.test(value) ? Effect.void : Effect.fail(new SecretsError({ code: "invalid", message: "the Keychain can't hold that value" }))
 
     const write = Effect.fn("SecretStore.write")(function*(account: string, value: string) {
       yield* shaped(account)
-      yield* shaped(value)
+      yield* shaped(value, VALUE)
       // -U replaces an existing entry
       yield* command(`add-generic-password -U -s ${SERVICE} -a ${account} -w ${value}`)
     })
@@ -74,3 +74,5 @@ export interface KeychainOptions {
 const SERVICE = "viral"
 // tokens only: letters, digits and a few separators. Anything else could break the command line.
 const TOKEN = /^[A-Za-z0-9_\-.:]+$/
+// a value may also hold base64 and URL characters, none of which `security -i` treats specially (no spaces or quotes)
+const VALUE = /^[A-Za-z0-9_\-.:/+=@~%,]+$/

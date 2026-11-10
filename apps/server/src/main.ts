@@ -50,6 +50,7 @@ import { SettingsRpcLive } from "./settings/settings-rpc.ts"
 import { StorageReport } from "./storage/storage.ts"
 import { UsageReport } from "./usage/usage.ts"
 import { EvalRecords } from "./eval/eval-records.ts"
+import { CliSetups } from "./cli-setup/cli-setup.ts"
 import { DatabaseLive } from "./persistence/database.ts"
 import { VideoSetOverviews } from "./video-sets/video-set-overview.ts"
 import { VideoSets } from "./video-sets/video-sets.ts"
@@ -76,6 +77,7 @@ const DomainsLive = Layer.mergeAll(
   Secrets.layer,
   KeyAccounts.layer,
   KeyModelLists.layer,
+  CliSetups.layer,
   AppSettingsStore.layer,
   StorageReport.layer,
   UsageReport.layer,

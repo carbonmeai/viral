@@ -1,9 +1,11 @@
 import { type Account, type CliModels, KeyName, SettingsRpcs } from "@viral/contracts"
 import { codexStatus } from "@viral/provider-codex"
 import { MIN_OPENCODE_VERSION, opencodeStatus, updateHint } from "@viral/provider-opencode"
-import { Effect, Option, String as Str } from "effect"
+import { NO_CLI_ENVIRONMENT } from "@viral/provider-core"
+import { Effect, FileSystem, Hash, Option, Redacted, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { KeyModelLists } from "../agent-session/key-models.ts"
+import { type CliRun, CliSetups } from "../cli-setup/cli-setup.ts"
 import { Presets } from "../presets/presets.ts"
 import { KeyAccounts } from "../secrets/key-accounts.ts"
 import { StorageReport } from "../storage/storage.ts"
@@ -12,12 +14,21 @@ import { UsageReport } from "../usage/usage.ts"
 import { ElevenLabs } from "../voice/eleven-labs.ts"
 import { AppSettingsStore } from "./app-settings.ts"
 
+// What tells two setups apart for the status cache: the variables and key by a hash, never the values themselves.
+const setupId = (run: CliRun) =>
+  Effect.succeed(String(Hash.string(JSON.stringify([
+    Object.entries(run.environment.env).sort(),
+    run.environment.apiKey === null ? null : [run.environment.apiKey.home, Redacted.value(run.environment.apiKey.key)]
+  ]))))
+
 // A CLI's row has no key: no variable, last four characters or check.
 type CliAccount = Omit<Account, "envVar" | "last4" | "check">
 const cli = (row: CliAccount): Account => ({ ...row, envVar: null, last4: null, check: null })
 
 export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
   const keys = yield* KeyAccounts
+  const setups = yield* CliSetups
+  const fs = yield* FileSystem.FileSystem
   const keyModels = yield* KeyModelLists
   const store = yield* AppSettingsStore
   const presets = yield* Presets
@@ -28,14 +39,34 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
   // The Claude CLI is usable when it's on the PATH; its version is what we can learn without changing anything.
-  const claude = spawner.string(ChildProcess.make("claude", ["--version"])).pipe(
-    Effect.map((out): Account => cli({ name: "claude", status: "ready", source: "cli", detail: Str.trim(out) || null, version: Str.trim(out).split(" ")[0] ?? null, hint: null })),
+  // On a key setup, the row says so instead of "signed in".
+  const claude = Effect.all([spawner.string(ChildProcess.make("claude", ["--version"])), setups.get("claude")]).pipe(
+    Effect.map(([out, setup]): Account => cli({ name: "claude", status: "ready", source: "cli", detail: setup.using ?? (Str.trim(out) || null), version: Str.trim(out).split(" ")[0] ?? null, hint: null })),
     Effect.orElseSucceed((): Account => cli({ name: "claude", status: "missing", source: null, detail: "The Claude CLI isn't on this Mac's PATH", version: null, hint: null }))
   )
   // Codex and OpenCode each take a second or two to ask (Codex starts an app-server), so their answers are kept
-  // for a minute; Accounts and the model pickers share them.
-  const codex = yield* Effect.cachedWithTTL(codexStatus(), "1 minute")
-  const opencode = yield* Effect.cachedWithTTL(opencodeStatus(), "1 minute")
+  // for a minute; Accounts and the model pickers share them. Each is asked the way a run will start it (on your
+  // OpenAI key, with your shared keys), so an answer is kept per setup.
+  const perSetup = <A>(ask: (run: CliRun) => Effect.Effect<A>) => {
+    const cache = new Map<string, Effect.Effect<A>>()
+    return (provider: "codex" | "opencode", fallback: A) =>
+      Effect.gen(function*() {
+        const run = yield* setups.resolve(provider).pipe(Effect.option)
+        // a setup that can't run right now (its key is missing) is asked as on your sign-in
+        const used = Option.getOrElse(run, (): CliRun => ({ environment: NO_CLI_ENVIRONMENT, billing: "subscription", costBasis: null }))
+        const id = yield* setupId(used)
+        let cached = cache.get(id)
+        if (cached === undefined) {
+          cached = yield* Effect.cachedWithTTL(ask(used), "1 minute")
+          cache.set(id, cached)
+        }
+        return yield* cached
+      }).pipe(Effect.orElseSucceed(() => fallback))
+  }
+  const codexFor = perSetup((run) => codexStatus(["codex"], run.environment).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner), Effect.provideService(FileSystem.FileSystem, fs)))
+  const opencodeFor = perSetup((run) => opencodeStatus(["opencode"], run.environment.env).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)))
+  const codex = codexFor("codex", { version: Option.none(), account: Option.none(), models: [] })
+  const opencode = opencodeFor("opencode", { version: Option.none(), outdated: false, signedIn: false, models: [] })
   const codexAccount = Effect.map(codex, (status): Account => cli(codexRow(status)))
   const codexRow = (status: Effect.Success<typeof codex>): CliAccount => {
     const version = Option.getOrNull(status.version)?.replace(/^codex-cli\s+/, "") ?? null
@@ -48,7 +79,7 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
         name: "codex",
         status: "ready",
         source: "cli",
-        detail: account.type === "chatgpt" ? `ChatGPT${account.plan === null ? "" : ` (${account.plan})`}` : "OpenAI API key",
+        detail: account.type === "chatgpt" ? `ChatGPT${account.plan === null ? "" : ` (${account.plan})`}` : "Using your OpenAI key",
         version,
         hint: null
       })
@@ -89,6 +120,10 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
     SetSecret: ({ name, value }) => keys.save(name, value),
     TestSecret: ({ name, value }) => keys.test(name, value),
     RemoveSecret: ({ name }) => keys.remove(name),
+    GetCliSetups: () => setups.all,
+    SetCliPreset: ({ cli, preset }) => setups.setPreset(cli, preset),
+    SetCliEnvVar: ({ cli, name, value, secret }) => setups.setVar(cli, name, value, secret),
+    RemoveCliEnvVar: ({ cli, name }) => setups.removeVar(cli, name),
     GetSettings: () => store.get,
     SetDefaultAgent: ({ agent }) => store.setDefaultAgent(agent),
     SetStageAgent: ({ stage, agent }) => store.setStageAgent(stage, agent),

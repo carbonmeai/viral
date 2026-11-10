@@ -3,6 +3,7 @@ import type { Schema } from "effect"
 import type { SkillName } from "../agent-skills/skill-pack.ts"
 
 export {
+  type AgentCost,
   AgentError,
   type AgentHooks,
   AgentProviderName,
