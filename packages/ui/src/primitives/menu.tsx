@@ -59,12 +59,15 @@ export interface MenuProps {
   readonly trigger?: React.ReactNode
   readonly triggerClassName?: string
   readonly align?: "start" | "end"
+  // opened from elsewhere too (e.g. another menu's item); left out, the trigger alone opens it
+  readonly open?: boolean
+  readonly onOpenChange?: (open: boolean) => void
 }
 
 // A menu of actions behind a button (⋯ by default). Items close it when picked.
-export function Menu({ label, children, trigger, triggerClassName, align = "end" }: MenuProps) {
+export function Menu({ label, children, trigger, triggerClassName, align = "end", open, onOpenChange }: MenuProps) {
   return (
-    <BaseMenu.Root>
+    <BaseMenu.Root {...(open === undefined ? {} : { open })} {...(onOpenChange === undefined ? {} : { onOpenChange: (next: boolean) => onOpenChange(next) })}>
       <BaseMenu.Trigger
         aria-label={label}
         title={trigger === undefined ? label : undefined}
