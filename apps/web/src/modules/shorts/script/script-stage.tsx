@@ -130,10 +130,9 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
                 onClick={() => onSelect(isSel ? null : i)}
                 className={cn("mt-2 grid cursor-pointer gap-1 rounded-ctl px-2.5 py-2", isSel ? "bg-panel shadow-[inset_0_0_0_1px_var(--lemon)]" : "hover:bg-panel")}
               >
-                <span className="flex min-h-5 items-center gap-1.5 text-[11px] tracking-[.03em] text-fg-3">
+                <span className="flex min-h-5 items-center gap-1.5 text-[11px] tracking-[.03em] whitespace-nowrap text-fg-3">
                   <span className="font-medium text-t-cap uppercase">Closing question</span>
-                  <span title="After the payoff, over a held last frame: the question in yellow and a red SUBSCRIBE button">· on the end card</span>
-                  <Detail><span className="ml-auto">not counted</span></Detail>
+                  <span className="ml-auto" title="After the payoff, over a held last frame: the question in yellow and a red SUBSCRIBE button. Not counted in the words.">end card</span>
                 </span>
                 {editing === i ? (
                   <div className="grid gap-2" onClick={(e) => e.stopPropagation()}>

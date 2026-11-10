@@ -7,8 +7,9 @@ const cased = (word: string, mode: PresetConfig["captions"]["case"]) =>
 
 // One frame of the short as it will look (9:16): in the band layout the footage sits in a sharp 16:9 band over a
 // blurred fill; in full framing it fills the frame (cropped at `cropX`), unless the shot shows the whole frame.
-// The caption word sits where the style puts captions.
-export function ShotPreview({ src, framing, fit, cropX, word, highlighted, captions, headline }: {
+// The caption word sits where the style puts captions. With `endCard`, the comment question's end card as the renderer
+// draws it (end_card.py): the question in yellow near the top, the red SUBSCRIBE pill near the bottom.
+export function ShotPreview({ src, framing, fit, cropX, word, highlighted, captions, headline, endCard }: {
   readonly src: string | null
   readonly framing: PresetConfig["framing"]
   readonly fit: boolean
@@ -18,6 +19,8 @@ export function ShotPreview({ src, framing, fit, cropX, word, highlighted, capti
   readonly captions: PresetConfig["captions"]
   // the short's pinned headline, in styles that show one
   readonly headline?: { readonly lines: readonly [string, string]; readonly style: NonNullable<PresetConfig["headline"]> } | null
+  // the end card's question, drawn over the frame
+  readonly endCard?: string | null
 }) {
   const band = framing === "band" || fit
   const clean = word.replace(/[.,!?;:"“”]+/g, "")
@@ -52,6 +55,18 @@ export function ShotPreview({ src, framing, fit, cropX, word, highlighted, capti
           {cased(clean, captions.case)}
         </div>
       ) : null}
+      {endCard === null || endCard === undefined ? null : (
+        <>
+          <div
+            className="absolute inset-x-[10%] top-[13.4%] text-center font-['Arial_Black',Arial,sans-serif] text-[5.4cqw] leading-[1.4] font-black text-[#FFD400] [paint-order:stroke] [-webkit-text-stroke:1.3cqw_#000]"
+          >
+            {endCard}
+          </div>
+          <div className="absolute top-[81.25%] left-1/2 flex h-[11.1cqw] -translate-x-1/2 items-center rounded-full bg-[#E62117] px-[5.9cqw] font-['Arial_Black',Arial,sans-serif] text-[5.8cqw] font-black text-white">
+            SUBSCRIBE
+          </div>
+        </>
+      )}
     </div>
   )
 }

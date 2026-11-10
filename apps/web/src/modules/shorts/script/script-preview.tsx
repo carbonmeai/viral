@@ -37,7 +37,10 @@ export function ScriptPreview({ e, script }: { readonly e: EditorState; readonly
   const overview = Option.getOrNull(AsyncResult.value(useAtomValue(overviewAtom)))
   const index = e.beat !== null && script.beats[e.beat] !== undefined ? e.beat : Math.max(0, script.beats.findIndex((b) => b._tag === "Narration"))
   const beat = script.beats[index]
-  const real = beat?._tag === "Real" ? beat : null
+  // the closing question shows its end card over the short's last moment (the last real line's end)
+  const closing = beat?._tag === "Cta" ? beat : null
+  const lastReal = closing === null ? null : script.beats.findLast((b) => b._tag === "Real") ?? null
+  const real = beat?._tag === "Real" ? beat : lastReal?._tag === "Real" ? { ...lastReal, start: Math.max(lastReal.start, lastReal.end - 0.5) } : null
   // a real line shows its own moment; narration before the shots are planned, a moment from its video's middle
   const first = e.ws.videos[0]
   const still = useStill(e.ws.videos[real?.source ?? 0], real?.start ?? (first === undefined ? 0 : first.seconds * 0.4), e)
@@ -53,10 +56,11 @@ export function ScriptPreview({ e, script }: { readonly e: EditorState; readonly
         framing={preset.config.framing}
         fit={false}
         cropX={0.5}
-        word={firstCaption(text, preset)}
+        word={closing === null ? firstCaption(text, preset) : ""}
         highlighted={false}
         captions={preset.config.captions}
-        headline={script.headline === null || preset.config.headline === null ? null : { lines: script.headline, style: preset.config.headline }}
+        headline={closing !== null || script.headline === null || preset.config.headline === null ? null : { lines: script.headline, style: preset.config.headline }}
+        endCard={closing === null || preset.config.commentQuestion !== true ? null : closing.question}
       />
     </div>
   )
