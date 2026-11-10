@@ -1,6 +1,8 @@
-import { NothingToInspect, NotYet, StageBar } from "../step-parts.tsx"
+import { Segmented } from "@viral/ui/primitives/segmented"
+import { Panel } from "../panel.tsx"
+import { NothingToInspect, NotYet } from "../step-parts.tsx"
 import type { EditorState } from "../use-editor-state.ts"
-import { RankingInspector } from "./ranking-inspector.tsx"
+import { RANKING_VIEWS, RankingInspector, type RankingTab } from "./ranking-inspector.tsx"
 import { RankingStage } from "./ranking-stage.tsx"
 import { changeCount, type RankingDraft, totalSeconds } from "./ranking-values.ts"
 
@@ -8,14 +10,12 @@ import { changeCount, type RankingDraft, totalSeconds } from "./ranking-values.t
 const selectedRank = (e: EditorState, ranking: RankingDraft) =>
   ranking.entries.some((x) => x.rank === e.rankingRank) ? e.rankingRank : ranking.order.at(-1) ?? 1
 
-// The Ranking step (rankings): the selected entry on the stage; the ranks, each entry's moments and the play order in
-// the inspector, with your changes snapped and collected as one edit.
+// The Ranking step's player (rankings): the selected entry.
 export function RankingStepStage({ e }: { readonly e: EditorState }) {
   const ranking = e.ranking
   if (ranking === null || (e.ws.rankingSource ?? null) === null || e.rankingPlan === null) return <NotYet e={e} what="ranking" />
   return (
     <>
-      <StageBar e={e} left={`${ranking.entries.length} entries · ${(e.rankingLength ?? totalSeconds(ranking)).toFixed(1)}s`} />
       <RankingStage
         draft={ranking}
         selected={selectedRank(e, ranking)}
@@ -28,12 +28,18 @@ export function RankingStepStage({ e }: { readonly e: EditorState }) {
   )
 }
 
+export const rankingNote = (e: EditorState) =>
+  e.ranking === null ? null : `${e.ranking.entries.length} entries · ${(e.rankingLength ?? totalSeconds(e.ranking)).toFixed(1)}s`
+
+// The Ranks panel: the ranks (#1 first) with each entry's moments, or the title and play order, with your changes
+// snapped by the server and collected as one edit.
 export function RankingStepPanel({ e }: { readonly e: EditorState }) {
   const ranking = e.ranking
   const source = e.ws.rankingSource ?? null
   const plan = e.rankingPlan
-  if (ranking === null || source === null || plan === null) return <NothingToInspect />
+  if (ranking === null || source === null || plan === null) return <Panel title="Ranks"><NothingToInspect /></Panel>
   return (
+    <Panel title="Ranks" under={<Segmented<RankingTab> label="Ranks view" full value={e.rankingTab} onChange={e.setRankingTab} options={RANKING_VIEWS} />}>
     <RankingInspector
       draft={ranking}
       onDraft={e.editRanking}
@@ -54,7 +60,7 @@ export function RankingStepPanel({ e }: { readonly e: EditorState }) {
         e.setRankingLength(null)
       }}
       onSend={() => {
-        void e.gate.edit(ranking).then((refused) => {
+        void e.gateFor("moments").edit(ranking).then((refused) => {
           e.setRankingProblems(refused)
           if (refused.length === 0) {
             e.setRankingDraft(null)
@@ -63,9 +69,10 @@ export function RankingStepPanel({ e }: { readonly e: EditorState }) {
         })
       }}
       stages={e.stages}
-      gate={e.gate}
+      gate={e.gateFor("moments")}
       tab={e.rankingTab}
       onTab={e.setRankingTab}
     />
+    </Panel>
   )
 }

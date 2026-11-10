@@ -3,8 +3,6 @@ import type { Project } from "@viral/contracts"
 import { Button } from "@viral/ui/primitives/button"
 import { Dialog } from "@viral/ui/primitives/dialog"
 import { Textarea } from "@viral/ui/primitives/textarea"
-import { Tooltip } from "@viral/ui/primitives/tooltip"
-import { Target } from "lucide-react"
 import { useEffect, useState } from "react"
 import { setProjectBrief, startShortRun } from "./shorts-api.ts"
 
@@ -12,15 +10,16 @@ import { setProjectBrief, startShortRun } from "./shorts-api.ts"
 const firstStep = (format: Project["format"]) =>
   format === "cut-down" ? "sections" as const : format === "ranking" ? "moments" as const : "script" as const
 
-// The short's brief, in the title bar on every step: what it should achieve, in your words. Changing it can
+// The short's brief, from the editor's ⋯ menu on every step: what it should achieve, in your words. Changing it can
 // re-run the short from its first step, or just be saved for the next run.
-export function BriefButton({ project, running, onSaved }: {
+export function BriefDialog({ project, running, onSaved, open, onOpenChange: setOpen }: {
   readonly project: Project
   // a run is going now: a re-run waits until it's over, so the brief is only saved
   readonly running: boolean
   readonly onSaved: () => void
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
   const [text, setText] = useState(project.brief ?? "")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,14 +47,8 @@ export function BriefButton({ project, running, onSaved }: {
       .finally(() => setBusy(false))
   }
 
-  const has = project.brief !== null
   return (
     <>
-      <Tooltip content={has ? project.brief : "Tell the agents what this short should achieve"}>
-        <Button variant="ghost" onClick={() => setOpen(true)}>
-          <Target />Brief{has ? <span aria-label="set" className="ml-0.5 size-1.5 rounded-full bg-lemon" /> : null}
-        </Button>
-      </Tooltip>
       <Dialog
         open={open}
         onOpenChange={setOpen}

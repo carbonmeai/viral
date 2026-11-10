@@ -4,34 +4,23 @@ import { Button, IconButton } from "@viral/ui/primitives/button"
 import { cn } from "@viral/ui/cn"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Gauge, MessageSquare, Mic, Pause, Play } from "lucide-react"
+import { Mic, Pause, Play } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { voiceLine } from "../../library/voices/voices-values.ts"
 import { voicesAtom } from "../../library/library-api.ts"
 import { Detail } from "../../system/detail.tsx"
-import { AskBox } from "../ask-box.tsx"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
-import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { StepDetails } from "../step-details.tsx"
 
-export type VoiceTab = "voice" | "pace" | "ask"
-const TABS: ReadonlyArray<InspectorTab<VoiceTab>> = [
-  { id: "voice", label: "Voice", icon: Mic },
-  { id: "pace", label: "Pace", icon: Gauge },
-  { id: "ask", label: "Ask the voice stage", icon: MessageSquare }
-]
-
-// The voice step's inspector: the take's numbers, your voices (samples are free), and a new take in another
-// voice, which costs about as many characters as this one.
-export function VoiceInspector({ voiceover, voiceId, stages, gate, onNewVoice, tab, onTab }: {
+// The Voice panel: the take's numbers and pace (the style's pace, read-only), your voices (samples are free), and a
+// new take in another voice, which costs about as many characters as this one.
+export function VoiceInspector({ voiceover, voiceId, stages, gate, onNewVoice }: {
   readonly voiceover: Voiceover
   readonly voiceId: string
   readonly stages: ReadonlyArray<StageRun>
   readonly gate: GateControls
   readonly onNewVoice: (voice: Voice) => void
-  readonly tab: VoiceTab
-  readonly onTab: (tab: VoiceTab) => void
 }) {
   const all = Option.getOrElse(AsyncResult.value(useAtomValue(voicesAtom)), (): ReadonlyArray<Voice> => [])
   // this take's voice first, so you see it without scrolling
@@ -60,16 +49,22 @@ export function VoiceInspector({ voiceover, voiceId, stages, gate, onNewVoice, t
 
   return (
     <>
-      <InspectorTabs tabs={TABS} open={tab} onOpen={onTab} />
-      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
-        {tab === "voice" ? (
-          <>
-            <Facts
-              rows={[
-                ["Length", `${voiceover.durationS.toFixed(1)}s`],
-                ["Pace", `${voiceover.pace.toFixed(2)} words/s`]
-              ]}
-            />
+      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto px-3.5 pt-1 pb-4">
+        <>
+            <InspectorBlock title="The take">
+              <Facts
+                rows={[
+                  ["Length", `${voiceover.durationS.toFixed(1)}s`],
+                  ["Pace", `${voiceover.pace.toFixed(2)} words/s`],
+                  ["Raw take", `${voiceover.rawPace.toFixed(2)} words/s`],
+                  ["Sped up", `×${voiceover.atempo}`]
+                ]}
+              />
+              <span className="text-xs text-fg-2">
+                The take is sped up or slowed to the style's pace without changing the voice's pitch. Change the pace in the style.
+              </span>
+              <Detail><span className="text-xs text-fg-2">Model {voiceover.model} · {voiceover.characters} characters</span></Detail>
+            </InspectorBlock>
             <InspectorBlock title="Voice">
               <div className="grid gap-px">
                 {voices.length === 0 ? <span className="text-xs text-fg-2">Your ElevenLabs voices appear here once a key is saved.</span> : null}
@@ -121,24 +116,7 @@ export function VoiceInspector({ voiceover, voiceId, stages, gate, onNewVoice, t
               </Button>
             )}
             <StepDetails stages={stages} names={["voice"]} />
-          </>
-        ) : tab === "pace" ? (
-          <InspectorBlock title="Pace">
-            <Facts
-              rows={[
-                ["Final pace", `${voiceover.pace.toFixed(2)} words/s`],
-                ["Raw take", `${voiceover.rawPace.toFixed(2)} words/s`],
-                ["Sped up", `×${voiceover.atempo}`]
-              ]}
-            />
-            <span className="text-xs text-fg-2">
-              The take is sped up or slowed to the style's pace without changing the voice's pitch.
-            </span>
-            <Detail><span className="text-xs text-fg-2">Model {voiceover.model} · {voiceover.characters} characters</span></Detail>
-          </InspectorBlock>
-        ) : (
-          <AskBox gate={gate} who="voice stage" placeholder="e.g. Make a new take; the second line sounds rushed." />
-        )}
+        </>
       </div>
     </>
   )

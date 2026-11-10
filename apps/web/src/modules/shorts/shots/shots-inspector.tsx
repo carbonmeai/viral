@@ -1,24 +1,15 @@
 import type { Preset, ShotPlan, StageRun } from "@viral/contracts"
 import { Button, IconButton } from "@viral/ui/primitives/button"
 import { Segmented } from "@viral/ui/primitives/segmented"
-import { Captions, ChevronLeft, ChevronRight, Image, MessageSquare } from "lucide-react"
-import { AskBox } from "../ask-box.tsx"
+import { ChevronLeft, ChevronRight, Image } from "lucide-react"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
-import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { Detail } from "../../system/detail.tsx"
 import { VideoDot } from "../../sets/video-badge.tsx"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { FramePicker, type PickedFrame, type PickerVideo } from "./frame-picker.tsx"
 import { changedShots, mmss, type ShotChange, type ShotDraft, shotWith } from "./shots-values.ts"
-
-export type ShotsTab = "shot" | "captions" | "ask"
-const TABS: ReadonlyArray<InspectorTab<ShotsTab>> = [
-  { id: "shot", label: "Shot", icon: Image },
-  { id: "captions", label: "Captions", icon: Captions },
-  { id: "ask", label: "Ask the agent", icon: MessageSquare }
-]
 
 const SPEEDS = { min: 0.5, max: 4, step: 0.25 }
 
@@ -72,14 +63,12 @@ export interface ShotsInspectorProps {
   readonly onSend: () => void
   readonly stages: ReadonlyArray<StageRun>
   readonly gate: GateControls
-  readonly tab: ShotsTab
-  readonly onTab: (tab: ShotsTab) => void
 }
 
-// The Shots step's inspector: the selected shot (its frame, words and note), its framing, crop and speed, a frame
-// picker, and your changes collected as one edit you send to the gate.
+// The selected shot in the Library panel (Shots step): its frame, words and note, its framing, crop and speed, a frame
+// picker, and your changes collected as one edit you send to the gate. The highlighted words are in Captions.
 export function ShotsInspector(props: ShotsInspectorProps) {
-  const { plan, draft, preset, selected, onSelect, onChange, frameOf, gate, tab, onTab } = props
+  const { plan, draft, preset, selected, onSelect, onChange, frameOf, gate } = props
   const named = useShortVideos()
   const shot = plan.shots[selected]
   if (shot === undefined) return null
@@ -93,30 +82,8 @@ export function ShotsInspector(props: ShotsInspectorProps) {
 
   return (
     <>
-      <InspectorTabs tabs={TABS} open={tab} onOpen={onTab} />
-      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
-        {tab === "ask" ? (
-          <AskBox gate={gate} who="shots agent" placeholder="e.g. Shot 7 should be the close-up of the Bittrex vial." />
-        ) : tab === "captions" ? (
-          <>
-            <InspectorBlock title="Captions">
-              <span className="text-sm text-fg-1">
-                {preset.config.captions.enabled
-                  ? `${preset.config.captions.mode === "chunk" ? `${preset.config.captions.maxWords} words at a time` : "One word at a time"}, ${preset.config.captions.case}`
-                  : "No captions: finish it in an editor from the .srt"}
-              </span>
-            </InspectorBlock>
-            <InspectorBlock title="Highlighted words" action={<span className="font-normal text-fg-3">{plan.highlights.length}</span>}>
-              <div className="flex flex-wrap gap-1.5">
-                {plan.highlights.map((h) => {
-                  const word = typeof h === "string" ? h : h.word
-                  return <span key={word} className="inline-flex h-[22px] items-center rounded-chip bg-ctl px-2 text-xs text-fg-1">{word}</span>
-                })}
-              </div>
-              <span className="text-xs text-fg-2">The shots agent picks these; ask it to change them.</span>
-            </InspectorBlock>
-          </>
-        ) : (
+      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto px-3.5 pt-1 pb-4">
+        {(
           <>
             <InspectorBlock
               title={`Shot ${selected + 1}`}

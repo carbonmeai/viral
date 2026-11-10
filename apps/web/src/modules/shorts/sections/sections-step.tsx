@@ -1,8 +1,9 @@
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Eye, LayoutGrid } from "lucide-react"
-import { NothingToInspect, NotYet, StyleChips } from "../step-parts.tsx"
+import { Panel } from "../panel.tsx"
+import { NothingToInspect, NotYet } from "../step-parts.tsx"
 import type { EditorState } from "../use-editor-state.ts"
-import { SectionsInspector } from "./sections-inspector.tsx"
+import { SECTIONS_VIEWS, SectionsInspector, type SectionsTab } from "./sections-inspector.tsx"
 import { SectionsStage, type SectionsView } from "./sections-stage.tsx"
 import { changeCount, proposalOf, type SectionsDraft } from "./sections-values.ts"
 
@@ -13,14 +14,13 @@ const selectSection = (e: EditorState, sections: SectionsDraft) => (next: number
   e.setSectionPlaying(false)
 }
 
-// The Sections step (cut-down shorts): the selected section playing (or the storyboard) on the stage; the sections,
-// the hook and adding a section in the inspector, with your changes collected as one edit.
+// The Sections step's player (cut-down shorts): the selected section playing, or the storyboard.
 export function SectionsStepStage({ e }: { readonly e: EditorState }) {
   const sections = e.sections
   if (sections === null || e.ws.cutSource === null) return <NotYet e={e} what="sections" />
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 px-3.5 py-2.5">
+      <div className="flex shrink-0 justify-center pb-1.5">
         <Segmented<SectionsView>
           label="Stage"
           value={e.sectionsView}
@@ -33,7 +33,6 @@ export function SectionsStepStage({ e }: { readonly e: EditorState }) {
             { value: "storyboard", label: <><LayoutGrid className="size-3.5" />Storyboard</> }
           ]}
         />
-        <StyleChips e={e} />
       </div>
       <SectionsStage
         sections={sections.sections}
@@ -55,10 +54,15 @@ export function SectionsStepStage({ e }: { readonly e: EditorState }) {
   )
 }
 
+export const sectionsNote = (e: EditorState) => e.sections === null ? null : `${e.sections.sections.length} sections`
+
+// The Sections panel: the selected section, the hook and the short's length, and adding a line from the transcript,
+// with your changes collected as one edit.
 export function SectionsStepPanel({ e }: { readonly e: EditorState }) {
   const sections = e.sections
-  if (sections === null || e.ws.cutSource === null) return <NothingToInspect />
+  if (sections === null || e.ws.cutSource === null) return <Panel title="Sections"><NothingToInspect /></Panel>
   return (
+    <Panel title="Sections" under={<Segmented<SectionsTab> label="Sections view" full value={e.sectionsTab} onChange={e.setSectionsTab} options={SECTIONS_VIEWS} />}>
     <SectionsInspector
       draft={sections}
       onDraft={(next) => {
@@ -82,15 +86,16 @@ export function SectionsStepPanel({ e }: { readonly e: EditorState }) {
         e.setSectionProblems([])
       }}
       onSend={() => {
-        void e.gate.edit(proposalOf(sections)).then((refused) => {
+        void e.gateFor("sections").edit(proposalOf(sections)).then((refused) => {
           e.setSectionProblems(refused)
           if (refused.length === 0) e.setSectionsDraft(null)
         })
       }}
       stages={e.stages}
-      gate={e.gate}
+      gate={e.gateFor("sections")}
       tab={e.sectionsTab}
       onTab={e.setSectionsTab}
     />
+    </Panel>
   )
 }

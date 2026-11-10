@@ -11,15 +11,17 @@ import { refusalText } from "./add-video-values.ts"
 import { removeSourceFromProject } from "./shorts-api.ts"
 import { nameOf, useShortVideos } from "./short-videos.tsx"
 
-// The short's videos, in the title bar: their colours and how many, and a menu to add a video (from the library, a
-// link or a file) or take one out. Every step can use any of them: real lines and shots, sections, the thumbnail's
+// The short's videos, in the editor's top bar: their colour dots and short name (or how many), and a menu to add a
+// video (from the library, a link or a file) or take one out; the ⋯ menu's "Videos…" opens it too (`open`). Every step can use any of them: real lines and shots, sections, the thumbnail's
 // pictures, each marked with its video's colour and short name. Taking one out is refused while a step's current
 // work uses it; the refusal names the steps.
-export function VideosMenu({ project, running, onChanged }: {
+export function VideosMenu({ project, running, onChanged, open, onOpenChange }: {
   readonly project: Project
   // a run is going now
   readonly running: boolean
   readonly onChanged: () => void
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
 }) {
   const videos = useShortVideos()
   const remove = useAtomSet(removeSourceFromProject, { mode: "promise" })
@@ -41,11 +43,13 @@ export function VideosMenu({ project, running, onChanged }: {
       <Menu
         label="This short's videos"
         align="start"
-        triggerClassName="no-drag h-7 gap-1.5 bg-ctl px-2 text-xs text-fg-1"
+        open={open}
+        onOpenChange={onOpenChange}
+        triggerClassName="no-drag h-7 shrink-0 gap-1.5 px-1.5 text-xs font-normal text-fg-2"
         trigger={
           <>
-            <span className="flex items-center gap-0.5">{project.sourceIds.map((id, i) => <VideoDot key={id} index={i} />)}</span>
-            {count === 1 ? "1 video" : `${count} videos`}
+            <span className="flex items-center gap-1">{project.sourceIds.slice(0, 5).map((id, i) => <VideoDot key={id} index={i} />)}</span>
+            <span className="max-[1500px]:hidden">{count === 1 ? nameOf(videos, 0) : `${count} videos`}</span>
           </>
         }
       >

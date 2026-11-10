@@ -1,27 +1,45 @@
+import { cn } from "@viral/ui/cn"
 import type { ReactNode } from "react"
 
-// The short's editor: one frame for every step. The bar holds the steps and the step's actions; below it the
-// stage (centre), the inspector (right, full height) and the timeline (under the stage). Changing step, line or
-// tab only swaps what's inside these regions; the frame never changes shape.
-export function EditorFrame({ bar, stage, inspector, timeline }: {
-  readonly bar: ReactNode
-  readonly stage: ReactNode
-  readonly inspector: ReactNode
+// The short's editor fills the window: the top bar, then the rail, the open panel and the player side by side over
+// the timeline, with the chat column on the right at full height. Changing step, panel or selection only swaps what's
+// inside these regions; the frame never changes shape. Below about 1100px the chat column becomes an overlay the top
+// bar opens (`sideOpen`).
+export function EditorFrame({ top, rail, panel, player, side, sideOpen, timeline }: {
+  readonly top: ReactNode
+  readonly rail: ReactNode
+  readonly panel: ReactNode
+  readonly player: ReactNode
+  readonly side: ReactNode
+  readonly sideOpen: boolean
   readonly timeline: ReactNode
 }) {
   return (
-    <>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2 shadow-[inset_0_-1px_0_var(--line)]">{bar}</div>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_332px] grid-rows-[minmax(0,1fr)_auto]">
-        <section className="flex min-h-0 min-w-0 flex-col bg-stage">{stage}</section>
-        <aside className="col-start-2 row-span-2 row-start-1 flex min-h-0 flex-col bg-win shadow-[inset_1px_0_0_var(--line)]">{inspector}</aside>
-        <div className="col-start-1 row-start-2 min-w-0 overflow-x-auto bg-bg px-3.5 pt-2 pb-3 shadow-[inset_0_1px_0_var(--line)]">{timeline}</div>
+    <div className="relative grid h-full min-h-0 grid-cols-[minmax(0,1fr)_352px] max-[1281px]:grid-cols-[minmax(0,1fr)_316px] max-[1100px]:grid-cols-[minmax(0,1fr)]">
+      <div className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)_auto] bg-bg">
+        {top}
+        <div className="grid min-h-0 grid-cols-[64px_316px_minmax(0,1fr)] max-[1281px]:grid-cols-[60px_284px_minmax(0,1fr)]">
+          {rail}
+          <section aria-label="Panel" className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-win shadow-[inset_-1px_0_0_var(--line)]">{panel}</section>
+          <section aria-label="Player" className="flex min-h-0 min-w-0 flex-col bg-stage">{player}</section>
+        </div>
+        <div className="max-h-[42vh] min-w-0 overflow-auto bg-bg px-3.5 pt-2 pb-3 shadow-[inset_0_1px_0_var(--line)]">{timeline}</div>
       </div>
-    </>
+      <aside
+        aria-label="Agent"
+        className={cn(
+          "flex min-h-0 min-w-0 flex-col bg-win shadow-[inset_1px_0_0_var(--line)]",
+          "max-[1100px]:absolute max-[1100px]:inset-y-0 max-[1100px]:right-0 max-[1100px]:z-30 max-[1100px]:w-[340px] max-[1100px]:shadow-pop",
+          !sideOpen && "max-[1100px]:hidden"
+        )}
+      >
+        {side}
+      </aside>
+    </div>
   )
 }
 
-// A titled block inside the inspector: a small heading (with an optional action on its right), then its content.
+// A titled block inside a panel: a small heading (with an optional action on its right), then its content.
 export function InspectorBlock({ title, action, children }: { readonly title: string; readonly action?: ReactNode; readonly children: ReactNode }) {
   return (
     <div className="grid gap-2">

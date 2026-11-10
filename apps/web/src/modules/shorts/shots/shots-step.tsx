@@ -1,22 +1,21 @@
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Eye, LayoutGrid } from "lucide-react"
-import { NothingToInspect, NotYet, StyleChips } from "../step-parts.tsx"
+import { NotYet } from "../step-parts.tsx"
 import type { EditorState } from "../use-editor-state.ts"
 import { ShotsInspector } from "./shots-inspector.tsx"
 import { ShotsStage, type ShotsView } from "./shots-stage.tsx"
 import { proposalOf } from "./shots-values.ts"
 
 // The selected shot, kept inside the plan.
-const selectedShot = (e: EditorState) => Math.min(e.shotK, (e.ws.shotPlan?.plan.shots.length ?? 1) - 1)
+export const selectedShot = (e: EditorState) => Math.min(e.shotK, (e.ws.shotPlan?.plan.shots.length ?? 1) - 1)
 
-// The Shots step: the selected shot as the short shows it (or the storyboard) on the stage; the shot's frame,
-// framing, crop and speed in the inspector, with your changes collected as one edit.
+// The Shots step's player: the selected shot as the short shows it, or every shot as a storyboard.
 export function ShotsStepStage({ e }: { readonly e: EditorState }) {
   const { ws } = e
   if (ws.shotPlan === null) return <NotYet e={e} what="shot plan" />
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 px-3.5 py-2.5">
+      <div className="flex shrink-0 justify-center pb-1.5">
         <Segmented<ShotsView>
           label="Stage"
           value={e.shotsView}
@@ -26,7 +25,6 @@ export function ShotsStepStage({ e }: { readonly e: EditorState }) {
             { value: "storyboard", label: <><LayoutGrid className="size-3.5" />Storyboard</> }
           ]}
         />
-        <StyleChips e={e} />
       </div>
       <ShotsStage
         plan={ws.shotPlan.plan}
@@ -48,10 +46,15 @@ export function ShotsStepStage({ e }: { readonly e: EditorState }) {
   )
 }
 
-export function ShotsStepPanel({ e }: { readonly e: EditorState }) {
+export const shotsNote = (e: EditorState) => e.ws.shotPlan === null ? null : `${e.ws.shotPlan.plan.shots.length} shots`
+
+// The selected shot in the Library panel: its frame, framing, crop and speed, the frame picker, and your changes
+// collected as one edit.
+export function ShotDetail({ e }: { readonly e: EditorState }) {
   const { ws } = e
-  if (ws.shotPlan === null) return <NothingToInspect />
+  if (ws.shotPlan === null) return null
   const plan = ws.shotPlan.plan
+  const gate = e.gateFor("shots")
   return (
     <ShotsInspector
       plan={plan}
@@ -76,15 +79,13 @@ export function ShotsStepPanel({ e }: { readonly e: EditorState }) {
         e.setShotProblems([])
       }}
       onSend={() => {
-        void e.gate.edit(proposalOf(plan, e.draft)).then((refused) => {
+        void gate.edit(proposalOf(plan, e.draft)).then((refused) => {
           e.setShotProblems(refused)
           if (refused.length === 0) e.setDraft(new Map())
         })
       }}
       stages={e.stages}
-      gate={e.gate}
-      tab={e.shotsTab}
-      onTab={e.setShotsTab}
+      gate={gate}
     />
   )
 }

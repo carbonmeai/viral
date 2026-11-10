@@ -4,22 +4,13 @@ import { Button } from "@viral/ui/primitives/button"
 import { Input } from "@viral/ui/primitives/input"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Image, MessageSquare } from "lucide-react"
-import { AskBox } from "../ask-box.tsx"
 import { ClipBadge } from "../clip-badge.tsx"
 import { clockOf } from "../editor-values.ts"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
-import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { framesAroundAtom, framesKey } from "../shorts-api.ts"
 import { StepDetails } from "../step-details.tsx"
 import { changedLines, momentsOf, type ThumbnailWords } from "./thumbnail-values.ts"
-
-export type ThumbnailTab = "thumbnail" | "ask"
-const TABS: ReadonlyArray<InspectorTab<ThumbnailTab>> = [
-  { id: "thumbnail", label: "Thumbnail", icon: Image },
-  { id: "ask", label: "Ask the thumbnail agent", icon: MessageSquare }
-]
 
 // The still of a video at one moment, small; in a short from several videos, with that video's colour and name.
 function Moment({ sourceId, name, t, source, videos, stillUrl }: {
@@ -46,9 +37,9 @@ function Moment({ sourceId, name, t, source, videos, stillUrl }: {
   )
 }
 
-// The thumbnail step's inspector: its words (edit them and send the edit, checked first), the moments it's made from
-// (each from its own video, in a short from several), and a note to the thumbnail agent.
-export function ThumbnailInspector({ config, sourceIds, stillUrl, words, onWords, problems, onRevert, onSend, stages, gate, tab, onTab }: {
+// The Thumbnail panel: its words (edit them and send the edit, checked first), the moments it's made from (each from
+// its own video, in a short from several) and its layout. Notes to the thumbnail agent go in the chat column.
+export function ThumbnailInspector({ config, sourceIds, stillUrl, words, onWords, problems, onRevert, onSend, stages, gate }: {
   readonly config: ThumbConfig
   // the short's videos, by position (the first first)
   readonly sourceIds: ReadonlyArray<SourceId>
@@ -61,18 +52,13 @@ export function ThumbnailInspector({ config, sourceIds, stillUrl, words, onWords
   readonly onSend: () => void
   readonly stages: ReadonlyArray<StageRun>
   readonly gate: GateControls
-  readonly tab: ThumbnailTab
-  readonly onTab: (tab: ThumbnailTab) => void
 }) {
   const editable = gate.request !== null
   const changes = changedLines(config, words)
   return (
     <>
-      <InspectorTabs tabs={TABS} open={tab} onOpen={onTab} />
-      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
-        {tab === "ask" ? (
-          <AskBox gate={gate} who="thumbnail agent" placeholder="e.g. Use a face where his eyes are open, and make the words a question." />
-        ) : (
+      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto px-3.5 pt-1 pb-4">
+        {(
           <>
             <InspectorBlock title="Words">
               <div className="grid gap-1.5">

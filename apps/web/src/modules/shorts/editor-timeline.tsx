@@ -88,8 +88,13 @@ export function EditorTimeline({ e }: { readonly e: EditorState }) {
         sourceOf: (k) => e.draft.get(k)?.source ?? ws.shotPlan?.plan.shots[k]?.source ?? 0,
         selected: open === "shots" ? e.shotK : null,
         onSelect: (k) => {
+          // a shot opens in the Library panel, at its frame picker and framing
           e.selectShot(k)
+          e.setLibraryTab("short")
+          e.setLibraryType("Frames")
+          e.setShotDetail(true)
           if (open !== "shots") onStep("shots")
+          else e.setPanel("library")
         }
       }}
     />

@@ -1,24 +1,25 @@
 import { serverUrl } from "../../../config/server-url.ts"
 import { homeFileUrl } from "../../../lib/media-url.ts"
-import { StageBar } from "../step-parts.tsx"
+import { Segmented } from "@viral/ui/primitives/segmented"
+import { Music } from "lucide-react"
+import { useDetailed } from "../../system/detail.tsx"
+import { Panel } from "../panel.tsx"
 import type { EditorState } from "../use-editor-state.ts"
 import { ArrangeInspector, ArrangeUnavailable } from "./music-arrange.tsx"
-import { MusicInspector } from "./music-inspector.tsx"
+import { MusicInspector, type MusicTab } from "./music-inspector.tsx"
 import { MusicStage } from "./music-stage.tsx"
 import { defaultDropWord, withBlock } from "./music-values.ts"
 
 // The short's song, when it has one.
 const trackOf = (e: EditorState) => e.tracks.find((t) => t.id === e.ws.project.musicTrackId) ?? null
 
-// The Music step (narrated shorts): the bed under the voice on the stage; the song, the drop word and (Detailed) the
-// arrangement in the inspector.
+// The Music step's player (narrated shorts): the bed under the voice, with the drop and the parts.
 export function MusicStepStage({ e }: { readonly e: EditorState }) {
   const { ws, fitted, arrange } = e
   const fitting = e.state === "running"
   const bed = fitted?.bed ?? null
   return (
     <>
-      <StageBar e={e} left={ws.project.musicTrackId === null ? "Voice only" : fitting ? "Fitting the song…" : bed === null ? "Not fitted" : `${bed.durationS.toFixed(1)}s of music under the voice`} />
       <MusicStage
         bed={arrange.heard?.bed ?? bed}
         bedUrl={arrange.heard !== null ? homeFileUrl(serverUrl, arrange.heard.media) : fitted === null ? null : homeFileUrl(serverUrl, fitted.media)}
@@ -44,13 +45,46 @@ export function MusicStepStage({ e }: { readonly e: EditorState }) {
   )
 }
 
+export const musicNote = (e: EditorState) => {
+  const bed = e.fitted?.bed ?? null
+  return e.ws.project.musicTrackId === null ? "Voice only" : e.state === "running" ? "Fitting the song…" : bed === null ? "Not fitted" : `${bed.durationS.toFixed(1)}s of music under the voice`
+}
+
+// The Music panel: the song and the drop word (Change song, Voice only), and in Detailed mode the arrangement. A
+// ranking has none: each entry plays its own sound.
 export function MusicStepPanel({ e }: { readonly e: EditorState }) {
+  const detailed = useDetailed()
   const { ws, fitted, arrange } = e
+  if (ws.project.format === "ranking") {
+    return (
+      <Panel title="Music">
+        <div className="grid justify-items-center gap-2 px-6 pt-8 text-center">
+          <span className="grid size-11 place-items-center rounded-[12px] bg-item shadow-[0_0_0_1px_var(--line)]"><Music className="size-4 text-fg-2" /></span>
+          <span className="font-medium">No music in rankings</span>
+          <span className="text-sm text-fg-2">Each entry plays its own sound, so the clips stay recognisable.</span>
+        </div>
+      </Panel>
+    )
+  }
   const track = trackOf(e)
   const words = ws.voiceover?.words ?? []
   const fitting = e.state === "running"
   const bed = fitted?.bed ?? null
+  const arranging = detailed && track !== null && bed !== null && bed.trackId === track.id && !fitting
+  const views = arranging ? (
+    <Segmented<MusicTab>
+      label="Music view"
+      full
+      value={e.musicTab}
+      onChange={(t) => {
+        e.setMusicTab(t)
+        e.setPickingWord(false)
+      }}
+      options={[{ value: "song", label: "Song and drop" }, { value: "arrange", label: "Arrange" }]}
+    />
+  ) : undefined
   return (
+    <Panel title="Music" {...(views === undefined ? {} : { under: views })}>
     <MusicInspector
       track={track}
       bed={bed}
@@ -66,10 +100,6 @@ export function MusicStepPanel({ e }: { readonly e: EditorState }) {
       onApply={(trackId, dropWord) => void e.applyMusic(trackId, dropWord)}
       stages={e.stages}
       tab={e.musicTab}
-      onTab={(t) => {
-        e.setMusicTab(t)
-        e.setPickingWord(false)
-      }}
       arrange={track === null || bed === null || bed.trackId !== track.id || fitting ? null
         : e.musicGrid === null || e.musicPlace === null ? <ArrangeUnavailable busy={arrange.busy !== null} onStart={arrange.resetToAutomatic} />
         : (
@@ -88,5 +118,6 @@ export function MusicStepPanel({ e }: { readonly e: EditorState }) {
           />
         )}
     />
+    </Panel>
   )
 }

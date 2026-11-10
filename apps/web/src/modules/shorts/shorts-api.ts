@@ -31,6 +31,8 @@ export const checkRankingEdit = ViralClient.mutation("CheckRankingEdit")
 export const stillAt = ViralClient.mutation("ListFramesAround")
 export const setProjectVoice = ViralClient.mutation("SetProjectVoice")
 export const setProjectBrief = ViralClient.mutation("SetProjectBrief")
+export const renameProject = ViralClient.mutation("RenameProject")
+export const setProjectPreset = ViralClient.mutation("SetProjectPreset")
 export const startShortRun = ViralClient.mutation("StartProjectRun")
 
 // The short's fitted music bed (null: voice only). Refreshed by the editor when assemble fits a new one.

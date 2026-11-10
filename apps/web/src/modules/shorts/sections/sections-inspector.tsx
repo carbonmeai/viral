@@ -4,13 +4,11 @@ import { Input } from "@viral/ui/primitives/input"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Select } from "@viral/ui/primitives/select"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, MessageSquare, Play, Plus, Scissors, Search, Trash2, Type } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Play, Plus, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
-import { AskBox } from "../ask-box.tsx"
 import { ClipBadge } from "../clip-badge.tsx"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
-import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { useClipPlayer } from "../use-clip-player.ts"
@@ -30,12 +28,12 @@ import {
   videoOfSection
 } from "./sections-values.ts"
 
-export type SectionsTab = "section" | "hook" | "add" | "ask"
-const TABS: ReadonlyArray<InspectorTab<SectionsTab>> = [
-  { id: "section", label: "Section", icon: Scissors },
-  { id: "hook", label: "Hook and length", icon: Type },
-  { id: "add", label: "Add from the transcript", icon: Search },
-  { id: "ask", label: "Ask the agent", icon: MessageSquare }
+export type SectionsTab = "section" | "hook" | "add"
+// The panel's views, side by side in a segmented row (notes to the agent go in the chat column)
+export const SECTIONS_VIEWS: ReadonlyArray<{ readonly value: SectionsTab; readonly label: string }> = [
+  { value: "section", label: "Section" },
+  { value: "hook", label: "Hook" },
+  { value: "add", label: "Add" }
 ]
 
 const BEAT_OPTIONS = (Object.keys(BEATS) as ReadonlyArray<CutBeat>).map((beat) => ({ value: beat, label: BEATS[beat].label }))
@@ -108,7 +106,7 @@ export interface SectionsInspectorProps {
 // edit, checked by the server before it goes to the gate. In a short from several videos each section shows its
 // video, its edges snap to that video's words, and a line can be found in any of them.
 export function SectionsInspector(props: SectionsInspectorProps) {
-  const { draft, onDraft, preset, cut, selected, onSelect, gate, tab, onTab } = props
+  const { draft, onDraft, preset, cut, selected, onSelect, gate, tab } = props
   const named = useShortVideos()
   const editable = gate.request !== null
   const sections = draft.sections
@@ -128,11 +126,8 @@ export function SectionsInspector(props: SectionsInspectorProps) {
 
   return (
     <>
-      <InspectorTabs tabs={TABS} open={tab} onOpen={onTab} />
       <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
-        {tab === "ask" ? (
-          <AskBox gate={gate} who="sections agent" placeholder="e.g. Open on “it literally is all the taste at the same time”, from its first word." />
-        ) : tab === "hook" ? (
+        {tab === "hook" ? (
           <HookTab {...props} />
         ) : tab === "add" ? (
           <AddTab {...props} />

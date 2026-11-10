@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import type { GateResponse, MusicTrack, MusicTrackId, RankingProposal, RunRequest, SectionsProposal, ShortWorkspace, ShotProposal, StageRun, ThumbConfig, Voice } from "@viral/contracts"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { serverUrl } from "../../config/server-url.ts"
 import { artifactFileUrl, artifactPathUrl } from "../../lib/media-url.ts"
 import { overviewAtom } from "../home/overview.ts"
@@ -10,16 +10,14 @@ import { tracksAtom, voicesAtom } from "../library/library-api.ts"
 import { useDetailed } from "../system/detail.tsx"
 import type { RunProgress } from "../videos/run-progress.ts"
 import { newerVideos } from "./add-video-values.ts"
-import { type EditorStepId, editorSteps, layoutTimeline, openingStep, shortTimeOf, stepOfRequest, stepStates, withStoredCosts } from "./editor-values.ts"
+import { type EditorStepId, editorSteps, layoutTimeline, openingStep, type PanelId, panelForStep, shortTimeOf, stepOfRequest, stepStates, withStoredCosts } from "./editor-values.ts"
 import type { GateControls } from "./gate.ts"
 import type { MusicTab } from "./music/music-inspector.tsx"
 import { blockLabel, gridOf, loopTicks, type PlaceContext, type PlacedBlock, placeBlocks, placedFrom } from "./music/music-values.ts"
 import { useArrangeDraft } from "./music/use-arrange-draft.ts"
-import type { PublishTab } from "./publish/publish-inspector.tsx"
 import { usePublish } from "./publish/use-publish.ts"
 import type { RankingTab } from "./ranking/ranking-inspector.tsx"
 import { draftOf as rankingDraftOf, planFrame, type RankingDraft } from "./ranking/ranking-values.ts"
-import type { RenderTab } from "./render/render-inspector.tsx"
 import type { ScriptTab } from "./script/script-inspector.tsx"
 import type { SectionsTab } from "./sections/sections-inspector.tsx"
 import type { SectionsView } from "./sections/sections-stage.tsx"
@@ -38,13 +36,11 @@ import {
   stillAt
 } from "./shorts-api.ts"
 import type { PickedFrame, PickerVideo } from "./shots/frame-picker.tsx"
-import type { ShotsTab } from "./shots/shots-inspector.tsx"
 import type { ShotsView } from "./shots/shots-stage.tsx"
 import { type ShotChange, shotSpans, timelineShots } from "./shots/shots-values.ts"
-import type { ThumbnailTab } from "./thumbnail/thumbnail-inspector.tsx"
 import type { ThumbnailWords } from "./thumbnail/thumbnail-values.ts"
 import type { TimelineMark, TimelineMusicParts } from "./timeline.tsx"
-import type { VoiceTab } from "./voice/voice-inspector.tsx"
+import type { LibraryTab, LibraryType } from "./library-panel-values.ts"
 
 // Everything the short's editor knows and can do, for every step at once: the steps and where they stand, the gate
 // controls, each step's selection and edit in progress, and the media the steps show. The step views read from it.
@@ -82,23 +78,33 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const voices = Option.getOrElse(AsyncResult.value(useAtomValue(voicesAtom)), (): ReadonlyArray<Voice> => [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [scriptTab, setScriptTab] = useState<ScriptTab>("rules")
-  const [voiceTab, setVoiceTab] = useState<VoiceTab>("voice")
+  // the panel beside the player: the open step's own, unless you picked another on the rail (kept until the step
+  // changes)
+  const [picked, setPicked] = useState<{ readonly step: EditorStepId; readonly panel: PanelId } | null>(null)
+  const panel: PanelId = picked !== null && picked.step === open ? picked.panel : panelForStep(open)
+  const setPanel = (next: PanelId) => setPicked({ step: open, panel: next })
+  // the Library panel: which tab and type of item, and the selected shot's own view (Shots step)
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("short")
+  const [libraryType, setLibraryType] = useState<LibraryType>("All")
+  const [shotDetail, setShotDetail] = useState(false)
+  // the chat column's message box, focused by "Ask in chat" and "Ask for changes"
+  const composer = useRef<HTMLTextAreaElement | null>(null)
+  const focusComposer = () => setTimeout(() => composer.current?.focus(), 80)
+  // "Edit it myself": a new number starts editing in the step's panel (the script's selected line)
+  const [editSignal, setEditSignal] = useState(0)
+  const [scriptTab, setScriptTab] = useState<ScriptTab>("lines")
   const [beat, setBeat] = useState<number | null>(null)
   const [voTime, setVoTime] = useState<number | null>(null)
   // the Shots step: the selected shot, the stage's view, the frame picker, and your edit in progress
   const [shotK, setShotK] = useState(0)
   const [shotsView, setShotsView] = useState<ShotsView>("preview")
-  const [shotsTab, setShotsTab] = useState<ShotsTab>("shot")
   const [picking, setPicking] = useState(false)
   const [candidate, setCandidate] = useState<PickedFrame | null>(null)
   const [draft, setDraft] = useState<ReadonlyMap<number, ShotChange>>(new Map())
   const [shotProblems, setShotProblems] = useState<ReadonlyArray<string>>([])
   // Render, Publish and Thumbnail: the inspector's tab, where the player is, and the thumbnail's words as you edit
   // them
-  const [renderTab, setRenderTab] = useState<RenderTab>("check")
-  const [publishTab, setPublishTab] = useState<PublishTab>("post")
-  const [thumbTab, setThumbTab] = useState<ThumbnailTab>("thumbnail")
+  const [renderCheck, setRenderCheck] = useState(false)
   const [playTime, setPlayTime] = useState<number | null>(null)
   const [thumbWords, setThumbWords] = useState<ThumbnailWords | null>(null)
   const [thumbProblems, setThumbProblems] = useState<ReadonlyArray<string>>([])
@@ -138,9 +144,8 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const assembled = stages.filter((s) => s.stage === "assemble").map((s) => `${s.id}:${s.status}`).join(",")
   useEffect(() => refreshBed(), [assembled, refreshBed])
 
-  const request = waitingOn === open ? pending : null
-  const answer = (response: GateResponse) => {
-    if (request === null) return Promise.resolve()
+  // answers a gate; the editor reloads to follow the run
+  const answerRequest = (request: RunRequest, response: GateResponse) => {
     setBusy(true)
     setError(null)
     return respond({ payload: { requestId: request.id, response } })
@@ -148,29 +153,52 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
       .catch(() => setError("Couldn't send that. Is the server running?"))
       .finally(() => setBusy(false))
   }
-  const gate: GateControls = {
-    request,
-    busy,
-    error,
-    approve: () => void answer({ _tag: "Approve" }),
-    ask: (note) => void answer({ _tag: "Reject", note }),
-    sendBack: (note, to) => void answer({ _tag: "Reject", note, to }),
-    edit: (artifact) => {
-      if (request === null) return Promise.resolve(["This step isn't waiting for you."])
-      // a script or shots edit is checked first, so a problem is shown instead of failing the run
-      const checked = open === "script" && ws.script !== null
-        ? check({ payload: { projectId: ws.project.id, script: artifact as typeof ws.script.script } }).then((r) => r.problems)
-        : open === "shots"
-        ? checkShots({ payload: { projectId: ws.project.id, proposal: artifact as ShotProposal } }).then((r) => r.problems)
-        : open === "sections"
-        ? checkSections({ payload: { projectId: ws.project.id, proposal: artifact as SectionsProposal } }).then((r) => r.problems)
-        : open === "moments"
-        ? checkRanking({ payload: { projectId: ws.project.id, proposal: artifact as RankingProposal } }).then((r) => r.problems)
-        : open === "thumbnail"
-        ? checkThumbnail({ payload: { projectId: ws.project.id, config: artifact as ThumbConfig } }).then((r) => r.problems)
-        : Promise.resolve([] as ReadonlyArray<string>)
-      return checked.then((problems) => problems.length > 0 ? problems : answer({ _tag: "Edit", artifact }).then(() => []))
+  // what a step can do about the gate waiting on it (nothing to answer when it isn't the one waiting)
+  const gateFor = (stepId: EditorStepId): GateControls => {
+    const request = waitingOn === stepId ? pending : null
+    const answer = (response: GateResponse) => request === null ? Promise.resolve() : answerRequest(request, response)
+    return {
+      request,
+      busy,
+      error,
+      approve: () => void answer({ _tag: "Approve" }),
+      ask: (note) => void answer({ _tag: "Reject", note }),
+      sendBack: (note, to) => void answer({ _tag: "Reject", note, to }),
+      edit: (artifact) => {
+        if (request === null) return Promise.resolve(["This step isn't waiting for you."])
+        // an edit is checked first where the step can, so a problem is shown instead of failing the run
+        const checked = stepId === "script" && ws.script !== null
+          ? check({ payload: { projectId: ws.project.id, script: artifact as typeof ws.script.script } }).then((r) => r.problems)
+          : stepId === "shots"
+          ? checkShots({ payload: { projectId: ws.project.id, proposal: artifact as ShotProposal } }).then((r) => r.problems)
+          : stepId === "sections"
+          ? checkSections({ payload: { projectId: ws.project.id, proposal: artifact as SectionsProposal } }).then((r) => r.problems)
+          : stepId === "moments"
+          ? checkRanking({ payload: { projectId: ws.project.id, proposal: artifact as RankingProposal } }).then((r) => r.problems)
+          : stepId === "thumbnail"
+          ? checkThumbnail({ payload: { projectId: ws.project.id, config: artifact as ThumbConfig } }).then((r) => r.problems)
+          : Promise.resolve([] as ReadonlyArray<string>)
+        return checked.then((problems) => problems.length > 0 ? problems : answer({ _tag: "Edit", artifact }).then(() => []))
+      }
     }
+  }
+  const gate = gateFor(open)
+  // the top bar's Approve: answers whichever step is waiting, open or not
+  const approvePending = () => {
+    if (pending !== null) void answerRequest(pending, { _tag: "Approve" })
+  }
+  // "Edit it myself" on the waiting step: open it and its panel, and start editing where the panel can
+  const editItMyself = () => {
+    if (waitingOn === null) return
+    onStep(waitingOn)
+    setPicked(null)
+    if (waitingOn === "script") setScriptTab("lines")
+    if (waitingOn === "shots") {
+      setLibraryTab("short")
+      setLibraryType("Frames")
+      setShotDetail(true)
+    }
+    setEditSignal((n) => n + 1)
   }
 
   const onTime = useCallback((t: number | null) => setVoTime(t), [])
@@ -287,9 +315,11 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const state = states.get(open) ?? "next"
 
   const newVoice = (voice: Voice) => {
+    const voiceGate = waitingOn === "voice" ? pending : null
+    if (voiceGate === null) return
     setBusy(true)
     setVoice({ payload: { id: ws.project.id, voiceId: voice.voiceId } })
-      .then(() => answer({ _tag: "Reject", note: `Make a new take with the voice ${voice.name.split(" - ")[0]}.` }))
+      .then(() => answerRequest(voiceGate, { _tag: "Reject", note: `Make a new take with the voice ${voice.name.split(" - ")[0]}.` }))
       .catch(() => setError("Couldn't change the voice."))
       .finally(() => setBusy(false))
   }
@@ -401,6 +431,22 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     error,
     setError,
     gate,
+    gateFor,
+    approvePending,
+    editItMyself,
+    editSignal,
+    // starts editing in the open panel (its own Edit button)
+    startEdit: () => setEditSignal((n) => n + 1),
+    panel,
+    setPanel,
+    libraryTab,
+    setLibraryTab,
+    libraryType,
+    setLibraryType,
+    shotDetail,
+    setShotDetail,
+    composer,
+    focusComposer,
     projectOwner,
     voices,
     voiceName,
@@ -412,8 +458,6 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     // script and voice
     scriptTab,
     setScriptTab,
-    voiceTab,
-    setVoiceTab,
     beat,
     setBeat,
     voTime,
@@ -425,8 +469,6 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     selectShot,
     shotsView,
     setShotsView,
-    shotsTab,
-    setShotsTab,
     picking,
     setPicking,
     candidate,
@@ -439,12 +481,8 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     realFrame,
     shotBlocks,
     // render, publish, thumbnail
-    renderTab,
-    setRenderTab,
-    publishTab,
-    setPublishTab,
-    thumbTab,
-    setThumbTab,
+    renderCheck,
+    setRenderCheck,
     playTime,
     setPlayTime,
     thumbWords,

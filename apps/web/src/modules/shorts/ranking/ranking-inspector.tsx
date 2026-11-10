@@ -5,14 +5,12 @@ import { Button, IconButton } from "@viral/ui/primitives/button"
 import { Input } from "@viral/ui/primitives/input"
 import { Menu, MenuItem } from "@viral/ui/primitives/menu"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, ListOrdered, MessageSquare, Shuffle, Trash2, Trophy } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, Shuffle, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Detail } from "../../system/detail.tsx"
-import { AskBox } from "../ask-box.tsx"
 import { ClipBadge } from "../clip-badge.tsx"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
-import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { FramePicker, type PickedFrame, type PickerVideo } from "../shots/frame-picker.tsx"
 import { StepDetails } from "../step-details.tsx"
@@ -35,11 +33,11 @@ import {
   wordsIn
 } from "./ranking-values.ts"
 
-export type RankingTab = "ranks" | "order" | "ask"
-const TABS: ReadonlyArray<InspectorTab<RankingTab>> = [
-  { id: "ranks", label: "The ranks", icon: Trophy },
-  { id: "order", label: "Title and play order", icon: ListOrdered },
-  { id: "ask", label: "Ask the agent", icon: MessageSquare }
+export type RankingTab = "ranks" | "order"
+// The panel's views, side by side in a segmented row (notes to the agent go in the chat column)
+export const RANKING_VIEWS: ReadonlyArray<{ readonly value: RankingTab; readonly label: string }> = [
+  { value: "ranks", label: "The ranks" },
+  { value: "order", label: "Title and order" }
 ]
 
 export interface RankingInspectorProps {
@@ -71,14 +69,11 @@ export interface RankingInspectorProps {
 // change snapped to whole sentences by the server), the title and play order, and asking the agent. Changes collect
 // as one edit, checked by the server before it goes to the gate.
 export function RankingInspector(props: RankingInspectorProps) {
-  const { draft, gate, tab, onTab } = props
+  const { draft, gate, tab } = props
   return (
     <>
-      <InspectorTabs tabs={TABS} open={tab} onOpen={onTab} />
       <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
-        {tab === "ask" ? (
-          <AskBox gate={gate} who="moments agent" placeholder="e.g. #3's after shows the cat before its shave; use the fluffy cat at the end." />
-        ) : tab === "order" ? (
+        {tab === "order" ? (
           <OrderTab {...props} />
         ) : draft.entries.length === 0 ? (
           <span className="text-sm text-fg-2">There are no entries.</span>

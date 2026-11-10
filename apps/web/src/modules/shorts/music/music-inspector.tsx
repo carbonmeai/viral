@@ -1,30 +1,25 @@
 import type { MusicBed, MusicTrack, MusicTrackId, StageRun, TranscriptWord } from "@viral/contracts"
 import { cn } from "@viral/ui/cn"
 import { Button, IconButton } from "@viral/ui/primitives/button"
-import { Crosshair, Music, Pause, Play, Rows3, Shuffle } from "lucide-react"
+import { Pause, Play, Shuffle } from "lucide-react"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Detail, useDetailed } from "../../system/detail.tsx"
 import { clockOf } from "../editor-values.ts"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
-import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { AddSong } from "./music-stage.tsx"
 import { fittable, partName, rightsName, songSpans } from "./music-values.ts"
 import { MusicWaveform } from "./music-waveform.tsx"
 
-export type MusicTab = "song" | "drop" | "arrange"
-const TABS: ReadonlyArray<InspectorTab<MusicTab>> = [
-  { id: "song", label: "Song", icon: Music },
-  { id: "drop", label: "Drop word", icon: Crosshair },
-  { id: "arrange", label: "Arrange", icon: Rows3 }
-]
+// The Music panel's views: the song and its drop word, or (Detailed, once a song is fitted) the arrangement
+export type MusicTab = "song" | "arrange"
 
 // What a change costs and does, said before it's applied.
 const REFIT_HELP = "The short is laid out and rendered again with it. Nothing is regenerated, so it costs nothing."
 
-// The music step's inspector: the short's song (tempo, rights, which part of it plays) with Change song, and the
-// word of the narration the drop lands on. Applying a change fits a new bed and re-runs the short from assemble.
-// In Detailed mode, `arrange` (the arrangement editor, once a song is fitted) is a third tab.
+// The Music panel: the short's song (tempo, rights, which part of it plays) with Change song, and the word of the
+// narration the drop lands on. Applying a change fits a new bed and re-runs the short from assemble. In Detailed mode,
+// `arrange` (the arrangement editor, once a song is fitted) is the panel's second view.
 export function MusicInspector({
   track,
   bed,
@@ -40,7 +35,6 @@ export function MusicInspector({
   onApply,
   stages,
   tab: openTab,
-  onTab,
   arrange
 }: {
   readonly track: MusicTrack | null
@@ -61,27 +55,15 @@ export function MusicInspector({
   readonly onApply: (trackId: MusicTrackId | null, dropWord: number | null | undefined) => void
   readonly stages: ReadonlyArray<StageRun>
   readonly tab: MusicTab
-  readonly onTab: (tab: MusicTab) => void
   readonly arrange: ReactNode
 }) {
   const detailed = useDetailed()
-  const arranging = detailed && arrange !== null
-  const tabs = arranging ? TABS : TABS.filter((t) => t.id !== "arrange")
-  if (openTab === "arrange" && arranging) {
-    return (
-      <>
-        <InspectorTabs tabs={tabs} open={openTab} onOpen={onTab} />
-        {arrange}
-      </>
-    )
-  }
-  const tab = openTab === "arrange" ? "song" : openTab
+  const [voiceOnly, setVoiceOnly] = useState(false)
+  if (openTab === "arrange" && detailed && arrange !== null) return <>{arrange}</>
   return (
     <>
-      <InspectorTabs tabs={tabs} open={tab} onOpen={onTab} />
-      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
-        {tab === "song" ? (
-          picking ? (
+      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto px-3.5 pt-1 pb-4">
+        {picking ? (
             <SongPicker
               current={track?.id ?? null}
               tracks={tracks}
@@ -139,9 +121,20 @@ export function MusicInspector({
               )}
               {error === null ? null : <span className="text-xs text-danger">{error}</span>}
             </>
-          )
+          )}
+        {picking || track === null ? null : (
+          <DropPicker bed={bed} words={words} defaultWord={defaultWord} busy={busy} running={running} error={error} onApply={(w) => onApply(track.id, w)} />
+        )}
+        {picking || track === null ? null : voiceOnly ? (
+          <InspectorBlock title="Voice only">
+            <span className="text-xs text-fg-2">{REFIT_HELP}{running ? " The run going now is stopped first." : ""}</span>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setVoiceOnly(false)}>Cancel</Button>
+              <Button variant="primary" disabled={busy} onClick={() => onApply(null, undefined)}>Use voice only</Button>
+            </div>
+          </InspectorBlock>
         ) : (
-          <DropPicker bed={track === null ? null : bed} words={words} defaultWord={defaultWord} busy={busy} running={running} error={error} onApply={(w) => onApply(track?.id ?? null, w)} />
+          <Button variant="ghost" className="justify-self-start" disabled={busy} onClick={() => setVoiceOnly(true)}>Voice only, no song</Button>
         )}
         <StepDetails stages={stages} names={["assemble"]} />
       </div>

@@ -1,7 +1,26 @@
 import type { Script, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { editorSteps, layoutTimeline, narratedWords, narrationEnds, openingStep, realLines, shortTimeOf, sourceStretches, spendText, stepSpend, stepStates, withStoredCosts } from "./editor-values.ts"
+import {
+  captionCues,
+  editorSteps,
+  layoutTimeline,
+  narratedWords,
+  narrationEnds,
+  openingStep,
+  panelForStep,
+  primaryButtons,
+  railDot,
+  railFor,
+  realLines,
+  shortTimeOf,
+  sourceStretches,
+  spendText,
+  stepSpend,
+  stepStates,
+  whatToCheck,
+  withStoredCosts
+} from "./editor-values.ts"
 
 const stage = (name: StageRun["stage"], status: StageRun["status"], attempt = 1) => ({ stage: name, status, attempt }) as StageRun
 
@@ -93,4 +112,55 @@ test("an attempt waiting at its gate keeps the cost the workspace load saw", () 
   assert.equal(merged[1]?.status, "running")
   // a finished live row wins
   assert.equal(withStoredCosts([spent("t2", "thumbnail", 2, 0.45)], stored)[0]?.costUsd, 0.45)
+})
+
+test("the rail follows the format: a ranking has ranks and titles, a cut-down short its sections and no voice or music", () => {
+  assert.deepEqual(railFor("narrated").map((r) => r.label), ["Library", "Script", "Captions", "Voice", "Music", "Style"])
+  assert.deepEqual(railFor("ranking").map((r) => r.label), ["Library", "Ranks", "Titles", "Music", "Style"])
+  assert.deepEqual(railFor("cut-down").map((r) => r.label), ["Library", "Sections", "Captions", "Style"])
+})
+
+test("each step opens the panel that holds its work; the rail's dot marks where the waiting step lives", () => {
+  assert.equal(panelForStep("script"), "script")
+  assert.equal(panelForStep("shots"), "library")
+  assert.equal(panelForStep("render"), "library")
+  assert.equal(panelForStep("publish"), "post")
+  assert.equal(panelForStep("thumbnail"), "thumbnail")
+  assert.equal(panelForStep("moments"), "ranks")
+  assert.equal(panelForStep("sections"), "sections")
+  // every step's panel is either on its format's rail or one of the two a step opens on its own
+  for (const format of ["narrated", "cut-down", "ranking"] as const) {
+    for (const step of editorSteps(format)) {
+      const panel = panelForStep(step.id)
+      assert.ok(panel === "post" || panel === "thumbnail" || railFor(format).some((r) => r.id === panel), `${format} ${step.id}`)
+    }
+  }
+  assert.equal(railDot("narrated", "voice", "script"), "voice")
+  assert.equal(railDot("narrated", "voice", "voice"), null, "no dot on the panel that's open")
+  assert.equal(railDot("narrated", "thumbnail", "script"), null, "Thumbnail has no rail item")
+  assert.equal(railDot("narrated", null, "script"), null)
+  assert.equal(whatToCheck("render"), "Watch the render")
+})
+
+test("the top bar's primary: the waiting step's Approve, else Publish; Publish needs a render and says why", () => {
+  assert.deepEqual(primaryButtons({ waiting: "Script", rendered: false, outOfDate: false }), {
+    approve: "Approve script",
+    publish: { label: "Publish", enabled: false, primary: false, reason: "Publish opens once the short is rendered." }
+  })
+  assert.deepEqual(primaryButtons({ waiting: null, rendered: true, outOfDate: false }).publish, { label: "Publish", enabled: true, primary: true, reason: null })
+  assert.equal(primaryButtons({ waiting: null, rendered: true, outOfDate: true }).publish.label, "Publish again")
+  assert.equal(primaryButtons({ waiting: "Thumbnail", rendered: true, outOfDate: false }).publish.primary, false)
+  assert.equal(primaryButtons({ waiting: null, rendered: false, outOfDate: true }).publish.label, "Publish", "nothing to publish again before a render")
+})
+
+test("captions as they'll be shown: chunks of the style's size, ending at a sentence, in its case", () => {
+  const words = ["What", "does", "it", "take?", "One", "candy", "engineer", "wanted"].map((w, i) => ({ w, s: i, e: i + 0.5 }))
+  const cues = captionCues(words, { mode: "chunk", maxWords: 3, case: "upper" }, (t) => t + 10)
+  assert.deepEqual(cues, [
+    { at: 10, text: "WHAT DOES IT" },
+    { at: 13, text: "TAKE?" },
+    { at: 14, text: "ONE CANDY ENGINEER" },
+    { at: 17, text: "WANTED" }
+  ])
+  assert.equal(captionCues(words, { mode: "word", maxWords: 3, case: "as-spoken" }, (t) => t).length, 8)
 })

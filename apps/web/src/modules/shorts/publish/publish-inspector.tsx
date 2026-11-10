@@ -6,22 +6,15 @@ import { Menu, MenuItem } from "@viral/ui/primitives/menu"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
 import { Textarea } from "@viral/ui/primitives/textarea"
 import { cn } from "@viral/ui/cn"
-import { FileText, FolderOpen, Image, Pencil, RefreshCw, RotateCcw, Type, Video } from "lucide-react"
+import { FileText, FolderOpen, Image, Pencil, RefreshCw, RotateCcw, Video } from "lucide-react"
 import { type KeyboardEvent, type ReactNode, useState } from "react"
 import { desktop } from "../../../config/server-url.ts"
 import { Detail } from "../../system/detail.tsx"
 import { InspectorBlock } from "../editor-frame.tsx"
-import { type InspectorTab, InspectorTabs } from "../inspector-tabs.tsx"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { parseHashtags, republishLine, rightsNotes, TITLE_CHARS, TITLE_LIMIT, titleChoices } from "./publish-values.ts"
 import type { Publish } from "./use-publish.ts"
-
-export type PublishTab = "post" | "files"
-const TABS: ReadonlyArray<InspectorTab<PublishTab>> = [
-  { id: "post", label: "Post text", icon: Type },
-  { id: "files", label: "Files", icon: FolderOpen }
-]
 
 export interface PublishedFiles {
   readonly video: string | null
@@ -137,10 +130,10 @@ function EditBox({ editing, draft, onDraft, problems, busy, onSave, onCancel }: 
   )
 }
 
-// The publish step's inspector: what publishing again would update, the title to post with (the agent's pick, an
+// The Post panel (Publish step): what publishing again would update, the title to post with (the agent's pick, an
 // alternate or your own; the count shows when a phone would cut it off), the description, hashtags and credit, a
 // reminder when the footage's rights aren't confirmed, and the files. Your choice and edits are saved on the short.
-export function PublishInspector({ metadata, slug, sources, files, publish, stages, tab, onTab }: {
+export function PublishInspector({ metadata, slug, sources, files, publish, stages }: {
   readonly metadata: PublishedShort
   readonly slug: string
   // the short's videos, V1 first
@@ -148,8 +141,6 @@ export function PublishInspector({ metadata, slug, sources, files, publish, stag
   readonly files: PublishedFiles
   readonly publish: Publish
   readonly stages: ReadonlyArray<StageRun>
-  readonly tab: PublishTab
-  readonly onTab: (tab: PublishTab) => void
 }) {
   const [editing, setEditing] = useState<Editing | null>(null)
   const [draft, setDraft] = useState("")
@@ -192,8 +183,26 @@ export function PublishInspector({ metadata, slug, sources, files, publish, stag
     </Menu>
   )
 
+  const filesBlock = (
+    <InspectorBlock
+      title="Files"
+      action={desktop === undefined ? undefined : (
+        <Button variant="ghost" onClick={() => void desktop?.showInFinder(files.folder)}><FolderOpen />Show in Finder</Button>
+      )}
+    >
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
+        <FileRow icon={Video} name="Video" ext=".mp4" url={files.video} />
+        <FileRow icon={FileText} name="Captions" ext=".srt" url={files.captions} />
+        <FileRow icon={FileText} name="Post text" ext=".md" url={files.notes} />
+        <FileRow icon={Image} name="Thumbnail" ext=".jpg" url={files.thumbnail} />
+      </div>
+      <span className="text-xs break-words text-fg-2">
+        {files.thumbnail === null ? "The thumbnail joins them once you approve it." : "Everything you need to post, side by side"}, named {slug}, in {files.folder}.
+      </span>
+    </InspectorBlock>
+  )
   let body: ReactNode
-  if (tab === "post" && status === null) {
+  if (status === null) {
     body = (
       <>
         <Skeleton className="h-24" />
@@ -201,7 +210,7 @@ export function PublishInspector({ metadata, slug, sources, files, publish, stag
         <Skeleton className="h-10" />
       </>
     )
-  } else if (tab === "post" && status !== null) {
+  } else {
     const post = status.post
     const choices = titleChoices(metadata, post.title)
     body = (
@@ -250,36 +259,10 @@ export function PublishInspector({ metadata, slug, sources, files, publish, stag
           {status.credit !== null && notes.noChannel !== null ? <span className="text-xs text-fg-2">{notes.noChannel}</span> : null}
         </InspectorBlock>
         {notes.unconfirmed === null ? null : <span className="text-xs text-wait">{notes.unconfirmed}</span>}
+        {filesBlock}
         <StepDetails stages={stages} names={["metadata"]} />
       </>
     )
-  } else {
-    body = (
-      <>
-        {status === null ? null : <Republish status={status} publish={publish} />}
-        <InspectorBlock
-          title="Files"
-          action={desktop === undefined ? undefined : (
-            <Button variant="ghost" onClick={() => void desktop?.showInFinder(files.folder)}><FolderOpen />Show in Finder</Button>
-          )}
-        >
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
-            <FileRow icon={Video} name="Video" ext=".mp4" url={files.video} />
-            <FileRow icon={FileText} name="Captions" ext=".srt" url={files.captions} />
-            <FileRow icon={FileText} name="Post text" ext=".md" url={files.notes} />
-            <FileRow icon={Image} name="Thumbnail" ext=".jpg" url={files.thumbnail} />
-          </div>
-          <span className="text-xs break-words text-fg-2">
-            {files.thumbnail === null ? "The thumbnail joins them once you approve it." : "Everything you need to post, side by side"}, named {slug}, in {files.folder}.
-          </span>
-        </InspectorBlock>
-      </>
-    )
   }
-  return (
-    <>
-      <InspectorTabs tabs={TABS} open={tab} onOpen={onTab} />
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-5 overflow-auto p-4">{body}</div>
-    </>
-  )
+  return <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-5 overflow-auto px-3.5 pt-1 pb-4">{body}</div>
 }

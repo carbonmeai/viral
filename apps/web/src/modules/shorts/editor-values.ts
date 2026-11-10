@@ -266,3 +266,124 @@ export const spendText = (spend: StepSpend) =>
   spend.costUsd <= 0 ? null : spend.tries.length > 1
     ? `${usd(spend.costUsd)} · ${spend.tries.length} tries (${spend.tries.map(usd).join(", ")})`
     : usd(spend.costUsd)
+
+// ---- The editor's frame: the rail, which panel a step opens, and the top bar's buttons ----
+
+// The panels the rail opens, plus the two a step opens without a rail item of its own (Publish → Post,
+// Thumbnail → its panel).
+export type PanelId = "library" | "script" | "ranks" | "sections" | "captions" | "voice" | "music" | "style" | "post" | "thumbnail"
+
+export interface RailItem {
+  readonly id: PanelId
+  readonly label: string
+}
+
+// The rail, by format: a narrated short has its script, voice and music; a ranking its ranks and titles (and the
+// Music panel, which says why a ranking has none); a cut-down short its sections. Captions are a ranking's Titles.
+export const railFor = (format: ProjectFormat): ReadonlyArray<RailItem> =>
+  format === "ranking"
+    ? [{ id: "library", label: "Library" }, { id: "ranks", label: "Ranks" }, { id: "captions", label: "Titles" }, { id: "music", label: "Music" }, { id: "style", label: "Style" }]
+    : format === "cut-down"
+    ? [{ id: "library", label: "Library" }, { id: "sections", label: "Sections" }, { id: "captions", label: "Captions" }, { id: "style", label: "Style" }]
+    : [
+      { id: "library", label: "Library" },
+      { id: "script", label: "Script" },
+      { id: "captions", label: "Captions" },
+      { id: "voice", label: "Voice" },
+      { id: "music", label: "Music" },
+      { id: "style", label: "Style" }
+    ]
+
+// The panel that holds a step's work: Shots and Render live in the Library (its frames, this short's files).
+const PANEL_OF_STEP: Record<EditorStepId, PanelId> = {
+  script: "script",
+  sections: "sections",
+  moments: "ranks",
+  voice: "voice",
+  shots: "library",
+  music: "music",
+  render: "library",
+  publish: "post",
+  thumbnail: "thumbnail"
+}
+export const panelForStep = (step: EditorStepId): PanelId => PANEL_OF_STEP[step]
+
+// The rail item that gets a dot: where the step waiting for you lives, unless that panel is open already.
+export const railDot = (format: ProjectFormat, waiting: EditorStepId | null, panel: PanelId): PanelId | null => {
+  if (waiting === null) return null
+  const id = panelForStep(waiting)
+  return id !== panel && railFor(format).some((r) => r.id === id) ? id : null
+}
+
+// What the waiting bar above the player asks you to check, per step.
+const CHECK: Record<EditorStepId, string> = {
+  script: "The script is ready to check",
+  sections: "Check the sections",
+  moments: "Check the ranking",
+  voice: "Listen to the voice take",
+  shots: "Check the shots",
+  music: "Check where the drop lands",
+  render: "Watch the render",
+  publish: "Pick the title and post text",
+  thumbnail: "Check the thumbnail"
+}
+export const whatToCheck = (step: EditorStepId) => CHECK[step]
+
+export interface PrimaryButtons {
+  // the waiting step's Approve ("Approve script"), the primary while a step waits
+  readonly approve: string | null
+  readonly publish: {
+    readonly label: "Publish" | "Publish again"
+    readonly enabled: boolean
+    // the lemon primary: only when nothing waits
+    readonly primary: boolean
+    // why it can't be used yet
+    readonly reason: string | null
+  }
+}
+
+// The top bar's buttons: while a step waits, its Approve is the primary and Publish sits next to it; Publish needs a
+// render first (it says why until then), and reads "Publish again" when the published files are out of date.
+export const primaryButtons = ({ waiting, rendered, outOfDate }: {
+  // the waiting step's name, or null
+  readonly waiting: string | null
+  readonly rendered: boolean
+  readonly outOfDate: boolean
+}): PrimaryButtons => ({
+  approve: waiting === null ? null : `Approve ${waiting.toLowerCase()}`,
+  publish: {
+    label: rendered && outOfDate ? "Publish again" : "Publish",
+    enabled: rendered,
+    primary: waiting === null,
+    reason: rendered ? null : "Publish opens once the short is rendered."
+  }
+})
+
+export interface CaptionCue {
+  readonly at: number
+  readonly text: string
+}
+
+// The narration's captions, as they'll be shown: one word at a time, or up to `maxWords` words a cue (a cue also ends
+// at a sentence's end), in the style's case. `timeOf` puts a voiceover second on the short's own clock.
+export const captionCues = (
+  words: ReadonlyArray<TranscriptWord>,
+  captions: { readonly mode: "word" | "chunk"; readonly maxWords: number; readonly case: "lower" | "upper" | "as-spoken" },
+  timeOf: (voiceoverSeconds: number) => number
+): ReadonlyArray<CaptionCue> => {
+  const size = captions.mode === "word" ? 1 : Math.max(1, captions.maxWords)
+  const cased = (text: string) => captions.case === "upper" ? text.toUpperCase() : captions.case === "lower" ? text.toLowerCase() : text
+  const cues: Array<CaptionCue> = []
+  let chunk: Array<TranscriptWord> = []
+  const flush = () => {
+    if (chunk.length === 0) return
+    cues.push({ at: timeOf(chunk[0]!.s), text: cased(chunk.map((w) => w.w.trim()).join(" ")) })
+    chunk = []
+  }
+  for (const word of words) {
+    chunk.push(word)
+    if (chunk.length >= size || /[.!?]["”’)]?$/.test(word.w.trim())) flush()
+  }
+  flush()
+  return cues
+}
