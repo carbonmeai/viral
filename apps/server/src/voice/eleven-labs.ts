@@ -117,6 +117,37 @@ const billedOf = (res: HttpClientResponse.HttpClientResponse, fallback: number) 
   return Number.isFinite(billed) ? billed : fallback
 }
 
+// One image from the Image & Video API (POST /v1/flows/image, then GET until it's done): a prompt, real reference
+// images in the order the prompt numbers them, and the model's settings.
+export interface ImageRequest {
+  readonly model: string
+  readonly prompt: string
+  readonly images: ReadonlyArray<{ readonly data: Uint8Array; readonly mimeType: string }>
+  readonly aspectRatio: string
+  readonly resolution: string
+  readonly quality: string
+}
+
+export interface GeneratedImage {
+  readonly data: Uint8Array
+  readonly mimeType: string
+  // the credits ElevenLabs reported for it (the character-cost header), when it did
+  readonly credits: number | null
+}
+
+const ImageGeneration = Schema.Struct({
+  id: Schema.String,
+  status: Schema.Literals(["pending", "generating", "completed", "failed"]),
+  content_url: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  content_mime_type: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  failure_reason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  error_message: Schema.optionalKey(Schema.NullOr(Schema.String))
+})
+
+// how often a pending image is asked about (ElevenLabs suggests every 2 s), and how long one may take
+const IMAGE_POLL = Duration.seconds(2)
+const IMAGE_TIMEOUT = Duration.minutes(6)
+
 export interface SpeechRequest {
   readonly voiceId: string
   readonly model: string
@@ -149,6 +180,11 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
   saveDesigned(generatedVoiceId: string, name: string, description: string): Effect.Effect<Voice, VoiceError>
   // a sound effect from a description (mp3), and the characters or credits it billed
   soundEffect(request: SoundRequest): Effect.Effect<Speech, VoiceError>
+  // whether images can be made: an ElevenLabs key is set (the API also needs a Pro plan or above)
+  readonly imagesReady: Effect.Effect<boolean>
+  // one image; a refusal fails with ElevenLabs' reason as the code ("moderated", "timeout", "model_error"…) and its
+  // own message (failed generations aren't charged)
+  image(request: ImageRequest): Effect.Effect<GeneratedImage, VoiceError>
 }>()("@viral/server/voice/eleven-labs/ElevenLabs") {
   static readonly layer = Layer.effect(
     ElevenLabs,
@@ -369,7 +405,52 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
         return { audio, characters: billedOf(res, soundEffectCredits(request.durationS)) }
       })
 
-      return ElevenLabs.of({ voices, speak, explore, addShared, remove, plan, design, saveDesigned, soundEffect })
+      const imagesReady = Effect.map(secrets.get("elevenlabs"), Option.isSome)
+
+      const readGeneration = (res: HttpClientResponse.HttpClientResponse) =>
+        res.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(ImageGeneration)), Effect.mapError(fail("response")))
+
+      const image = Effect.fn("ElevenLabs.image")(function*(request: ImageRequest) {
+        const res = yield* call(HttpClientRequest.post(`${api}/v1/flows/image`).pipe(
+          HttpClientRequest.bodyJsonUnsafe({
+            model_id: request.model,
+            prompt: request.prompt,
+            aspect_ratio: request.aspectRatio,
+            resolution: request.resolution,
+            quality: request.quality,
+            images: request.images.map((i) => ({ type: "inline_base64", content_base64: Buffer.from(i.data).toString("base64"), mime_type: i.mimeType }))
+          })
+        ))
+        const credits = Number(res.headers["character-cost"])
+        let generation = yield* readGeneration(res)
+        // asked about every couple of seconds until it's done or failed
+        const poll = Effect.gen(function*() {
+          while (generation.status === "pending" || generation.status === "generating") {
+            yield* Effect.sleep(IMAGE_POLL)
+            generation = yield* readGeneration(yield* call(HttpClientRequest.get(`${api}/v1/flows/image/${encodeURIComponent(generation.id)}`)))
+          }
+          return generation
+        })
+        const done = yield* poll.pipe(
+          Effect.timeoutOrElse({
+            duration: IMAGE_TIMEOUT,
+            orElse: () => Effect.fail(new VoiceError({ code: "timeout", message: "the image took too long" }))
+          })
+        )
+        if (done.status === "failed") {
+          return yield* new VoiceError({ code: done.failure_reason ?? "failed", message: done.error_message ?? "the image model couldn't make it" })
+        }
+        if (done.content_url == null) return yield* new VoiceError({ code: "response", message: "the finished image has no address" })
+        // a signed storage address: fetched without the key
+        const file = yield* http.execute(HttpClientRequest.get(done.content_url)).pipe(
+          Effect.flatMap((r) => r.arrayBuffer),
+          Effect.timeout(Duration.minutes(2)),
+          Effect.mapError(fail("http"))
+        )
+        return { data: new Uint8Array(file), mimeType: done.content_mime_type ?? "image/png", credits: Number.isFinite(credits) ? credits : null }
+      })
+
+      return ElevenLabs.of({ voices, speak, explore, addShared, remove, plan, design, saveDesigned, soundEffect, imagesReady, image })
     })
   ).pipe(Layer.provide([Secrets.layer, FetchHttpClient.layer]))
 
@@ -390,6 +471,9 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
       ),
       design: Effect.fn("ElevenLabs.replay.design")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" }))),
       saveDesigned: Effect.fn("ElevenLabs.replay.saveDesigned")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" }))),
-      soundEffect: Effect.fn("ElevenLabs.replay.soundEffect")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" })))
+      soundEffect: Effect.fn("ElevenLabs.replay.soundEffect")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" }))),
+      // no images in a replay: the thumbnail stage draws its basic thumbnail
+      imagesReady: Effect.succeed(false),
+      image: Effect.fn("ElevenLabs.replay.image")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" })))
     }))
 }
