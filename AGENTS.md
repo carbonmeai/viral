@@ -122,9 +122,28 @@ apps/server/src/
                        version with no stage run. When the credit drawn on the video changed (rights, channel or
                        style), it first re-runs assemble and render only (RunManager.start's forceThrough; later
                        stages reuse approved work, the run stops at one with none) and publishes when that run ends
-  thumbnail/           the thumbnail stage, last in both pipelines (gated): a vision agent (thumbnails skill) picks
-                       the layout, the hero moment and crop, the strongest reaction face, the colours and the words,
-                       with `contact_sheet` and `preview_thumbnail`; crops are frame fractions turned into pixels.
+  thumbnail/           the thumbnail stage, last in both pipelines (gated). With an image key it's AI (the short-thumbnail
+                       skill, M4): a vision agent (thumbnails skill) picks REAL frames, two or three reactions, the hero
+                       and an on-screen graphic, and writes the four bands (ProposedThumbnailDesign: graphic, 1-3 words,
+                       hero + how to dramatise it, escalation row, reactions, how the person looks, prop, background,
+                       `celebrity`); `preview_frames` takes the frames for free, `generate_thumbnails` makes one round
+                       per attempt: thumbnail-images.ts takes the frames (from 1080p pieces of a scan), writes the prompt
+                       from the skill's template (thumbnail-design.ts: images numbered, reactions first, "copy faces
+                       photographically") and asks gpt-image-2.5-sunburst for 3 9:16 options at once, each scaled to
+                       1080x1920. Service: ElevenLabs' Image & Video API first (POST /v1/flows/image + poll; needs a
+                       Pro plan), else the AI Gateway (openai/gpt-image-2.5-sunburst via the AI SDK's generateImage;
+                       used when ElevenLabs refuses for the plan, remembered while the server runs; GatewayImages is a
+                       Context.Reference that only main.ts turns on, so tests never reach a real Gateway). Then the
+                       agent scores each option's faces against the real reaction frames and recommends one
+                       (propose_thumbnail: ThumbnailPick). Thumbnail.generated keeps the round (inputs, options,
+                       checks, credits or costUsd, service), `image` is the option in use, `config` null. The gate
+                       shows all three: Edit {choose: n} uses and publishes one, a rejection with a note makes another
+                       round. A design naming a real public figure isn't sent (heldBack); refused options say why. The
+                       round's spend goes to usage_records (step "thumbnail", billed: ElevenLabs credits estimated at
+                       1,245 an image, or the Gateway's reported dollars). Without an image key, the basic thumbnail
+                       (Decision 8, the gate says so): the agent picks the layout, the hero moment and crop, the
+                       strongest reaction face, the colours and the words, with `contact_sheet` and `preview_thumbnail`;
+                       crops are frame fractions turned into pixels.
                        render-thumbnail.py draws two layouts: `bold` (the default: a gradient, the hero and the face
                        cut out with outlines, curiosity words, an arrow or emoji) and `classic` (the skill's
                        thumbnail.py, unchanged). Cut-outs, per layer: macOS's own subject cut-out first
@@ -134,11 +153,12 @@ apps/server/src/
                        them with progress and draws again (thumbnail-draw.ts). Anything else falls back to a framed
                        inset; VIRAL_CUTOUT=off forces that. Once approved (the stage's `approved` hook) the jpg is published as
                        ~/.viral/renders/<slug>.jpg. A short from several videos: the agent sees every video's sheets and
-                       answers with a 1-based `video` per layer (ProposedThumbnail → ThumbnailProposal `source`); the
+                       answers with a 1-based `video` per layer or frame (ProposedThumbnail → ThumbnailProposal `source`); the
                        config keeps V1 as `source`, the others in `sources` and a layer `source` index (all absent for one
                        video, so single-video configs are byte-identical), and each layer is cut from its own video.
                        A ranking (ranking-thumbnail.ts): bold, the hero inside #1's after, the face layer inside #1's
-                       before (drawn as a tilted inset), "TOP N" over the subject
+                       before (drawn as a tilted inset), "TOP N" over the subject; AI: #1's before and after as the
+                       bottom band, "TOP 1"
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: model keys (anthropic, openai, google, openrouter, gateway) and voice keys (elevenlabs,
                        xai). An env var (.env) wins (SECRETS lists them; google also reads GEMINI_API_KEY), else the saved
@@ -485,9 +505,12 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        a chip, or your words through the intent agent). publish/: the post
                        text (choose or write a title, edit the description and hashtags from ⋯, copy it all; saved on
                        the short with SetPostText), "Publish again" with what it will update, the files, and a
-                       rights reminder. thumbnail/: the
-                       thumbnail in a phone frame, its moments (each with its video's dot and short name), and word
-                       edits checked with CheckThumbnailEdit.
+                       rights reminder. thumbnail/: an AI
+                       round's three options side by side in phone frames (the one in use outlined, each with its face
+                       check or why it wasn't made, Use this at the gate = Edit {choose: n}), the Options view (real
+                       frames, checks, cost), and the Generate panel (a note for another round, the frames as inputs,
+                       the round's cost before Generate); a basic thumbnail in a phone frame, its moments (each with
+                       its video's dot and short name), and word edits checked with CheckThumbnailEdit.
                        sections/: the Sections step of a cut-down short (preview or storyboard of the sections in
                        order, each playable from its own video; inspector: words, beat, start/end snapped to that
                        video's words, framing, order, remove, add a line found in any video; edits checked with
