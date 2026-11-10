@@ -78,6 +78,7 @@ const stageContext = (owner: RunOwner) =>
       note: null,
       resumeSession: null,
       recordSession: () => Effect.void,
+      recordReply: () => Effect.void,
       progress: () => Effect.void,
       recordCost: () => Effect.void
     }

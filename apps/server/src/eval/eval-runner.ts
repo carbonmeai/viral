@@ -1,4 +1,4 @@
-import { RunId, SourceId, StageRunId } from "@viral/contracts"
+import { ProjectId, RunId, SourceId, StageRunId } from "@viral/contracts"
 import { Cause, Clock, Effect, Exit, Option } from "effect"
 import { type AgentProviderName, AgentSession } from "../agent-session/agent-session.ts"
 import type { StageContext } from "../runs/stages.ts"
@@ -153,13 +153,15 @@ export const runEval = Effect.fn("runEval")(function*(input: EvalInput) {
         let outputTokens = 0
         let reportedModel: string | null = null
         const ctx: StageContext = {
-          owner: { _tag: "Source", id: SourceId.make("eval") },
+          // a short's stages (script, metadata) run as a short's, so they're offered what a short's agents are
+          owner: stage.name === "script" || stage.name === "metadata" ? { _tag: "Project", id: ProjectId.make("eval") } : { _tag: "Source", id: SourceId.make("eval") },
           runId: RunId.make("eval"),
           stageRunId: StageRunId.make(`eval-${stage.name}-${run}`),
           attempt: 1,
           note: null,
           resumeSession: null,
           recordSession: () => Effect.void,
+          recordReply: (text) => input.onProgress === undefined ? Effect.void : input.onProgress(stage.name, model.label, `told the creator: ${text}`),
           progress: (_pct, message) => message === undefined || input.onProgress === undefined ? Effect.void : input.onProgress(stage.name, model.label, message),
           recordCost: (cost) =>
             Effect.sync(() => {

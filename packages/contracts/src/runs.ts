@@ -190,8 +190,9 @@ export class RunsRpcs extends RpcGroup.make(
     error: VideoSetNotFound
   }),
   Rpc.make("StartProjectRun", {
-    // `from` re-runs that stage and every one after it, as new artifact versions
-    payload: { projectId: ProjectId, from: Schema.NullOr(StageName) },
+    // `from` re-runs that stage and every one after it, as new artifact versions; `note` goes to the `from` stage's
+    // agent, which picks up its last conversation where it can (a redo of an approved step with your note)
+    payload: { projectId: ProjectId, from: Schema.NullOr(StageName), note: Schema.optionalKey(Schema.String) },
     success: Run,
     error: ProjectNotFound
   }),

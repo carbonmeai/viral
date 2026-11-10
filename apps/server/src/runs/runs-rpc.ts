@@ -25,9 +25,9 @@ export const RunsRpcLive = RunsRpcs.toLayer(Effect.gen(function*() {
         Effect.flatMap(() => runs.start({ _tag: "Set", id: setId }, from ?? null).pipe(Effect.orDie)),
         Effect.catchTag("VideoSetNotFound", () => Effect.fail(new VideoSetNotFound({ id: setId })))
       ),
-    StartProjectRun: ({ projectId, from }) =>
+    StartProjectRun: ({ projectId, from, note }) =>
       projects.get(projectId).pipe(
-        Effect.flatMap(() => runs.start({ _tag: "Project", id: projectId }, from).pipe(Effect.orDie)),
+        Effect.flatMap(() => runs.start({ _tag: "Project", id: projectId }, from, note === undefined ? {} : { note }).pipe(Effect.orDie)),
         Effect.catchTag("ProjectNotFound", () => Effect.fail(new ProjectNotFound({ id: projectId })))
       ),
     CancelRun: ({ runId }) => runs.cancel(runId),

@@ -18,8 +18,10 @@ import { Artifacts } from "../artifacts/artifacts.ts"
 import { RunStore } from "./run-store.ts"
 import { findStage, type Prerequisite, type StageContext, type StageDefinition, StageFailure, StageRegistry } from "./stages.ts"
 
-interface Published {
+// One update of one run, with whose run it is, as every follower of the runs sees it.
+export interface Published {
   readonly runId: RunId
+  readonly owner: RunOwner
   readonly update: RunUpdate
 }
 
@@ -33,6 +35,9 @@ export interface StartOptions {
   // runs once every stage is done, before the run counts as completed; a failure fails the run. Not kept: a run
   // resumed after a restart doesn't do it.
   readonly andThen?: Effect.Effect<void, StageFailure>
+  // your note for the `from` stage (a redo of an approved step): its agent continues its last conversation with the
+  // note where it can, as a rejection at its gate would
+  readonly note?: string
 }
 
 // A rejection a stage sends back to an earlier one.
@@ -49,6 +54,9 @@ export class RunManager extends Context.Service<RunManager, {
   resume(runId: RunId): Effect.Effect<Run, RunNotFound | StageFailure>
   respond(requestId: RequestId, response: GateResponse): Effect.Effect<RunRequest, RequestNotPending>
   subscribe(runId: RunId, afterSeq: number): Stream.Stream<RunUpdate, RunNotFound>
+  // every run's updates as they happen (events and progress), from the moment of subscribing; the short's chat
+  // follows them
+  readonly events: Stream.Stream<Published>
 }>()("@viral/server/runs/run-manager/RunManager") {
   static readonly layer = Layer.effect(
     RunManager,
@@ -68,9 +76,21 @@ export class RunManager extends Context.Service<RunManager, {
       yield* store.cancelPendingRequests(null)
       if (abandoned > 0) yield* Effect.logInfo("interrupted runs from a previous session", { count: abandoned })
 
+      // whose each run is, remembered (a run's owner never changes)
+      const owners = new Map<RunId, RunOwner>()
+      const ownerOf = Effect.fn("RunManager.ownerOf")(function*(runId: RunId) {
+        const known = owners.get(runId)
+        if (known !== undefined) return known
+        const run = yield* store.getRun(runId)
+        if (Option.isNone(run)) return yield* Effect.die(new Error(`no run ${runId}`))
+        owners.set(runId, run.value.owner)
+        return run.value.owner
+      })
+
       const publish = Effect.fn("RunManager.publish")(function*(runId: RunId, event: RunEvent) {
         const seq = yield* store.appendEvent(runId, event)
-        yield* PubSub.publish(updates, { runId, update: { _tag: "Event", seq, event } })
+        const owner = yield* ownerOf(runId)
+        yield* PubSub.publish(updates, { runId, owner, update: { _tag: "Event", seq, event } })
       })
 
       // The waiter is registered before the gate is announced, so an answer that arrives the moment a client
@@ -127,9 +147,11 @@ export class RunManager extends Context.Service<RunManager, {
                   session = id
                   sessions.set(stage.name, id)
                 }).pipe(Effect.andThen(store.recordSession(stageRun.id, id))),
+              recordReply: (text) => store.recordReply(stageRun.id, text),
               progress: (pct, message) =>
                 PubSub.publish(updates, {
                   runId: run.id,
+                  owner: run.owner,
                   update: { _tag: "Progress", stage: stage.name, pct, message: message ?? null }
                 }).pipe(Effect.asVoid),
               recordCost: (cost) => store.recordCost(stageRun.id, cost)
@@ -273,6 +295,12 @@ export class RunManager extends Context.Service<RunManager, {
             : Option.getOrElse(findStage(stages, options.forceThrough), () => stages.length)
           const sessions = new Map<StageName, string>()
           const sentBack: { current: { readonly index: number; readonly note: string } | null } = { current: null }
+          // a redo with your note: the `from` stage gets it as if sent back to it, continuing its last conversation
+          if (options.note !== undefined && run.fromStage !== null && forcedFrom < stages.length) {
+            sentBack.current = { index: forcedFrom, note: options.note }
+            const last = yield* store.latestSession(run.owner, run.fromStage)
+            if (last !== null) sessions.set(run.fromStage, last)
+          }
           for (let i = 0; i < stages.length;) {
             const stage = stages[i]!
             if (stage.beforePrerequisites !== true) yield* fulfilPrerequisites
@@ -361,7 +389,9 @@ export class RunManager extends Context.Service<RunManager, {
           return Stream.concat(history, following)
         }))
 
-      return RunManager.of({ start, cancel, resume, respond, subscribe })
+      const events = Stream.fromPubSub(updates)
+
+      return RunManager.of({ start, cancel, resume, respond, subscribe, events })
     })
   )
 }

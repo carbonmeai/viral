@@ -20,6 +20,8 @@ export interface StageContext {
   // the previous attempt's agent session, so a rejected agent stage continues its conversation with your note
   readonly resumeSession: string | null
   recordSession(sessionId: string): Effect.Effect<void>
+  // the agent's own words to you about this attempt (its tell_creator call), shown in the short's chat
+  recordReply(text: string): Effect.Effect<void>
   progress(pct: number | null, message?: string): Effect.Effect<void>
   recordCost(cost: StageCost): Effect.Effect<void>
 }

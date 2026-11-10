@@ -255,6 +255,26 @@ test("--from re-runs that stage and everything after it", async () => {
   await rt.dispose()
 })
 
+test("a redo from an approved stage with a note gives the stage the note and its last conversation", async () => {
+  const rt = boot()
+  const owner = await createSource(rt)
+  calls.transcribe.length = 0
+  const run = await start(rt, owner)
+  await respond(rt, requestOf(await until(rt, run.id, raised)).id, { _tag: "Approve" })
+  await until(rt, run.id, finished)
+  const lastSession = sessions.at(-1) === null ? `session-${calls.transcribe.length}` : null
+
+  const redo = await rt.runPromise(Effect.gen(function*() {
+    return yield* (yield* RunManager).start(owner, "transcribe", { note: "shorter, please" })
+  }))
+  await respond(rt, requestOf(await until(rt, redo.id, raised)).id, { _tag: "Approve" })
+  await until(rt, redo.id, finished)
+  assert.equal(calls.transcribe.at(-1), "shorter, please")
+  assert.equal(sessions.at(-1), lastSession, "the redo picks up the stage's last agent session")
+  assert.deepEqual((await latestTranscript(rt, owner)).data, { text: "redone: shorter, please" })
+  await rt.dispose()
+})
+
 test("an answer sent the instant a gate appears is never missed", async () => {
   const rt = boot()
   const owner = await createSource(rt)

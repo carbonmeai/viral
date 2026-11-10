@@ -170,6 +170,12 @@ export class RunStore extends Context.Service<RunStore, {
   updateStageRun(id: StageRunId, status: StageRunStatus, error: string | null): Effect.Effect<StageRun>
   recordCost(id: StageRunId, cost: StageCost): Effect.Effect<void>
   recordSession(id: StageRunId, sessionId: string): Effect.Effect<void>
+  // the agent's own words for that attempt (its tell_creator call)
+  recordReply(id: StageRunId, reply: string): Effect.Effect<void>
+  replyOf(id: StageRunId): Effect.Effect<string | null>
+  // the agent session of an owner's latest attempt at a stage, so a redo with your note continues that conversation
+  latestSession(owner: RunOwner, stage: StageName): Effect.Effect<string | null>
+  getStageRun(id: StageRunId): Effect.Effect<Option.Option<StageRun>>
   listStageRuns(runId: RunId): Effect.Effect<ReadonlyArray<StageRun>>
   latestArtifact(owner: RunOwner, kind: ArtifactKind): Effect.Effect<Option.Option<LatestArtifact>>
   // Points the latest artifact of a kind at a stage run, e.g. when a resumed run approves an artifact an
@@ -180,6 +186,8 @@ export class RunStore extends Context.Service<RunStore, {
   cancelPendingRequests(runId: RunId | null): Effect.Effect<void>
   getRequest(id: RequestId): Effect.Effect<Option.Option<RunRequest>>
   listPendingRequests: Effect.Effect<ReadonlyArray<RunRequest>>
+  // every request of a run, oldest first
+  listRequests(runId: RunId): Effect.Effect<ReadonlyArray<RunRequest>>
   appendEvent(runId: RunId, event: RunEvent): Effect.Effect<number>
   eventsAfter(runId: RunId, seq: number): Effect.Effect<ReadonlyArray<{ readonly seq: number; readonly event: RunEvent }>>
   lastSeq(runId: RunId): Effect.Effect<number>
@@ -309,6 +317,29 @@ export class RunStore extends Context.Service<RunStore, {
       const recordSession = (id: StageRunId, sessionId: string) =>
         sql`UPDATE stage_runs SET agent_session_id = ${sessionId} WHERE id = ${id}`.pipe(Effect.asVoid, Effect.orDie)
 
+      const recordReply = (id: StageRunId, reply: string) =>
+        sql`UPDATE stage_runs SET reply = ${reply} WHERE id = ${id}`.pipe(Effect.asVoid, Effect.orDie)
+
+      const replyOf = (id: StageRunId) =>
+        sql<{ readonly reply: string | null }>`SELECT reply FROM stage_runs WHERE id = ${id}`.pipe(
+          Effect.map((rows) => rows[0]?.reply ?? null),
+          Effect.orDie
+        )
+
+      const latestSession = (owner: RunOwner, stage: StageName) =>
+        sql<{ readonly agent_session_id: string }>`
+          SELECT s.agent_session_id FROM stage_runs s JOIN runs r ON r.id = s.run_id
+          WHERE r.${sql(ownerColumn(owner))} = ${owner.id} AND s.stage = ${stage} AND s.agent_session_id IS NOT NULL
+          ORDER BY s.started_at DESC LIMIT 1
+        `.pipe(Effect.map((rows) => rows[0]?.agent_session_id ?? null), Effect.orDie)
+
+      const getStageRun = (id: StageRunId) =>
+        SqlSchema.findOneOption({
+          Request: StageRunId,
+          Result: StageRunRow,
+          execute: (req) => sql`SELECT * FROM stage_runs WHERE id = ${req}`
+        })(id).pipe(Effect.map(Option.map(toStageRun)), Effect.orDie)
+
       const listStageRuns = (runId: RunId) =>
         SqlSchema.findAll({
           Request: RunId,
@@ -383,6 +414,16 @@ export class RunStore extends Context.Service<RunStore, {
         `
       })().pipe(Effect.map((rows) => rows.map(toRequest)), Effect.orDie)
 
+      const listRequests = (runId: RunId) =>
+        SqlSchema.findAll({
+          Request: RunId,
+          Result: RequestRow,
+          execute: (id) => sql`
+            SELECT r.*, s.stage FROM requests r JOIN stage_runs s ON s.id = r.stage_run_id
+            WHERE r.run_id = ${id} ORDER BY r.created_at
+          `
+        })(runId).pipe(Effect.map((rows) => rows.map(toRequest)), Effect.orDie)
+
       const appendEvent = Effect.fn("RunStore.appendEvent")(function*(runId: RunId, event: RunEvent) {
         const encoded = yield* Schema.encodeEffect(EventJson)(event)
         const [row] = yield* sql<{ readonly seq: number }>`
@@ -416,6 +457,10 @@ export class RunStore extends Context.Service<RunStore, {
         updateStageRun,
         recordCost,
         recordSession,
+        recordReply,
+        replyOf,
+        latestSession,
+        getStageRun,
         listStageRuns,
         latestArtifact,
         linkLatestArtifact,
@@ -424,6 +469,7 @@ export class RunStore extends Context.Service<RunStore, {
         cancelPendingRequests,
         getRequest,
         listPendingRequests,
+        listRequests,
         appendEvent,
         eventsAfter,
         lastSeq
