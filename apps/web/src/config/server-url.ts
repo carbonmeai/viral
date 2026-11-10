@@ -15,6 +15,8 @@ export interface DesktopBridge {
   // several files at once (empty when cancelled), or a folder's path
   openFiles(kind: "video" | "audio"): Promise<ReadonlyArray<string>>
   openFolder(): Promise<string | null>
+  // the path of a file dropped on the page; empty when it has none
+  pathForFile(file: File): string
   // the signed-in Mac user's name, shown at the bottom of the sidebar
   readonly userName: string
 }

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron"
+import { contextBridge, ipcRenderer, webUtils } from "electron"
 
 // What the UI learns from the desktop app: where the server is, the platform, how much room the window
 // buttons take in the sidebar, and the user's name. Nothing else crosses into the page.
@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("viralDesktop", {
   // several files at once (empty when cancelled), or a folder's path
   openFiles: (kind: "video" | "audio"): Promise<ReadonlyArray<string>> => ipcRenderer.invoke("viral:open-file", { kind, mode: "many" }),
   openFolder: (): Promise<string | null> => ipcRenderer.invoke("viral:open-file", { kind: "audio", mode: "folder" }),
+  // the path of a file dropped on the page (Home's box); empty when it has none
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
   onFullScreenChange: (listener: (fullScreen: boolean) => void) => {
     const handler = (_event: unknown, fullScreen: unknown) => listener(fullScreen === true)
     ipcRenderer.on("viral:full-screen", handler)
