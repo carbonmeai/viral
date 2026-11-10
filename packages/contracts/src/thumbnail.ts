@@ -82,6 +82,9 @@ export const THUMBNAIL_IMAGE_CREDITS = 1245
 export const THUMBNAIL_USD_PER_CREDIT = 0.25 / 1245
 // A round of options: its credits and dollars, before it's made.
 export const thumbnailRoundCredits = (options: number = THUMBNAIL_OPTIONS) => options * THUMBNAIL_IMAGE_CREDITS
+// What the AI Gateway charged an image at its defaults when M4 was checked live ($0.18 reported for a round of 3). The
+// Gateway reports each call's real cost, so this is only the estimate said before Generate.
+export const THUMBNAIL_GATEWAY_USD_PER_IMAGE = 0.06
 
 // A real frame the image model gets: a second of one of the short's videos and what it shows.
 const DesignFrameFields = { src: Schema.Finite }

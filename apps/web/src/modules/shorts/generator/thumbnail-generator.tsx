@@ -17,8 +17,8 @@ import { sendChat } from "../chat/chat-api.ts"
 import { clockOf } from "../editor-values.ts"
 import { framesAroundAtom, framesKey } from "../shorts-api.ts"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
-import { useImageKey } from "../thumbnail/thumbnail-options.tsx"
-import { inputNames, optionInUse, roundCost } from "../thumbnail/thumbnail-values.ts"
+import { useImageKey, useImageKeys } from "../thumbnail/thumbnail-options.tsx"
+import { inputNames, nextRoundService, optionInUse, roundCost } from "../thumbnail/thumbnail-values.ts"
 import type { EditorState } from "../use-editor-state.ts"
 import { type PickedHero, propsOf, type ThumbProps, thumbnailPlan } from "./generator-values.ts"
 import { GeneratorPreview, GeneratorShell, InputTile, ModelRow, PromptBox, PropertyRow } from "./generator-panel.tsx"
@@ -108,6 +108,9 @@ function AiThumbnailGenerator({ e }: { readonly e: EditorState }) {
   const shown = inUse === null ? null : generated?.options[inUse - 1]?.image ?? null
   const names = generated === null ? [] : inputNames(generated.inputs)
   const note = prompt.trim()
+  // the estimate for the service that will make the next round (the AI Gateway is ~$0.06 an image, ElevenLabs ~$0.25)
+  const keys = useImageKeys() ?? { elevenlabs: true, gateway: false }
+  const cost = roundCost(nextRoundService(generated?.service ?? (generated === null ? null : "elevenlabs"), keys))
 
   const generate = () => {
     setProblem(null)
@@ -151,7 +154,7 @@ function AiThumbnailGenerator({ e }: { readonly e: EditorState }) {
           <PropertyRow label="Options"><span className="text-sm text-fg-1">{THUMBNAIL_OPTIONS} per round</span></PropertyRow>
         </>
       }
-      cost={thumbnail === null ? `Opens when the run gets to the thumbnail · ${roundCost()}` : `${roundCost()} + the thumbnail agent`}
+      cost={thumbnail === null ? `Opens when the run gets to the thumbnail · ${cost}` : `${cost} + the thumbnail agent`}
       problem={problem ?? gate.error}
       generate={{
         label: thumbnail === null ? "Generate" : "Another round",

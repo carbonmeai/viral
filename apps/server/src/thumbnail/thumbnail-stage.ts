@@ -315,7 +315,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
 
         const generate = agentTool({
           name: "generate_thumbnails",
-          description: "Make this attempt's one round: the image model composes 3 thumbnails from the design's real frames (paid, about $0.75). " +
+          description: "Make this attempt's one round: the image model composes 3 thumbnails from the design's real frames (paid: about $0.18 on the AI Gateway, $0.75 on ElevenLabs). " +
             "Returns the options and the real reaction frames to compare their faces with.",
           schema: ProposedThumbnailDesign,
           run: Effect.fn("ThumbnailStage.generate")(function*(proposed: ProposedThumbnailDesign) {

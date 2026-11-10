@@ -1,4 +1,11 @@
-import { type GeneratedThumbnail, type ThumbConfig, THUMBNAIL_OPTIONS, THUMBNAIL_USD_PER_CREDIT, thumbnailRoundCredits } from "@viral/contracts"
+import {
+  type GeneratedThumbnail,
+  type ThumbConfig,
+  THUMBNAIL_GATEWAY_USD_PER_IMAGE,
+  THUMBNAIL_OPTIONS,
+  THUMBNAIL_USD_PER_CREDIT,
+  thumbnailRoundCredits
+} from "@viral/contracts"
 
 // The thumbnail's words, line by line, as you edit them.
 export type ThumbnailWords = ReadonlyArray<string>
@@ -31,9 +38,30 @@ export const momentsOf = (config: ThumbConfig) => [
 // The option in use (1-based): the one you chose, else the agent's pick; null when none is.
 export const optionInUse = (generated: GeneratedThumbnail): number | null => generated.chosen ?? generated.recommended
 
-// What a round is expected to cost, said before Generate: about $0.25 an image (ElevenLabs bills it in credits, the AI
-// Gateway in dollars).
-export const roundCost = () => `${THUMBNAIL_OPTIONS} images · about $${(thumbnailRoundCredits() * THUMBNAIL_USD_PER_CREDIT).toFixed(2)}`
+// Which service the next round will use, as the server picks it (thumbnail-images.ts): ElevenLabs first, the AI
+// Gateway when ElevenLabs' plan can't make images. The last round's service says which one answered; before any round,
+// with both keys set, it's either (ElevenLabs is tried first and a plan refusal costs nothing).
+export type RoundService = "elevenlabs" | "ai-gateway" | "either"
+export const nextRoundService = (
+  last: GeneratedThumbnail["service"] | null,
+  keys: { readonly elevenlabs: boolean; readonly gateway: boolean }
+): RoundService =>
+  last === "ai-gateway" && keys.gateway ? "ai-gateway"
+  : last === "elevenlabs" && keys.elevenlabs ? "elevenlabs"
+  : keys.elevenlabs && keys.gateway ? "either"
+  : keys.gateway ? "ai-gateway"
+  : "elevenlabs"
+
+// What a round is expected to cost, said before Generate, for the service that will make it: about $0.25 an image on
+// ElevenLabs (billed in credits), about $0.06 on the AI Gateway (billed in dollars), a range when it could be either.
+export const roundCost = (service: RoundService = "elevenlabs") => {
+  const eleven = `$${(thumbnailRoundCredits() * THUMBNAIL_USD_PER_CREDIT).toFixed(2)}`
+  const gateway = `$${(THUMBNAIL_OPTIONS * THUMBNAIL_GATEWAY_USD_PER_IMAGE).toFixed(2)}`
+  const price = service === "elevenlabs" ? `about ${eleven} on ElevenLabs`
+    : service === "ai-gateway" ? `about ${gateway} on the AI Gateway`
+    : `about ${gateway}–${eleven} (ElevenLabs first, else the AI Gateway)`
+  return `${THUMBNAIL_OPTIONS} images · ${price}`
+}
 
 // What a round cost: the Gateway's dollars, or ElevenLabs' credits.
 export const roundSpend = (generated: GeneratedThumbnail) =>

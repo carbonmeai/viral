@@ -131,8 +131,16 @@ export function ThumbnailOptionsPanel({ generated, fileUrl, gate, stages }: {
 // Whether thumbnails can be made by the image model: an ElevenLabs or AI Gateway key is set in Settings › Accounts (or
 // the environment). Unknown while the accounts load.
 export function useImageKey(): boolean | null {
+  const keys = useImageKeys()
+  return keys === null ? null : keys.elevenlabs || keys.gateway
+}
+
+// Which image keys are set (ElevenLabs, the AI Gateway); null while the accounts load.
+export function useImageKeys(): { readonly elevenlabs: boolean; readonly gateway: boolean } | null {
   const accounts = Option.getOrNull(AsyncResult.value(useAtomValue(accountsAtom)))
-  return accounts === null ? null : accounts.some((a) => (a.name === "elevenlabs" || a.name === "gateway") && a.status === "ready")
+  if (accounts === null) return null
+  const ready = (name: string) => accounts.some((a) => a.name === name && a.status === "ready")
+  return { elevenlabs: ready("elevenlabs"), gateway: ready("gateway") }
 }
 
 // Said on a basic thumbnail (drawn by Viral, Decision 8): why it isn't an AI one.
