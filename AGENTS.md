@@ -215,7 +215,22 @@ apps/server/src/
                        (approve, reject with a note, edit), cancel, resume after restart, events + live progress. A
                        run's prerequisites (StageRegistry.prerequisites) run first: a set run reads each video that
                        needs it with that video's own source run through ads (two at a time, joining one already
-                       going; cancelled with the set run), then runs set-story
+                       going; cancelled with the set run), then runs set-story. StartProjectRun{from, note} redoes
+                       an approved step with your note (its agent continues its last session, store.latestSession);
+                       RunManager.events streams every run's updates with their owner (the chat follows them)
+  chat/                one conversation per short (chat_items, migration 0008): ShortChat (chat-service.ts) follows
+                       every run through RunManager.events (the run loop itself is unchanged) and writes, once per stage
+                       run or request, each agent's version (describe-step.ts: its own words from tell_creator on a revision, else
+                       the server's line; the change card from the domain's describe*Change against the version before;
+                       the checks the stage's rules held it to), notes from voice / assemble (the music) / render,
+                       gates, approvals and failures; an older short's thread is rebuilt once from its finished runs
+                       ("Earlier", no change cards). SendChat routes by the open step (decision 9): at its gate →
+                       Reject{note}; an approved agent step and an idle run → a redo with the note; busy elsewhere →
+                       NotDone with "Stop and redo" (stopRun); voice / music / render / style → chat-intent.ts, a Haiku
+                       intent agent (stage "chat", Claude CLI) choosing one ChatIntentAction (SetVoice, NewTake, Refit,
+                       AutoArrangement, SetStyle, SendBack, CantDo) that the server checks and runs. DoChatAction runs a
+                       chip's action as it is. change-lines.ts holds the card helpers; each domain owns its
+                       *-changes.ts (script, shots, sections, moments/ranking, thumbnail, metadata, music-bed)
   script/              the script stage: prompt (built on the chosen proposal's angle), per-approach rules, and
                        the script gate. Several videos: the set proposal's angle and beats (video-sets/short-story.ts;
                        else each video's own story beats), every video's transcript, real lines checked per video
@@ -260,6 +275,10 @@ apps/server/src/
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
                        per-stage model, cost + session recording, resume; AgentSession.replay for tests.
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
+                       A short's agent stages are also offered `tell_creator` when they revise after your note
+                       (1–3 plain sentences for the chat, stored on stage_runs.reply; TELL_CREATOR_ON is "revisions"
+                       after the evals of decision 10); a revision whose old session can't be resumed
+                       starts afresh with the brief and the note. Replays can call helper tools (replayAnswer).
                        A task can offer helper tools (`agentTool`) besides its propose_* tool; a helper answers
                        text plus the image files it drew (`toolAnswer(text, images)`): CLIs read the files named in
                        the text, the AI SDK providers attach the images.
@@ -377,11 +396,16 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        the waiting step lives) opening one panel (panel.tsx shell) without changing the step, each
                        step opening its own (panelForStep: Shots and Render → Library, Publish → Post, Thumbnail →
                        its panel); the player (editor-player.tsx: "Waiting for you · what to check" with Ask in chat
-                       and Approve, the step's stage, "1080×1920 · style"); the chat column (editor-side.tsx: the
-                       run's line and Stop, the gate card with Approve / Ask for changes / Edit it myself, and a
-                       message box that sends Reject{note} at the open step's gate, with Back to Shots/Sections/
-                       Ranking or Style on Render; the agent's own replies are M4); below about 1100px it's an
-                       overlay the top bar opens. The multi-track timeline (264px, under rail, panel and player;
+                       and Approve, the step's stage, "1080×1920 · style"); the chat column (chat/: chat-column.tsx
+                       follows SubscribeChat (chat-api.ts, folded by chat-values.ts): the run's line, Stop, the clock
+                       (jump to the latest) and ⋯ (copy); each item (chat-items.tsx: your bubble and what the server
+                       did with it, the agent's words with the change card — old struck through, new highlighted — and
+                       "The server checked it", the gate card with Approve / Ask for changes / Edit it myself, which the
+                       waiting bar answers too, "You approved the …", "Stop and redo from …" on your latest message, a
+                       skeleton reply while an agent works); typed chips per step (chipsFor: words for the step's
+                       agent, an action as it is, or a panel opened); the composer (disabled on agent steps the run
+                       hasn't reached; Detailed shows which agent, provider and model answer and whether it's on your
+                       plan)); below about 1100px it's an overlay the top bar opens. The multi-track timeline (264px, under rail, panel and player;
                        display only: no undo, cut or snap yet) is editor-timeline.tsx → track-values.ts tracksFor (pure,
                        tested: a lane per video with its dot and short name, never V1/V2, holding the shots and real
                        lines / sections / ranking moments it gives, each with its still tiled; then Voice (narration
@@ -430,8 +454,8 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        PreviewMusicArrangement bed on the stage, Apply calls ArrangeMusic and follows the re-run
 
                        render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows; the
-                       check sheet toggled under it; sending back to Shots/Sections/Ranking or Style via Reject.to
-                       from the chat column). publish/: the post
+                       check sheet toggled under it; sending back to Shots/Sections/Ranking or Style from the chat:
+                       a chip, or your words through the intent agent). publish/: the post
                        text (choose or write a title, edit the description and hashtags from ⋯, copy it all; saved on
                        the short with SetPostText), "Publish again" with what it will update, the files, and a
                        rights reminder. thumbnail/: the
@@ -584,6 +608,8 @@ bun run cli project music-arrange <project-id> <file.json|auto> # the bed's arra
 bun run cli project voice <project-id> <voice-id|preset>     # see `voices`
 bun run cli project run <project-id> [--from <stage>]        # stops at each gate
 bun run cli approve <request-id> | reject <request-id> "note" | edit <request-id> <file.json>
+bun run cli chat send <project-id> <step> "text"      # the short's chat: a note at its gate, a redo once approved,
+                                                    #   an action on voice/music/render/style; chat show <project-id>
 ```
 
 Finished shorts (mp4, srt, post notes) land in `~/.viral/renders/`.
