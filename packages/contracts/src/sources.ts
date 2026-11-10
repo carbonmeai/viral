@@ -80,12 +80,32 @@ export class VideoSetNotFound extends Schema.TaggedError<VideoSetNotFound>()("Vi
   id: SourceSetId
 }) {}
 
+// What a pasted link is, read before anything downloads: its title, channel and length, and (for a YouTube link) its
+// thumbnail saved in the Viral home (a path relative to it, served under /media). `live` is true for a live stream.
+export const VideoLinkDetails = Schema.Struct({
+  url: Schema.String,
+  title: Schema.String,
+  channel: Schema.NullOr(Schema.String),
+  durationS: Schema.NullOr(Schema.Finite),
+  thumbnail: Schema.NullOr(Schema.String),
+  live: Schema.Boolean
+})
+export type VideoLinkDetails = typeof VideoLinkDetails.Type
+
+// A link that couldn't be read (removed, private, blocked, not a video), in plain words.
+export class VideoLinkLookupFailed extends Schema.TaggedError<VideoLinkLookupFailed>()("VideoLinkLookupFailed", {
+  message: Schema.String
+}) {}
+
 export class SourcesRpcs extends RpcGroup.make(
   Rpc.make("CreateSource", {
     payload: { origin: SourceOrigin, rights: SourceRights, rightsNote: Schema.NullOr(Schema.String) },
     success: Source
   }),
   Rpc.make("ListSources", { success: Schema.Array(Source) }),
+  // Reads a link's title, channel, length and thumbnail with yt-dlp, so Home can show what you pasted before you
+  // start. Nothing is downloaded and no video is added.
+  Rpc.make("LookupVideoLink", { payload: { link: Schema.String }, success: VideoLinkDetails, error: VideoLinkLookupFailed }),
   Rpc.make("GetSource", { payload: { id: SourceId }, success: Source, error: SourceNotFound }),
   Rpc.make("SetSourceRights", {
     payload: { id: SourceId, rights: SourceRights, rightsNote: Schema.NullOr(Schema.String) },

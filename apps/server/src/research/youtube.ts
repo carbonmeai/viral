@@ -40,6 +40,8 @@ const STDERR_TAIL = 8_000
 export class YouTube extends Context.Service<YouTube, {
   search(query: string): Effect.Effect<ReadonlyArray<VideoFound>, YouTubeError>
   details(videoId: string, options: { readonly captions: boolean }): Effect.Effect<VideoDetails, YouTubeError>
+  // any link yt-dlp can read (YouTube, TikTok, Instagram…): its details without captions
+  detailsOfLink(url: string): Effect.Effect<VideoDetails, YouTubeError>
   saveThumbnail(videoId: string, file: string): Effect.Effect<boolean>
 }>()("@viral/server/research/youtube") {
   static readonly make = Effect.fn("YouTube.make")(function*(options: YouTubeOptions = {}) {
@@ -78,7 +80,8 @@ export class YouTube extends Context.Service<YouTube, {
         )
         yield* Fiber.join(drain)
         last = yield* Clock.currentTimeMillis
-        if (exit !== ChildProcessSpawner.ExitCode(0) && stdout.trim() === "") {
+        // a failed lookup can still print `null` (--dump-single-json with nothing to dump)
+        if (exit !== ChildProcessSpawner.ExitCode(0) && (stdout.trim() === "" || stdout.trim() === "null")) {
           const failure = classifyFailure(stderr)
           return yield* new YouTubeError({ kind: failure.kind satisfies RefusalKind, message: failure.message })
         }
@@ -90,14 +93,16 @@ export class YouTube extends Context.Service<YouTube, {
       return parseSearch(out)
     })
 
+    const detailsOfLink = Effect.fn("YouTube.detailsOfLink")(function*(url: string) {
+      const out = yield* ytDlp(["--dump-single-json", "--skip-download", "--no-playlist", "--", url])
+      const parsed = parseDetails(out, null)
+      if (parsed === null) return yield* new YouTubeError({ kind: "failed", message: "yt-dlp said nothing about the video" })
+      return parsed
+    })
+
     const details = Effect.fn("YouTube.details")(function*(videoId: string, wanted: { readonly captions: boolean }) {
       const url = `https://www.youtube.com/watch?v=${videoId}`
-      if (!wanted.captions) {
-        const out = yield* ytDlp(["--dump-single-json", "--skip-download", "--no-playlist", "--", url])
-        const parsed = parseDetails(out, null)
-        if (parsed === null) return yield* new YouTubeError({ kind: "failed", message: "yt-dlp said nothing about the video" })
-        return parsed
-      }
+      if (!wanted.captions) return yield* detailsOfLink(url)
       return yield* Effect.scoped(Effect.gen(function*() {
         const dir = yield* fs.makeTempDirectoryScoped({ prefix: "viral-captions-" }).pipe(
           Effect.mapError((e) => new YouTubeError({ kind: "failed", message: e.message }))
@@ -135,7 +140,7 @@ export class YouTube extends Context.Service<YouTube, {
       return yield* fetchThumbnail(videoId, file)
     })
 
-    return YouTube.of({ search, details, saveThumbnail })
+    return YouTube.of({ search, details, detailsOfLink, saveThumbnail })
   })
 
   // VIRAL_YT_DLP runs another yt-dlp (tests point it at a fake), VIRAL_YT_SPACING_MS changes the pause between

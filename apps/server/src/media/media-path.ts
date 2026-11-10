@@ -10,7 +10,9 @@ export const MEDIA_FOLDERS: ReadonlySet<string> = new Set([
   "music",
   "sounds",
   "renders",
-  "voice-previews"
+  "voice-previews",
+  // thumbnails of links pasted on Home, saved before anything downloads
+  "link-previews"
 ])
 
 // Checks a requested path (already URL-decoded) and returns its segments, or null when it could escape the
