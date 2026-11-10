@@ -41,6 +41,8 @@ export type ShortVideo = typeof ShortVideo.Type
 // the gate waiting, with what it shows), and the latest version of each thing the run has made.
 export const ShortWorkspace = Schema.Struct({
   project: Project,
+  // the short's own folder on this Mac (absolute), for Show in Finder
+  folder: Schema.String,
   // V1
   source: Source,
   // every video the short draws from, V1 first (one for a single-video short)

@@ -198,6 +198,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
 
         return {
           project,
+          folder: home.projectDir(project.id),
           source,
           videos,
           preset,

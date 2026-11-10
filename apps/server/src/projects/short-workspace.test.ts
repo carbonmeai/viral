@@ -238,6 +238,7 @@ test("a published short shows its render, files and thumbnail as media paths, an
   assert.match(ws.metadata?.media.notes ?? "", /^renders\/.+\.md$/)
   assert.match(ws.metadata?.media.thumbnail ?? "", /^renders\/.+\.jpg$/, "the approved thumbnail next to the mp4")
   assert.equal(ws.metadata?.files.folder, join(home, "renders"))
+  assert.equal(ws.folder, join(home, "projects", ws.project.id), "the short's own folder, for Show in Finder")
   assert.equal(ws.thumbnail?.thumbnail.image, "thumbnail.jpg")
   assert.equal(ws.source.rights, "unconfirmed")
 

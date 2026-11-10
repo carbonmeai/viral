@@ -108,6 +108,13 @@ export class ProjectsRpcs extends RpcGroup.make(
     success: Project,
     error: ProjectNotFound
   }),
+  // Renames the short (its title in the editor and your lists; trimmed, a blank one keeps the old title). Its folder
+  // and files keep their names, and the post's title is still chosen at Publish.
+  Rpc.make("RenameProject", {
+    payload: { id: ProjectId, title: Schema.String },
+    success: Project,
+    error: ProjectNotFound
+  }),
   // Adds a video to the short, after its others (up to 10). Nothing re-runs: the next run reads the video first (when
   // it hasn't been) and its steps can use it.
   Rpc.make("AddSourceToProject", {

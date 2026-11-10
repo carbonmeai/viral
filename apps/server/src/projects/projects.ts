@@ -126,6 +126,8 @@ export class Projects extends Context.Service<Projects, {
     approach?: ApproachName
   ): Effect.Effect<Project, VideoSetNotFound | SetProposalNotFound | ProjectSourcesInvalid>
   setBrief(id: ProjectId, brief: string | null): Effect.Effect<Project, ProjectNotFound>
+  // a new title, trimmed; a blank one keeps the old title (the folder and files keep their names)
+  rename(id: ProjectId, title: string): Effect.Effect<Project, ProjectNotFound>
   setVoice(id: ProjectId, voiceId: string | null): Effect.Effect<Project, ProjectNotFound>
   setPreset(id: ProjectId, presetId: PresetId | null): Effect.Effect<Project, ProjectNotFound | PresetNotFound>
   setMusic(id: ProjectId, musicTrackId: MusicTrackId | null): Effect.Effect<Project, ProjectNotFound | MusicTrackNotFound>
@@ -279,6 +281,15 @@ export class Projects extends Context.Service<Projects, {
         return yield* get(id)
       })
 
+      const rename = Effect.fn("Projects.rename")(function*(id: ProjectId, title: string) {
+        const before = yield* get(id)
+        const trimmed = title.trim()
+        if (trimmed === "" || trimmed === before.title) return before
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql`UPDATE projects SET title = ${trimmed}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
       const setVoice = Effect.fn("Projects.setVoice")(function*(id: ProjectId, voiceId: string | null) {
         const now = DateTime.formatIso(yield* DateTime.now)
         yield* sql`UPDATE projects SET voice_id = ${voiceId}, updated_at = ${now} WHERE id = ${id}`.pipe(Effect.orDie)
@@ -367,6 +378,7 @@ export class Projects extends Context.Service<Projects, {
         fromProposal,
         fromSetProposal,
         setBrief,
+        rename,
         setVoice,
         setPreset,
         setMusic,

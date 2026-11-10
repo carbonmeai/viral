@@ -19,6 +19,7 @@ export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <tit
                  [--preset <id>] [--music <track-id>] [--brief "<what it should achieve>"]
                                           (several videos in order, need a brief)
   project from-proposal <source-id> <n>   (proposal n from \`source story\`)
+  project rename <id> "<title>"           (the short's title; its folder and files keep their names)
   project style <id> <preset-id|default>  (the short's style; see \`preset list\`)
   project music <id> <track-id|none>      (none = voice only)
   project music-arrange <id> <file.json|auto>
@@ -88,6 +89,11 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
       if (first === undefined || !Number.isInteger(n) || n < 1) return yield* Console.error(PROJECT_USAGE)
       const project = yield* client.CreateProjectFromProposal({ sourceId: SourceId.make(first), proposal: n - 1 })
       return yield* Console.log(describe(project))
+    }
+    case "rename": {
+      if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)
+      const project = yield* client.RenameProject({ id: ProjectId.make(first), title })
+      return yield* Console.log(`${describe(project)}  ${project.title}`)
     }
     case "style": {
       if (first === undefined || title === undefined) return yield* Console.error(PROJECT_USAGE)

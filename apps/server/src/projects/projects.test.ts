@@ -1,4 +1,4 @@
-import { MusicTrackId, PresetId, SourceId } from "@viral/contracts"
+import { MusicTrackId, PresetId, ProjectId, SourceId } from "@viral/contracts"
 import { Effect, Exit, Layer } from "effect"
 import assert from "node:assert/strict"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
@@ -174,6 +174,23 @@ test("a short keeps your brief, trimmed; a blank one clears it", async () => {
   assert.equal(none.brief, null)
   assert.equal(changed.brief, "End on the joke.")
   assert.equal(cleared.brief, null)
+})
+
+test("renames a short, trimmed; a blank title keeps the old one and the folder keeps its name", async () => {
+  const [created, renamed, blank, missing] = await run(Effect.gen(function*() {
+    const sources = yield* Sources
+    const projects = yield* Projects
+    const source = yield* sources.create({ origin: { _tag: "File", path: "/videos/candy.mp4" }, rights: "owned", rightsNote: null })
+    const created = yield* projects.create({ sourceIds: [source.id], approach: "question-recap", presetId: null, musicTrackId: null, title: "Every taste candy" })
+    const renamed = yield* projects.rename(created.id, "  How Far Would You Go?  ")
+    const blank = yield* projects.rename(created.id, "   ")
+    const missing = yield* projects.rename(ProjectId.make("missing"), "x").pipe(Effect.flip)
+    return [created, renamed, blank, missing._tag] as const
+  }))
+  assert.equal(renamed.title, "How Far Would You Go?")
+  assert.equal(renamed.slug, created.slug)
+  assert.equal(blank.title, "How Far Would You Go?")
+  assert.equal(missing, "ProjectNotFound")
 })
 
 test("adds a video to a short and removes it again; removal is refused while a step's work uses it", async () => {
