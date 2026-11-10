@@ -26,7 +26,9 @@ apps/server/src/
                        source-stages.ts defines the video-level stages (source, transcribe, contact-sheet).
                        Links download at 1080p, else 720p, never higher, through Viral's own yt-dlp CLI like scans and
                        pieces (one retry for a 403 or a dropped connection); the size is kept in source-video. A video a
-                       short or video set uses can't be deleted (SourceInUse, "used by N shorts").
+                       short or video set uses can't be deleted (SourceInUse, "used by N shorts"). A video's short name
+                       (sources.short_name, 0007; null = made from the title in the app) is set with RenameVideo or
+                       CreateSource's optional shortName (CLI: source rename, source add --name)
                        LookupVideoLink (video-links.ts): a link pasted on Home read with yt-dlp (no download; any
                        site yt-dlp reads), a YouTube one's thumbnail kept in ~/.viral/link-previews/ (served under
                        /media), answers cached while the server runs
@@ -343,7 +345,7 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        links, or a dropped/chosen file apart (prompt-values.ts readPrompt; the footer chip says which):
                        an idea → StartResearch, one video → CreateSource + StartSourceRun, several → a video set (the
                        words besides the links are its brief). Link cards show LookupVideoLink's title before anything
-                       downloads. Format cards are a hint (made-as.ts outlines the matching set suggestion). Recents
+                       downloads; the pencil gives a video its short name, sent with CreateSource. Format cards are a hint (made-as.ts outlines the matching set suggestion). Recents
                        (recents.tsx, recents-values.ts): shorts, sets and single videos with their status, tabs,
                        + Status filter, search, list/grid (kept per viewer). No stat cards. Waiting for you is
                        /?status=waiting (home-search.ts); /waiting and /videos/new redirect to Home.
@@ -358,13 +360,13 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        sets/: a video set's page (/sets/<id>): Videos (each video's reading, live from its own run)
                        and Proposals ("Make this short" starts from the set's brief). Sets are listed in the
                        sidebar's Video sets. The UI never says "V1"/"V2" (it reads as a version): a video is its
-                       colour dot and a short name from its title ("Heidi Klum", else "Video 2"; set-values.ts
-                       videoColor/videoNames, video-badge.tsx; the editor's names come from short-videos.tsx), with
+                       colour dot and a short name: the one you gave it (Source.shortName), else one from its title ("Heidi
+                       Klum", else "Video 2"; set-values.ts videoColor/videoNames/sourceNames, video-badge.tsx; the
+                       editor's names come from short-videos.tsx), with
                        the full title on hover; single-video shorts show none. The title bar's videos chip
                        (videos-menu.tsx) lists the short's videos, removes one, and opens "Add a video to this short"
                        (add-video-dialog.tsx: the library, or a link/file with its rights; just add, or add and
-                       re-run from Script/Sections). With several videos the timeline has a thin strip per video
-                       (SourceStrip) marking which stretches of the short come from it
+                       re-run from Script/Sections)
                        shorts/: a short's editor, filling the window (no app sidebar on /shorts/*), one fixed frame
                        for every step (editor-frame.tsx): the top bar (editor-top-bar.tsx: back, the title renamed
                        in place with RenameProject, the videos' dots opening VideosMenu, the slim StepBar that folds
@@ -379,7 +381,24 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        run's line and Stop, the gate card with Approve / Ask for changes / Edit it myself, and a
                        message box that sends Reject{note} at the open step's gate, with Back to Shots/Sections/
                        Ranking or Style on Render; the agent's own replies are M4); below about 1100px it's an
-                       overlay the top bar opens. The timeline sits under rail, panel and player. State lives in
+                       overlay the top bar opens. The multi-track timeline (264px, under rail, panel and player;
+                       display only: no undo, cut or snap yet) is editor-timeline.tsx → track-values.ts tracksFor (pure,
+                       tested: a lane per video with its dot and short name, never V1/V2, holding the shots and real
+                       lines / sections / ranking moments it gives, each with its still tiled; then Voice (narration
+                       with vo.wav's waveform, use-audio-peaks.ts decodes a file once per page), a ranking's Entries
+                       and Sound / a cut-down's Sound per section, Music (the bed's or the arrangement's parts, the
+                       drop marked; "No music" lanes otherwise) and Captions pinned under the video lanes) drawn by
+                       multi-track.tsx (time, play/pause, a zoom slider + Fit, the playhead; a lane's ⋯ hides it per
+                       viewer or renames a video with RenameVideo). The play button and seeking drive the open step's
+                       player through transport.ts (ShortPlayer on Render/Publish, VoiceStage, the music BedPlayer);
+                       elsewhere the playhead marks the selected shot, section or entry. A clicked clip opens where it's
+                       edited (a shot → Library › Shot n, a real or narration line → the Script panel's line, a music
+                       part → Arrange, a section or entry → its step, a caption → Captions). Captions
+                       (use-caption-cues.ts, caption-cues.ts): the render's .srt while the render is current (a narrated
+                       render's word-per-line .srt grouped as the style shows it), else worked out from the words the
+                       way each renderer groups them (narrated: the voiceover's words with each real line's quote
+                       spread over its clip; cut-down and ranking: the videos' words); the Captions panel lists the
+                       same cues. State lives in
                        use-editor-state.ts (gateFor(step), each step's selection and draft, the open panel); each
                        step's player and panel in <step>/<step>-step.tsx; library-panel.tsx (This short: videos,
                        frames, real lines, song, voice; Your library; Explore's shared voices; type chips, search,
@@ -389,7 +408,8 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        from assemble once the steps before the render are approved). The Script panel holds the
                        lines (edit a line at the gate; CheckScriptEdit first so a bad one never fails the run) and
                        the rules and headline; its player previews the selected line 9:16 (script-preview.tsx).
-                       editor-values.ts lays the short out on its timeline the way the renderer plays it.
+                       editor-values.ts lays the short out on its timeline the way the renderer plays it (layoutTimeline,
+                       each narration line with its voiceover seconds).
                        shots/: the Shots step (preview in the style's framing or the storyboard in the player; the
                        selected shot in Library › Shot n: a frame picker over ListFramesAround stills, framing/crop/speed); its
                        changes collect into one edit, checked with CheckShotsEdit before it answers the gate.
@@ -401,8 +421,8 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        picked from the narration. Applying calls RefitMusic (stopping a run that's going) and
                        follows the re-run from assemble; no song is a calm "Voice only", never a warning.
                        Detailed mode adds an Arrange tab (music-arrange.tsx, use-arrange-draft.ts): the bed's
-                       arrangement blocks as parts ("Bars 9–12 ×3", "Drop") on the Music lane (loops as ticks,
-                       pinned words and the drop marked on the narration; click to select), the selected part's
+                       arrangement blocks as parts ("Bars 9–12 ×3", "Drop") on the Music lane (click to select),
+                       the selected part's
                        bars dragged on the song's waveform (snapping to bars), plays, start (after / drop word /
                        a word picked on the stage's narration), ⋯ Split, Duplicate, Move, Delete; Add a part;
                        Reset to automatic. Edits are a draft (undo, Discard) checked client-side
@@ -420,8 +440,8 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        sections/: the Sections step of a cut-down short (preview or storyboard of the sections in
                        order, each playable from its own video; inspector: words, beat, start/end snapped to that
                        video's words, framing, order, remove, add a line found in any video; edits checked with
-                       CheckSectionsEdit). Several videos: each section carries its video's dot + short name, the
-                       timeline tints sections by video with one "from" row per video
+                       CheckSectionsEdit). Several videos: each section carries its video's dot + short name and sits
+                       in its video's lane on the timeline
                        ranking/: the Ranking step of a ranking short (Ranking → Render → Publish → Thumbnail): the stage
                        plays the chosen entry's shots in their framing (fill, or a 4:3 window over a blur) under a CSS
                        copy of the title and the list, filled for every entry played so far; the inspector's ranks
