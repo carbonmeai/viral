@@ -45,11 +45,12 @@ export const runChecked = Effect.fn("runChecked")(function*<S extends Schema.Top
 ) {
   let session = ctx.resumeSession
   const fresh = ctx.note === null ? task.brief : `${task.brief}\n\nNote from the reviewer on the last version: ${ctx.note}`
-  let message = ctx.note !== null && session !== null
-    ? `Revise it: ${ctx.note}\n\nCall ${task.output.tool} again with the whole result.`
-    : fresh
   // a short's agents speak to you in its chat; a video's or a set's stages have no chat yet
   const tells = ctx.owner._tag === "Project" && (TELL_CREATOR_ON === "all" || ctx.note !== null)
+  // a resumed conversation predates the tool, so the revision asks for it by name
+  let message = ctx.note !== null && session !== null
+    ? `Revise it: ${ctx.note}\n\n${tells ? `Tell the creator what you changed with ${TELL_CREATOR}, then call` : "Call"} ${task.output.tool} again with the whole result.`
+    : fresh
   const tools = tells ? [...(task.tools ?? []), tellCreatorTool(task.output.tool, ctx.recordReply)] : task.tools ?? []
   const hooks = {
     progress: ctx.progress,

@@ -206,6 +206,8 @@ export class RunManager extends Context.Service<RunManager, {
                 if (backTo !== undefined) return Option.some({ stage: backTo, note: response.note })
                 note = response.note
                 produce = true
+                // a gate asked again after a restart has no session in this run: continue the stage's last one
+                if (session === null) session = yield* store.latestSession(run.owner, stage.name)
               }
             }
           }
