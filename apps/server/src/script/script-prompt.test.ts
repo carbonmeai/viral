@@ -7,6 +7,13 @@ test("the stage prompt names the tool and defers to the skills", () => {
   assert.match(SCRIPT_WRITER_PROMPT, /approach\s+skill/)
 })
 
+test("the stage prompt asks for the whole story, set-ups the real lines answer, whole sentences, and no closing beat", () => {
+  assert.match(SCRIPT_WRITER_PROMPT, /cover the story's stages in order/)
+  assert.match(SCRIPT_WRITER_PROMPT, /write the set-up it\s+answers/)
+  assert.match(SCRIPT_WRITER_PROMPT, /whole sentences: it starts on a sentence's first word and ends on a sentence's last word/)
+  assert.match(SCRIPT_WRITER_PROMPT, /the closing question is\s+not one of its beats/)
+})
+
 test("the brief carries the video, its excluded ranges and the timed transcript", () => {
   const prompt = buildScriptPrompt({
     title: "Extreme candy",

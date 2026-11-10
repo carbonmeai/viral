@@ -179,7 +179,7 @@ test("a research finds the videos, waits at the shortlist, and your approved lis
   assert.deepEqual(overview.shortlist?.picks.map((p) => p.sourceId), [library.cotton, library.matted, library.horse])
   assert.equal(overview.story?.proposals.length, 3)
   assert.match(asked.findLast((t) => t.stage === "set-story")!.message, /These videos were found on YouTube for that idea/)
-  assert.match(asked.findLast((t) => t.stage === "set-story")!.message, /one of your proposals must be a ranking/)
+  assert.match(asked.findLast((t) => t.stage === "set-story")!.message, /your first proposal must be a ranking/)
   assert.equal(overview.story?.proposals.find((p) => p.approach === "ranking")?.sources.length, 3)
   assert.deepEqual(overview.members.map((m) => m.missing), [null, "no after: it ends at the vet", null])
 

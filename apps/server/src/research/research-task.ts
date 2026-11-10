@@ -1,4 +1,5 @@
 import {
+  looksLikeRanking,
   MAX_RESEARCH_BACKUPS,
   MAX_RESEARCH_VIDEO_SECONDS,
   PREFERRED_RESEARCH_VIDEO_SECONDS,
@@ -64,6 +65,9 @@ export const researchTask = (input: ResearchInput): CheckedTask<typeof ProposedS
     `The idea: ${research.idea.trim()}`,
     `Videos: exactly ${replacing === null ? research.videos : replacing.previous.picks.length}, plus up to ${MAX_RESEARCH_BACKUPS} backups.`,
     `Length of the short: ${lengthLine(research)}`,
+    looksLikeRanking(research.idea)
+      ? "The idea reads as a ranking, so vet every pick by the skill's ranking rules: one subject, 1–6 minutes, over a million views as a strong hint, real interview lines in its captions (someone telling the story, not only music), and clear before and after footage. No compilations, music-only vlogs or re-uploads."
+      : "",
     replacing === null
       ? ""
       : [

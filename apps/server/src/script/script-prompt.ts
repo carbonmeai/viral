@@ -13,6 +13,11 @@ A script is a list of beats in playing order:
 - Real: a line from the video played in the creator's own voice. Quote it exactly as the transcript has it
   and give its start and end in source seconds, taken from the transcript's timestamps.
 
+Read the whole transcript first and cover the story's stages in order; before each real line, write the set-up it
+answers. Every real line is whole sentences: it starts on a sentence's first word and ends on a sentence's last word
+(only a pause over 1.5 s ends a sentence), never mid-thought. The script ends on the payoff; the closing question is
+not one of its beats.
+
 Also write the headline: the open loop in 7 words or fewer, split over two lines (a short first line, a
 longer second), in capitals.
 

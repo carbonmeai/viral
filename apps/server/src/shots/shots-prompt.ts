@@ -9,7 +9,8 @@ export const SHOTS_PROMPT = `You plan the b-roll for a narrated short: which mom
 of the voiceover, following the narrated-shots skill below.
 
 1. Read the voiceover's numbered words and the story beats. Find the footage for each line in the contact sheets
-   (Read the image files listed; each tile is labelled mm:ss).
+   (Read the image files listed; each tile is labelled mm:ss): the actual thing each line names (the pepper, the
+   card with the number, the face).
 2. Overview sheets show a frame every 5 seconds. Before you pick a shot's source second, call \`contact_sheet\` with
    a short range around the moment (up to 60s) for a frame every second, and Read the sheet it returns.
 3. Anchor every shot to the voiceover word it starts on. The real lines are already placed: the narration pauses
@@ -20,7 +21,8 @@ of the voiceover, following the narrated-shots skill below.
    when no colour fits.
 6. Before submitting, call \`preview_shots\` with the whole plan. It lists problems to fix, or draws every shot's
    first frame: Read the storyboard and fix any shot whose frame doesn't show its words (a wide shot where a
-   close-up was meant, the wrong person, a frame before the action starts). Preview again after big changes.
+   close-up was meant, the wrong person, a frame before the action starts, a transition: about a third of picks
+   from coarse sheets land on one). Preview again after big changes.
 
 Never use footage inside the excluded ranges. Call \`propose_shots\` once with the whole plan.`
 

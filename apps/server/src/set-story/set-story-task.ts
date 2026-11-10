@@ -18,9 +18,11 @@ video, then seconds in that video. Times are always in that video's own seconds.
    seconds, a one-line summary, and the strongest real lines in it, quoted exactly as that video's transcript has
    them, with the time they're said.
 4. Give each video a one-line summary of what it brings to the set.
-5. Propose ${PROPOSALS} shorts, each with a different approach from the catalog, best first. Each one uses at least two of the videos
-   (\`videos\`: their V numbers) and gets a working title, the opening hook line, why it works across these videos in
-   one or two sentences (name its weakest radar axis), and the virality radar scores (0–10). Don't write the script
+5. Propose ${PROPOSALS} shorts, each with a different approach from the catalog. Put first the one whose format suits these
+   videos (the format table in story-arc: stuff happens, people talk, a topic, a top N) and start its \`why\` with that
+   reason. Each one uses at least two of the videos (\`videos\`: their V numbers) and gets a working title, the opening
+   hook line, why it works across these videos in one or two sentences (name its weakest radar axis), and the
+   virality radar scores (0–10). Don't write the script
    or list clips: later stages do that from your beats and the chosen proposal.
 
 Never use anything inside a video's excluded ranges. Never put a quote in the wrong video. Call \`propose_set_story\`
@@ -43,7 +45,7 @@ export interface SetStoryInput {
   readonly brief: string
   // a set found from an idea: the videos were picked from YouTube for it, so say which lack what it needs
   readonly fromIdea?: boolean
-  // that idea reads as a ranking ("top 10…"): one proposal must be a ranking, using every video
+  // that idea reads as a ranking ("top 10…"): one proposal (the first) must be a ranking, using every video
   readonly ranking?: boolean
   readonly videos: ReadonlyArray<SetStoryVideo>
   // folders the agent may read (each video's contact sheets)
@@ -83,7 +85,7 @@ export const setStoryTask = (input: SetStoryInput): CheckedTask<typeof ProposedS
       ? "These videos were found on YouTube for that idea. For each video, if it doesn't show what the idea needs (for a before/after idea: the before, the care or the after; otherwise the moment it was picked for), say what's missing in a few words in that video's `missing` (\"no after: it ends at the vet\"); leave `missing` out when the video has it all."
       : "",
     input.ranking === true
-      ? "The idea reads as a ranking, so one of your proposals must be a ranking (approach-ranking skill): one entry per video, using every video, each a before → care → after story with the clips' own sound, #1 last. The other two use other approaches from the catalog."
+      ? "The idea reads as a ranking, so your first proposal must be a ranking (approach-ranking skill): one entry per video, using every video, each a before → care → after story with the clips' own sound, #1 last. The other two use other approaches from the catalog."
       : "",
     `Videos:\n${input.videos.map((v, i) => `- ${videoLabel(i + 1, v)}`).join("\n")}`,
     `Approach catalog:\n${catalog}`,
