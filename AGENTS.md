@@ -258,12 +258,18 @@ apps/server/src/
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
                        per-stage model, cost + session recording, resume; AgentSession.replay for tests.
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
-                       A task can offer helper tools (`agentTool`) besides its propose_* tool.
+                       A task can offer helper tools (`agentTool`) besides its propose_* tool; a helper answers
+                       text plus the image files it drew (`toolAnswer(text, images)`): CLIs read the files named in
+                       the text, the AI SDK providers attach the images.
                        The providers live in packages/provider-* (below); AgentSession builds the system prompt
                        from the skill pack and routes each task. The route is task.route (evals), else
                        resolveAgentRoute (contracts/settings.ts, shared with the web): the step's own choice, then
-                       the default (agents.default); shots, sections, moments and thumbnail run only on
-                       VISION_PROVIDERS (the Claude CLI for now) and fall back to it. Providers: claude-cli, codex,
+                       the default (agents.default); shots, sections, moments and thumbnail need a choice that
+                       sees images (`seesImages`: the Claude CLI, or a key model with the catalog's vision badge, a
+                       Claude/Gemini/GPT-4o+ family id, or one its vendor's list says takes images, remembered in
+                       agents.vision-models when chosen) and otherwise fall back to the Claude CLI (forcedCli).
+                       model-images.ts: images for model APIs, over 500 KB scaled by ffmpeg to 1568px JPEGs, cached
+                       in ~/.viral/agent-sessions/images/. Providers: claude-cli, codex,
                        opencode, and one AI SDK provider per model key (anthropic, openai, google, openrouter,
                        ai-gateway), each with its vendor's model ids and its key read per run (never put in process.env;
                        *_API_URL moves a vendor for tests). A CLI run gets its CliEnvironment from cli-setup (the 5th
@@ -449,7 +455,10 @@ packages/provider-claude-cli/ the Claude CLI via the Agent SDK (in-process tools
 packages/provider-ai-sdk/ the AI SDK providers on your own keys: Anthropic, OpenAI, Google, OpenRouter and the Vercel
                        AI Gateway, one shared generateText loop (tools, brief images, history in ~/.viral/agent-sessions/
                        under a per-vendor session prefix for resume) with per-vendor bits in ai-sdk-vendors.ts (factory,
-                       Anthropic cache markers, cost). ai and @ai-sdk/* pinned exactly to one provider-utils; cost is
+                       Anthropic cache markers, cost, where tool images go). ai-sdk-images.ts: a helper's images come
+                       back as image content in its tool result (OpenRouter: a user message after it), view_image
+                       shows any image in the step's folders, ≤4 images a result, ≤24 a run, only the newest 6 kept
+                       in each step's messages (prepareStep); history keeps file paths, never bytes. ai and @ai-sdk/* pinned exactly to one provider-utils; cost is
                        reported by the gateway (BYOK market cost) and OpenRouter (usage.cost), else tokens × contracts'
                        PRICES (model-catalog.ts) marked "estimate"; an unknown model's cost is null ("price unknown",
                        never $0). Tests: fake vendor servers + mock models; ai-sdk-provider.live.ts per key, skipped
