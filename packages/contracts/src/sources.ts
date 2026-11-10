@@ -28,10 +28,15 @@ export const Source = Schema.Struct({
   durationS: Schema.NullOr(Schema.Finite),
   rights: SourceRights,
   rightsNote: Schema.NullOr(Schema.String),
+  // the short name you gave it for the editor's lanes and badges ("Heidi"); null = made from the title in the app
+  shortName: Schema.NullOr(Schema.String),
   createdAt: Schema.DateTimeUtcFromString,
   updatedAt: Schema.DateTimeUtcFromString
 })
 export type Source = typeof Source.Type
+
+// A video's short name is at most this long (trimmed; an empty one means automatic).
+export const SHORT_NAME_MAX = 40
 
 export class SourceNotFound extends Schema.TaggedError<SourceNotFound>()("SourceNotFound", {
   id: SourceId
@@ -98,8 +103,14 @@ export class VideoLinkLookupFailed extends Schema.TaggedError<VideoLinkLookupFai
 }) {}
 
 export class SourcesRpcs extends RpcGroup.make(
+  // `shortName` names it from the start (Home's link card); left out or null, it's made from the title.
   Rpc.make("CreateSource", {
-    payload: { origin: SourceOrigin, rights: SourceRights, rightsNote: Schema.NullOr(Schema.String) },
+    payload: {
+      origin: SourceOrigin,
+      rights: SourceRights,
+      rightsNote: Schema.NullOr(Schema.String),
+      shortName: Schema.optionalKey(Schema.NullOr(Schema.String))
+    },
     success: Source
   }),
   Rpc.make("ListSources", { success: Schema.Array(Source) }),
@@ -116,6 +127,13 @@ export class SourcesRpcs extends RpcGroup.make(
   // yours ("Video: <channel>"). Null clears one.
   Rpc.make("SetSourceDetails", {
     payload: { id: SourceId, title: Schema.NullOr(Schema.String), channel: Schema.NullOr(Schema.String) },
+    success: Source,
+    error: SourceNotFound
+  }),
+  // Gives a video the short name its lanes and badges show in every short and set ("Heidi"); null (or blank) goes
+  // back to the one made from its title. Trimmed, at most SHORT_NAME_MAX characters.
+  Rpc.make("RenameVideo", {
+    payload: { id: SourceId, shortName: Schema.NullOr(Schema.String) },
     success: Source,
     error: SourceNotFound
   }),

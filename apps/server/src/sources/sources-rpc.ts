@@ -13,6 +13,7 @@ export const SourcesRpcLive = SourcesRpcs.toLayer(Effect.gen(function*() {
     GetSource: ({ id }) => sources.get(id),
     SetSourceRights: ({ id, rights, rightsNote }) => sources.setRights(id, rights, rightsNote),
     SetSourceDetails: ({ id, title, channel }) => sources.setDetails(id, title, channel),
+    RenameVideo: ({ id, shortName }) => sources.rename(id, shortName),
     DeleteSource: ({ id }) => sources.remove(id)
   })
 }))

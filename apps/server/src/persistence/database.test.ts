@@ -36,7 +36,7 @@ test("creates every table from the design", async () => {
       "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_set_research", "source_sets", "sources", "stage_runs", "voice_previews"
     ]
   )
-  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking", "cost_basis"])
+  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking", "cost_basis", "video_short_names"])
 })
 
 test("enforces foreign keys and the one-owner rule on artifacts", async () => {
@@ -137,4 +137,20 @@ test("stage and eval runs say where a cost comes from, and nothing else", async 
   }))
   assert.equal(stage.length, 1)
   assert.equal(evals.length, 1)
+})
+
+test("a video keeps the short name you gave it, and starts with none", async () => {
+  const [column, row] = await run(Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`INSERT INTO sources (id, origin, created_at, updated_at) VALUES ('named-video', '{}', ${now}, ${now})`
+    const fresh = yield* sql<{ readonly short_name: string | null }>`SELECT short_name FROM sources WHERE id = 'named-video'`
+    yield* sql`UPDATE sources SET short_name = 'Heidi' WHERE id = 'named-video'`
+    const named = yield* sql<{ readonly short_name: string | null }>`SELECT short_name FROM sources WHERE id = 'named-video'`
+    return [
+      yield* sql<{ readonly name: string }>`SELECT name FROM pragma_table_info('sources') WHERE name = 'short_name'`,
+      [fresh[0]?.short_name ?? null, named[0]?.short_name ?? null]
+    ] as const
+  }))
+  assert.equal(column.length, 1)
+  assert.deepEqual(row, [null, "Heidi"])
 })

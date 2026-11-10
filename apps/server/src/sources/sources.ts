@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { type Source, SourceId, SourceInUse, SourceNotFound, SourceOrigin, SourceRights } from "@viral/contracts"
+import { SHORT_NAME_MAX, type Source, SourceId, SourceInUse, SourceNotFound, SourceOrigin, SourceRights } from "@viral/contracts"
 import { Context, DateTime, Effect, FileSystem, Layer, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
@@ -18,6 +18,14 @@ export interface CreateSourceInput {
   readonly origin: SourceOrigin
   readonly rights: SourceRights
   readonly rightsNote: string | null
+  // the name you gave it (Home's link card); left out or null, it's made from the title
+  readonly shortName?: string | null
+}
+
+// A short name as stored: trimmed and at most SHORT_NAME_MAX characters; blank = none (automatic).
+export const cleanShortName = (name: string | null | undefined): string | null => {
+  const trimmed = (name ?? "").replace(/\s+/g, " ").trim()
+  return trimmed === "" ? null : trimmed.slice(0, SHORT_NAME_MAX).trim()
 }
 
 const OriginJson = Schema.fromJsonString(SourceOrigin)
@@ -31,6 +39,7 @@ const SourceRow = Schema.Struct({
   duration_s: Schema.NullOr(Schema.Finite),
   rights: SourceRights,
   rights_note: Schema.NullOr(Schema.String),
+  short_name: Schema.NullOr(Schema.String),
   created_at: Schema.DateTimeUtcFromString,
   updated_at: Schema.DateTimeUtcFromString
 })
@@ -43,6 +52,7 @@ const toSource = (row: typeof SourceRow.Type): Source => ({
   durationS: row.duration_s,
   rights: row.rights,
   rightsNote: row.rights_note,
+  shortName: row.short_name,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 })
@@ -55,6 +65,8 @@ export class Sources extends Context.Service<Sources, {
   get(id: SourceId): Effect.Effect<Source, SourceNotFound>
   setRights(id: SourceId, rights: SourceRights, rightsNote: string | null): Effect.Effect<Source, SourceNotFound>
   setDetails(id: SourceId, title: string | null, channel: string | null): Effect.Effect<Source, SourceNotFound>
+  // the video's short name for lanes and badges; null or blank = made from the title
+  rename(id: SourceId, shortName: string | null): Effect.Effect<Source, SourceNotFound>
   // What fetching found; it fills in a title or channel only where none is set, so yours are kept
   recordMetadata(id: SourceId, metadata: SourceMetadata): Effect.Effect<void>
   // false when the source is unknown; refused while shorts or video sets use it
@@ -91,8 +103,8 @@ export class Sources extends Context.Service<Sources, {
         const origin = yield* Schema.encodeEffect(OriginJson)(input.origin)
         yield* fs.makeDirectory(home.sourceDir(id), { recursive: true })
         yield* sql`
-          INSERT INTO sources (id, origin, rights, rights_note, created_at, updated_at)
-          VALUES (${id}, ${origin}, ${input.rights}, ${input.rightsNote}, ${now}, ${now})
+          INSERT INTO sources (id, origin, rights, rights_note, short_name, created_at, updated_at)
+          VALUES (${id}, ${origin}, ${input.rights}, ${input.rightsNote}, ${cleanShortName(input.shortName)}, ${now}, ${now})
         `
         return yield* get(id)
       }, Effect.orDie)
@@ -116,6 +128,13 @@ export class Sources extends Context.Service<Sources, {
         const now = DateTime.formatIso(yield* DateTime.now)
         const clean = (value: string | null) => value === null || value.trim() === "" ? null : value.trim()
         yield* sql`UPDATE sources SET title = ${clean(title)}, channel = ${clean(channel)}, updated_at = ${now} WHERE id = ${id}`
+          .pipe(Effect.orDie)
+        return yield* get(id)
+      })
+
+      const rename = Effect.fn("Sources.rename")(function*(id: SourceId, shortName: string | null) {
+        const now = DateTime.formatIso(yield* DateTime.now)
+        yield* sql`UPDATE sources SET short_name = ${cleanShortName(shortName)}, updated_at = ${now} WHERE id = ${id}`
           .pipe(Effect.orDie)
         return yield* get(id)
       })
@@ -151,7 +170,7 @@ export class Sources extends Context.Service<Sources, {
         return true
       })
 
-      return Sources.of({ create, list, get, setRights, setDetails, recordMetadata, remove })
+      return Sources.of({ create, list, get, setRights, setDetails, rename, recordMetadata, remove })
     })
   ).pipe(Layer.provide([DatabaseLive, ViralHome.layer, NodeServices.layer, SecureRandom.layerWebCrypto]))
 }

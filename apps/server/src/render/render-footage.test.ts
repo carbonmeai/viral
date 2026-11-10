@@ -13,6 +13,7 @@ const source = (title: string): Source => ({
   durationS: 200,
   rights: "unconfirmed",
   rightsNote: null,
+  shortName: null,
   createdAt: DateTime.makeUnsafe(0),
   updatedAt: DateTime.makeUnsafe(0)
 })

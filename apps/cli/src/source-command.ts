@@ -5,17 +5,18 @@ import { Client } from "./client.ts"
 import { follow } from "./run-command.ts"
 import { show } from "./show.ts"
 
-export const SOURCE_USAGE = `  source add (--url <url> | --file <path>) [--rights owned|licensed] [--note <text>]
+export const SOURCE_USAGE = `  source add (--url <url> | --file <path>) [--rights owned|licensed] [--note <text>] [--name <short name>]
   source list | show <id> | delete <id>
   source rights <id> <unconfirmed|owned|licensed> [--note <text>]
   source details <id> [--title <title>] [--channel <channel>]   (name a local video; the channel is credited)
+  source rename <id> <short name|auto>   (the name its lanes and badges show; auto = made from the title)
   source run <id>                (source → transcribe → contact sheets → ads → story; reuses finished work)
   source story <id>              (the story's proposals; make one with \`project from-proposal\`)
   source artifacts <id>`
 
 const describe = (source: Source) => {
   const origin = source.origin._tag === "Url" ? source.origin.url : source.origin.path
-  return `${source.id}  ${source.rights.padEnd(11)} ${source.title ?? "(untitled)"}  <- ${origin}`
+  return `${source.id}  ${source.rights.padEnd(11)} ${source.title ?? "(untitled)"}${source.shortName === null ? "" : ` "${source.shortName}"`}  <- ${origin}`
 }
 
 const decodeRights = Schema.decodeUnknownEffect(SourceRights)
@@ -57,7 +58,8 @@ export const sourceCommand = Effect.fn("sourceCommand")(function*() {
       const source = yield* client.CreateSource({
         origin: url !== undefined ? { _tag: "Url", url } : { _tag: "File", path: path.resolve(file ?? "") },
         rights: yield* decodeRights(option("--rights") ?? "unconfirmed"),
-        rightsNote: note
+        rightsNote: note,
+        shortName: option("--name") ?? null
       })
       return yield* Console.log(describe(source))
     }
@@ -81,6 +83,12 @@ export const sourceCommand = Effect.fn("sourceCommand")(function*() {
         channel: option("--channel") ?? current.channel
       })
       return yield* Console.log(`${describe(source)}${source.channel === null ? "" : `  (by ${source.channel})`}`)
+    }
+    case "rename": {
+      const name = positionals.slice(3).join(" ")
+      if (id === undefined || name === "") return yield* Console.error(SOURCE_USAGE)
+      const source = yield* client.RenameVideo({ id: SourceId.make(id), shortName: name === "auto" ? null : name })
+      return yield* Console.log(describe(source))
     }
     case "run": {
       const sourceId = SourceId.make(id ?? "")
