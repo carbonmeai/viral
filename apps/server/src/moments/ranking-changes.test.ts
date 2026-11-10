@@ -27,5 +27,5 @@ test("a new title and a moved moment are listed; nothing changed is no card", ()
   const change = describeRankingChange(plan, next)!
   assert.ok(change.lines.some((l) => l.label === "#1 title" && l.new === "Kai's big comeback 🐱"))
   assert.equal(describeRankingChange(plan, plan), null)
-  assert.ok(rankingChecks(plan).some((c) => c.text.startsWith("27.0s")))
+  assert.ok(rankingChecks(plan).some((c) => c.text === "27.0s in all, under the length limit"))
 })

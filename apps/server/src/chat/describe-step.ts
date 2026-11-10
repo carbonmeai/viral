@@ -108,11 +108,12 @@ export const describeStep = Effect.fn("describeStep")(function*(project: Project
   const agent = AGENT_STAGES[stageRun.stage]
   if (agent !== undefined) {
     const made = madeHere(agent.kind)
-    if (made === null || (!made.fresh && !earlier)) return null
+    // a gate asked again after a restart shows the version it made before, without a change card
+    if (made === null) return null
     const after = decode(agent.schema, made.latest)
     if (Option.isNone(after)) return null
     const before = decode(agent.schema, made.before)
-    const change = earlier || Option.isNone(before) ? null : agent.change(before.value, after.value, name)
+    const change = earlier || !made.fresh || Option.isNone(before) ? null : agent.change(before.value, after.value, name)
     const item: ChatItem = {
       _tag: "AgentMade",
       stage: stageRun.stage,

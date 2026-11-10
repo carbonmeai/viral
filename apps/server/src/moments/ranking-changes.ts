@@ -54,7 +54,7 @@ export const rankingChecks = (plan: RankingPlan): ReadonlyArray<ChatCheck> => [
   passed(`Titles under ${RANKING_LIMITS.labelChars + 1} characters, one emoji each`),
   passed("Every entry plays before → care → after"),
   passed("Every moment is inside its video, outside end screens"),
-  passed(`${seconds(total(plan))}, inside ${RANKING_LIMITS.seconds[0]}–${RANKING_LIMITS.seconds[1]}s`)
+  passed(`${seconds(total(plan))} in all, under the length limit`)
 ]
 
 export const rankingSummary = (plan: RankingPlan) => `The ranking: ${plan.entries.length} entries, ${seconds(total(plan))}.`

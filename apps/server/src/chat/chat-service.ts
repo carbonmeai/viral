@@ -149,6 +149,12 @@ export class ShortChat extends Context.Service<ShortChat, {
         if (yield* hasStepItem(project.id, stageRun.id)) return
         const item = yield* describe(project, stageRun, earlier)
         if (item === null) return
+        // a gate asked again after a restart shows the same version: said once
+        if (item._tag === "AgentMade" && item.version !== null) {
+          const said = (yield* store.list(project.id)).some((e) =>
+            e.item._tag === "AgentMade" && e.item.stage === item.stage && e.item.version === item.version)
+          if (said) return
+        }
         yield* append(project.id, "agent", item, { stage: stageRun.stage, runId: stageRun.runId, stageRunId: stageRun.id })
       })
 

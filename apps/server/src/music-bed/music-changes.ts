@@ -1,7 +1,7 @@
 import type { Change, ChatCheck, MusicBed } from "@viral/contracts"
 import { changed, changeOf, passed } from "../chat/change-lines.ts"
 
-const word = (bed: MusicBed) => bed.dropWordText === null ? "the last narrated line" : `“${bed.dropWordText}”`
+const word = (bed: MusicBed) => bed.dropWordText === null ? "the last narrated line" : `“${bed.dropWordText.replace(/[^\p{L}\p{N}']+$/u, "")}”`
 const arranged = (bed: MusicBed) => bed.arrangement === undefined ? "automatic" : "yours"
 
 // Song A → B, the drop word, and the arrangement automatic ↔ yours, from two fitted beds (null: voice only).
