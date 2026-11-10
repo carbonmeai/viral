@@ -1,10 +1,8 @@
 import { Button } from "@viral/ui/primitives/button"
 import { Palette } from "lucide-react"
 import { Facts, InspectorBlock } from "./editor-frame.tsx"
-import { captionCues, shortTimeOf } from "./editor-values.ts"
 import { Panel, PanelBody } from "./panel.tsx"
 import { byRank } from "./ranking/ranking-values.ts"
-import { sectionBlocks } from "./sections/sections-values.ts"
 import type { EditorState } from "./use-editor-state.ts"
 
 // "0:04.1": a moment on the short's own clock, to a tenth.
@@ -46,18 +44,7 @@ export function CaptionsPanel({ e }: { readonly e: EditorState }) {
       </Panel>
     )
   }
-  const narrated = ws.project.format === "narrated"
-  const layout = e.layout
-  const cues = !captions.enabled ? [] : narrated
-    ? ws.voiceover === null ? [] : captionCues(ws.voiceover.words, captions, (t) => (layout === null ? t : shortTimeOf(layout, t)))
-    : (() => {
-      const sections = e.planDraft?.sections ?? []
-      const blocks = sectionBlocks(sections)
-      return sections.flatMap((s, k) => {
-        const words = s.text.split(/\s+/).filter((w) => w !== "").map((w, i) => ({ w, s: i, e: i }))
-        return captionCues(words, captions, () => blocks[k]?.start ?? 0).map((cue, i) => ({ ...cue, at: i === 0 ? cue.at : -1 }))
-      })
-    })()
+  const cues = e.captions?.cues ?? []
   const highlights = ws.shotPlan?.plan.highlights.map((h) => (typeof h === "string" ? h : h.word)) ?? []
   return (
     <Panel title="Captions" action={changeStyle}>
@@ -83,11 +70,11 @@ export function CaptionsPanel({ e }: { readonly e: EditorState }) {
           </InspectorBlock>
         )}
         {cues.length === 0 ? null : (
-          <InspectorBlock title="The words, as they'll be shown">
+          <InspectorBlock title={e.captions?.from === "render" ? "The words, as the render shows them" : "The words, as they'll be shown"}>
             <div className="grid gap-1.5">
               {cues.map((cue, i) => (
                 <div key={i} className="grid min-h-10 grid-cols-[52px_minmax(0,1fr)] items-center gap-2 rounded-[12px] bg-panel px-3 py-1.5">
-                  <span className="text-xs text-fg-3 tabular-nums">{cue.at < 0 ? "" : at(cue.at)}</span>
+                  <span className="text-xs text-fg-3 tabular-nums">{at(cue.start)}</span>
                   <span className="font-[Anton,Impact,sans-serif] text-[14px] tracking-[0.02em]">{cue.text}</span>
                 </div>
               ))}

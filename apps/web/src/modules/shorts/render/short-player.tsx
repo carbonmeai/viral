@@ -1,13 +1,27 @@
 import { useEffect, useRef, useState } from "react"
 import { clockOf } from "../editor-values.ts"
+import { type TransportLink, useTransport } from "../transport.ts"
 
 // The finished short in a 9:16 frame, playable and scrubbable (its captions are burned in). It reports where it
-// is, so the timeline's playhead follows it.
-export function ShortPlayer({ url, onTime }: { readonly url: string; readonly onTime?: (seconds: number | null) => void }) {
+// is, so the timeline's playhead follows it, and the timeline's play button and seeking drive it (`transport`).
+export function ShortPlayer({ url, onTime, transport }: {
+  readonly url: string
+  readonly onTime?: (seconds: number | null) => void
+  readonly transport?: TransportLink
+}) {
   const video = useRef<HTMLVideoElement | null>(null)
   const [now, setNow] = useState(0)
   const [length, setLength] = useState<number | null>(null)
+  const [playing, setPlaying] = useState(false)
   useEffect(() => () => onTime?.(null), [onTime])
+  useTransport(transport, () => {
+    const el = video.current
+    if (el === null) return
+    if (el.paused) void el.play().catch(() => undefined)
+    else el.pause()
+  }, (t) => {
+    if (video.current !== null) video.current.currentTime = t
+  }, playing)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="grid min-h-0 flex-1 place-items-center px-5 py-1.5">
@@ -23,6 +37,9 @@ export function ShortPlayer({ url, onTime }: { readonly url: string; readonly on
           aria-label="The rendered short"
           className="absolute inset-0 size-full object-contain"
           onLoadedMetadata={(e) => setLength(e.currentTarget.duration)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
           onTimeUpdate={(e) => {
             setNow(e.currentTarget.currentTime)
             onTime?.(e.currentTarget.currentTime)

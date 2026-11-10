@@ -1,3 +1,4 @@
+import { voiceAt } from "../music/music-values.ts"
 import { Panel } from "../panel.tsx"
 import { NothingToInspect, NotYet } from "../step-parts.tsx"
 import type { EditorState } from "../use-editor-state.ts"
@@ -19,6 +20,8 @@ export function VoiceStepStage({ e }: { readonly e: EditorState }) {
           pauses={e.layout?.pauses ?? []}
           videos={ws.videos.length}
           onTime={e.onTime}
+          transport={e.transportLink}
+          toVoiceover={(t) => (e.layout === null ? t : voiceAt(e.layout.pauses, t).t)}
         />
       </div>
     </div>

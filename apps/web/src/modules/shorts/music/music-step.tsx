@@ -40,6 +40,7 @@ export function MusicStepStage({ e }: { readonly e: EditorState }) {
           e.setPickingWord(false)
         } : null}
         preview={arrange.heard !== null}
+        transport={e.transportLink}
       />
     </>
   )

@@ -2,7 +2,7 @@ import { cn } from "@viral/ui/cn"
 import type { ReactNode } from "react"
 
 // The short's editor fills the window: the top bar, then the rail, the open panel and the player side by side over
-// the timeline, with the chat column on the right at full height. Changing step, panel or selection only swaps what's
+// the multi-track timeline (a fixed height; its lanes scroll inside it), with the chat column on the right at full height. Changing step, panel or selection only swaps what's
 // inside these regions; the frame never changes shape. Below about 1100px the chat column becomes an overlay the top
 // bar opens (`sideOpen`).
 export function EditorFrame({ top, rail, panel, player, side, sideOpen, timeline }: {
@@ -23,7 +23,7 @@ export function EditorFrame({ top, rail, panel, player, side, sideOpen, timeline
           <section aria-label="Panel" className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-win shadow-[inset_-1px_0_0_var(--line)]">{panel}</section>
           <section aria-label="Player" className="flex min-h-0 min-w-0 flex-col bg-stage">{player}</section>
         </div>
-        <div className="max-h-[42vh] min-w-0 overflow-auto bg-bg px-3.5 pt-2 pb-3 shadow-[inset_0_1px_0_var(--line)]">{timeline}</div>
+        <section aria-label="Timeline" className="h-[264px] max-h-[40vh] min-h-0 min-w-0 bg-bg shadow-[inset_0_1px_0_var(--line)]">{timeline}</section>
       </div>
       <aside
         aria-label="Agent"

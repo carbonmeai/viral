@@ -138,7 +138,8 @@ export interface TimelineSegment {
 export interface TimelineLayout {
   // the short's length: the voiceover with the real lines played in, then the outro
   readonly total: number
-  readonly narration: ReadonlyArray<TimelineSegment>
+  // each narration line on the short's clock, and where it is in the voiceover (`from`, `to`: voiceover seconds)
+  readonly narration: ReadonlyArray<TimelineSegment & { readonly from: number; readonly to: number }>
   // each real line with the video it's from (the first = 0)
   readonly reals: ReadonlyArray<TimelineSegment & { readonly kind: "insert" | "outro"; readonly source: number }>
   // where the narration ends and the outro clips begin
@@ -192,7 +193,7 @@ export const layoutTimeline = (script: Script, words: ReadonlyArray<TranscriptWo
   }
   return {
     total: t,
-    narration: spans.map((s) => ({ start: shifted(s.from), end: shifted(s.to), label: s.label })),
+    narration: spans.map((s) => ({ start: shifted(s.from), end: shifted(s.to), label: s.label, from: s.from, to: s.to })),
     reals,
     outroStart,
     pauses: inserts.map((x) => ({ at: x.at, dur: x.dur, source: x.source }))
@@ -204,27 +205,6 @@ export const clockOf = (seconds: number) => {
   const s = Math.max(0, Math.round(seconds))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
-
-// One video's stretch of the finished short: from `start` to `end` in the short's seconds.
-export interface SourceStretch {
-  readonly start: number
-  readonly end: number
-}
-
-// Which stretches of the short come from which video, for the timeline's source strip: one list per video (by
-// position), pieces that touch (within `gap` seconds) joined into one.
-export const sourceStretches = (
-  pieces: ReadonlyArray<{ readonly start: number; readonly end: number; readonly source: number }>,
-  videos: number,
-  gap = 0.05
-): ReadonlyArray<ReadonlyArray<SourceStretch>> =>
-  Array.from({ length: videos }, (_, v) =>
-    [...pieces].filter((p) => p.source === v && p.end > p.start).sort((a, b) => a.start - b.start).reduce<Array<SourceStretch>>((out, p) => {
-      const last = out.at(-1)
-      if (last !== undefined && p.start <= last.end + gap) out[out.length - 1] = { start: last.start, end: Math.max(last.end, p.end) }
-      else out.push({ start: p.start, end: p.end })
-      return out
-    }, []))
 
 // The live run's stage runs, with what the last workspace load knows that the live events don't yet: a stage
 // reports its cost as it goes but its row only arrives again when it finishes, so an attempt waiting at its gate
@@ -358,32 +338,3 @@ export const primaryButtons = ({ waiting, rendered, outOfDate }: {
     reason: rendered ? null : "Publish opens once the short is rendered."
   }
 })
-
-export interface CaptionCue {
-  readonly at: number
-  readonly text: string
-}
-
-// The narration's captions, as they'll be shown: one word at a time, or up to `maxWords` words a cue (a cue also ends
-// at a sentence's end), in the style's case. `timeOf` puts a voiceover second on the short's own clock.
-export const captionCues = (
-  words: ReadonlyArray<TranscriptWord>,
-  captions: { readonly mode: "word" | "chunk"; readonly maxWords: number; readonly case: "lower" | "upper" | "as-spoken" },
-  timeOf: (voiceoverSeconds: number) => number
-): ReadonlyArray<CaptionCue> => {
-  const size = captions.mode === "word" ? 1 : Math.max(1, captions.maxWords)
-  const cased = (text: string) => captions.case === "upper" ? text.toUpperCase() : captions.case === "lower" ? text.toLowerCase() : text
-  const cues: Array<CaptionCue> = []
-  let chunk: Array<TranscriptWord> = []
-  const flush = () => {
-    if (chunk.length === 0) return
-    cues.push({ at: timeOf(chunk[0]!.s), text: cased(chunk.map((w) => w.w.trim()).join(" ")) })
-    chunk = []
-  }
-  for (const word of words) {
-    chunk.push(word)
-    if (chunk.length >= size || /[.!?]["”’)]?$/.test(word.w.trim())) flush()
-  }
-  flush()
-  return cues
-}

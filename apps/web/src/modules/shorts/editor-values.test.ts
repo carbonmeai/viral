@@ -2,7 +2,6 @@ import type { Script, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
-  captionCues,
   editorSteps,
   layoutTimeline,
   narratedWords,
@@ -14,7 +13,6 @@ import {
   railFor,
   realLines,
   shortTimeOf,
-  sourceStretches,
   spendText,
   stepSpend,
   stepStates,
@@ -73,17 +71,6 @@ test("the timeline plays real lines after their narration, back to back, and the
   // the voiceover's 2s mark plays after both inserts
   assert.equal(shortTimeOf(layout, 2), 3.5)
   assert.equal(shortTimeOf(layout, 1), 1)
-})
-
-test("the source strip joins each video's touching pieces of the short", () => {
-  const strip = sourceStretches([
-    { start: 0, end: 2, source: 0 },
-    { start: 2, end: 3.5, source: 0 },
-    { start: 3.5, end: 5, source: 1 },
-    { start: 5, end: 6, source: 0 },
-    { start: 7, end: 7, source: 1 }
-  ], 3)
-  assert.deepEqual(strip, [[{ start: 0, end: 3.5 }, { start: 5, end: 6 }], [{ start: 3.5, end: 5 }], []])
 })
 
 const spent = (id: string, name: StageRun["stage"], attempt: number, costUsd: number | null, more: Partial<StageRun> = {}) =>
@@ -151,16 +138,4 @@ test("the top bar's primary: the waiting step's Approve, else Publish; Publish n
   assert.equal(primaryButtons({ waiting: null, rendered: true, outOfDate: true }).publish.label, "Publish again")
   assert.equal(primaryButtons({ waiting: "Thumbnail", rendered: true, outOfDate: false }).publish.primary, false)
   assert.equal(primaryButtons({ waiting: null, rendered: false, outOfDate: true }).publish.label, "Publish", "nothing to publish again before a render")
-})
-
-test("captions as they'll be shown: chunks of the style's size, ending at a sentence, in its case", () => {
-  const words = ["What", "does", "it", "take?", "One", "candy", "engineer", "wanted"].map((w, i) => ({ w, s: i, e: i + 0.5 }))
-  const cues = captionCues(words, { mode: "chunk", maxWords: 3, case: "upper" }, (t) => t + 10)
-  assert.deepEqual(cues, [
-    { at: 10, text: "WHAT DOES IT" },
-    { at: 13, text: "TAKE?" },
-    { at: 14, text: "ONE CANDY ENGINEER" },
-    { at: 17, text: "WANTED" }
-  ])
-  assert.equal(captionCues(words, { mode: "word", maxWords: 3, case: "as-spoken" }, (t) => t).length, 8)
 })

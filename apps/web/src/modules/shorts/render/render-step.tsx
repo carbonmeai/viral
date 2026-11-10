@@ -28,7 +28,7 @@ export function RenderStepStage({ e }: { readonly e: EditorState }) {
   }
   return render.media.video === null
     ? <div className="grid flex-1 place-items-center text-fg-2">The render's file isn't in the library.</div>
-    : <ShortPlayer url={homeFileUrl(serverUrl, render.media.video)} onTime={e.setPlayTime} />
+    : <ShortPlayer url={homeFileUrl(serverUrl, render.media.video)} onTime={e.setPlayTime} transport={e.transportLink} />
 }
 
 export const renderNote = (e: EditorState) => e.ws.render === null ? null : `${e.ws.render.render.durationS.toFixed(1)}s · ${e.ws.render.render.shots} shots`

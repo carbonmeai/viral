@@ -13,7 +13,7 @@ import { newerVideos } from "./add-video-values.ts"
 import { type EditorStepId, editorSteps, layoutTimeline, openingStep, type PanelId, panelForStep, shortTimeOf, stepOfRequest, stepStates, withStoredCosts } from "./editor-values.ts"
 import type { GateControls } from "./gate.ts"
 import type { MusicTab } from "./music/music-inspector.tsx"
-import { blockLabel, gridOf, loopTicks, type PlaceContext, type PlacedBlock, placeBlocks, placedFrom } from "./music/music-values.ts"
+import { blockLabel, gridOf, type PlaceContext, type PlacedBlock, placeBlocks, placedFrom } from "./music/music-values.ts"
 import { useArrangeDraft } from "./music/use-arrange-draft.ts"
 import { usePublish } from "./publish/use-publish.ts"
 import type { RankingTab } from "./ranking/ranking-inspector.tsx"
@@ -39,8 +39,17 @@ import type { PickedFrame, PickerVideo } from "./shots/frame-picker.tsx"
 import type { ShotsView } from "./shots/shots-stage.tsx"
 import { type ShotChange, shotSpans, timelineShots } from "./shots/shots-values.ts"
 import type { ThumbnailWords } from "./thumbnail/thumbnail-values.ts"
-import type { TimelineMark, TimelineMusicParts } from "./timeline.tsx"
+import type { ClipTarget } from "./track-values.ts"
+import type { Transport, TransportLink } from "./transport.ts"
+import { useCaptionCues } from "./use-caption-cues.ts"
 import type { LibraryTab, LibraryType } from "./library-panel-values.ts"
+
+// The arrangement's parts on the Music lane, where each plays; clicking one selects it.
+export interface TimelineMusicParts {
+  readonly parts: ReadonlyArray<{ readonly index: number; readonly start: number; readonly end: number; readonly label: string }>
+  readonly selected: number | null
+  readonly onSelect: (index: number) => void
+}
 
 // Everything the short's editor knows and can do, for every step at once: the steps and where they stand, the gate
 // controls, each step's selection and edit in progress, and the media the steps show. The step views read from it.
@@ -204,9 +213,12 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const onTime = useCallback((t: number | null) => setVoTime(t), [])
   const projectOwner = { _tag: "Project", id: ws.project.id } as const
   const voiceUrl = ws.voiceover?.path === null || ws.voiceover === null ? null : artifactPathUrl(serverUrl, projectOwner, ws.voiceover.path)
-  const layout = ws.script !== null && ws.voiceover !== null && ws.voiceover.words.length > 0
-    ? layoutTimeline(ws.script.script, ws.voiceover.words, ws.voiceover.voiceover.durationS)
-    : null
+  const layout = useMemo(
+    () => ws.script !== null && ws.voiceover !== null && ws.voiceover.words.length > 0
+      ? layoutTimeline(ws.script.script, ws.voiceover.words, ws.voiceover.voiceover.durationS)
+      : null,
+    [ws.script, ws.voiceover]
+  )
   // the short's videos (the first one first): each one's file, and a still of it, by position
   const videoOf = (source: number) => ws.videos[source] ?? ws.videos[0]
   const videoUrlOf = (source: number) => {
@@ -379,7 +391,7 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const musicParts: TimelineMusicParts | null = ws.project.musicTrackId === null || laneBlocks === null || musicGrid === null || musicPlace === null ? null : {
     parts: laneBlocks.flatMap((b, i) => {
       const p = lanePlaced[i]
-      return p === null || p === undefined ? [] : [{ index: i, start: p.atS, end: p.endS, label: blockLabel(b, musicGrid.dropBar), ticks: loopTicks(p, b, musicPlace.barS) }]
+      return p === null || p === undefined ? [] : [{ index: i, start: p.atS, end: p.endS, label: blockLabel(b, musicGrid.dropBar) }]
     }),
     selected: open === "music" && musicTab === "arrange" && detailed ? arrange.selected : null,
     onSelect: (i) => {
@@ -395,13 +407,66 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     const word = typeof b.start === "object" ? b.start.word : null
     if (word !== null) musicPins.set(word, `Part ${i + 1} starts here`)
   })
-  const musicMarks: ReadonlyArray<TimelineMark> = ws.project.musicTrackId === null || musicPlace === null ? [] : [
-    ...(fitted?.bed.dropWord === null || fitted === null ? [] : [{ word: fitted.bed.dropWord, label: `The drop: “${wordText(fitted.bed.dropWord)}”` }]),
-    ...[...musicPins].map(([word, label]) => ({ word, label: `${label}: “${wordText(word)}”` }))
-  ].flatMap((m) => {
-    const at = musicPlace.wordAt(m.word)
-    return at === null ? [] : [{ at, label: m.label }]
-  })
+  // the timeline: the captions as they're shown, the open step's player (play/pause and seeking from the timeline),
+  // and which clip is selected
+  const captions = useCaptionCues({ ws, layout, sections: timelineSections, ranking, render: states.get("render") ?? "next" })
+  const transport = useRef<Transport | null>(null)
+  const [hasTransport, setHasTransport] = useState(false)
+  const [transportPlaying, setTransportPlaying] = useState(false)
+  const transportLink: TransportLink = useMemo(() => ({
+    attach: (t) => {
+      transport.current = t
+      setHasTransport(t !== null)
+      if (t === null) setTransportPlaying(false)
+    },
+    playing: setTransportPlaying
+  }), [])
+  const toggleTransport = () => transport.current?.toggle()
+  const seekTransport = (shortSeconds: number) => transport.current?.seek(shortSeconds)
+  const beatTag = beat === null ? null : ws.script?.script.beats[beat]?._tag ?? null
+  const timelineSelected: ClipTarget | null = open === "shots" ? { _tag: "Shot", k: shotK }
+    : open === "sections" && sections !== null ? { _tag: "Section", k: Math.min(sectionK, sections.sections.length - 1) }
+    : open === "moments" ? { _tag: "Entry", rank: rankingRank, shot: null }
+    : open === "music" && musicParts?.selected !== null && musicParts?.selected !== undefined ? { _tag: "Music", index: musicParts.selected }
+    : panel === "script" && beat !== null && beatTag !== null ? { _tag: beatTag, beat }
+    : null
+  // a clip clicked on the timeline: it opens where it's edited (its step or panel), and the player jumps to it
+  const selectClip = (target: ClipTarget, at: number) => {
+    switch (target._tag) {
+      case "Shot":
+        // a shot opens in the Library panel, at its frame picker and framing
+        selectShot(target.k)
+        setLibraryTab("short")
+        setLibraryType("Frames")
+        setShotDetail(true)
+        if (open !== "shots") onStep("shots")
+        else setPanel("library")
+        return
+      case "Real":
+      case "Narration":
+        setScriptTab("lines")
+        setBeat(target.beat)
+        setPanel("script")
+        break
+      case "Music":
+        if (target.index !== null && musicParts !== null) musicParts.onSelect(target.index)
+        else setPanel("music")
+        break
+      case "Section":
+        setSectionK(target.k)
+        setSectionPlaying(false)
+        if (open !== "sections") onStep("sections")
+        return
+      case "Entry":
+        setRankingRank(target.rank)
+        if (open !== "moments") onStep("moments")
+        return
+      case "Caption":
+        setPanel("captions")
+        break
+    }
+    seekTransport(at)
+  }
 
   // the post text you chose and edited, saved on the short, and publishing it again
   const publish = usePublish(ws, refresh)
@@ -545,7 +610,15 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     draftPlaced,
     musicParts,
     musicPins,
-    musicMarks
+    // the timeline
+    captions,
+    transportLink,
+    hasTransport,
+    transportPlaying,
+    toggleTransport,
+    seekTransport,
+    timelineSelected,
+    selectClip
   }
 }
 

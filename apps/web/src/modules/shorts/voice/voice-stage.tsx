@@ -7,6 +7,7 @@ import { videoColor } from "../../sets/set-values.ts"
 import { Detail } from "../../system/detail.tsx"
 import { ClipBadge } from "../clip-badge.tsx"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
+import { type TransportLink, useTransport } from "../transport.ts"
 import { peaksOf, wordIndexAt } from "./voice-values.ts"
 
 const BARS = 160
@@ -88,7 +89,7 @@ function Waveform({ url, duration, time, pauses, videos, onSeek }: {
 
 // The voice step: play the take, see its waveform, and follow the words as they're spoken. Real lines play
 // in the creator's voice where the orange marks are.
-export function VoiceStage({ voiceover, words, url, voiceName, pauses, videos, onTime }: {
+export function VoiceStage({ voiceover, words, url, voiceName, pauses, videos, onTime, transport, toVoiceover }: {
   readonly voiceover: Voiceover
   readonly words: ReadonlyArray<TranscriptWord>
   readonly url: string | null
@@ -98,6 +99,9 @@ export function VoiceStage({ voiceover, words, url, voiceName, pauses, videos, o
   // how many videos the short has
   readonly videos: number
   readonly onTime: (t: number | null) => void
+  // the timeline's play button and seeking; a moment of the short becomes the take's own second with `toVoiceover`
+  readonly transport?: TransportLink
+  readonly toVoiceover?: (shortSeconds: number) => number
 }) {
   const audio = useRef<HTMLAudioElement>(null)
   const [time, setTime] = useState(0)
@@ -128,6 +132,7 @@ export function VoiceStage({ voiceover, words, url, voiceName, pauses, videos, o
     setTime(t)
     onTime(t)
   }
+  useTransport(transport, toggle, (t) => seek(toVoiceover === undefined ? t : toVoiceover(t)), playing)
   const current = wordIndexAt(words, time)
   // the real lines after each word, by their videos
   const afterWord = new Map<number, Array<number>>()

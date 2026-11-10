@@ -1,101 +1,105 @@
+import { useAtomRefresh, useAtomSet } from "@effect/atom-react"
+import { serverUrl } from "../../config/server-url.ts"
+import { homeFileUrl } from "../../lib/media-url.ts"
+import { overviewAtom } from "../home/overview.ts"
+import { videoColor } from "../sets/set-values.ts"
+import { renameVideo } from "../videos/videos-api.ts"
 import { shortTimeOf } from "./editor-values.ts"
 import { bedBlocks } from "./music/music-values.ts"
-import { RankingTimeline } from "./ranking/ranking-timeline.tsx"
+import { MultiTrack } from "./multi-track.tsx"
 import { entryBlocks } from "./ranking/ranking-values.ts"
-import { CutTimeline } from "./sections/cut-timeline.tsx"
 import { sectionBlocks } from "./sections/sections-values.ts"
-import { Timeline } from "./timeline.tsx"
+import { nameOf, useShortVideos } from "./short-videos.tsx"
+import { type TracksInput, tracksFor, type TrackVideo } from "./track-values.ts"
 import type { EditorState } from "./use-editor-state.ts"
 
-// The short's timeline under the stage, by format: a ranking's entries, a cut-down's sections, or a narrated short's
-// narration, shots, real lines, captions and music. Clicking a block selects it and opens its step; the playhead
-// follows what's playing.
-export function EditorTimeline({ e }: { readonly e: EditorState }) {
-  const { ws, open, onStep } = e
-  const captions = ws.preset.config.captions
-  const captionsLine = `${captions.enabled ? `${captions.mode === "chunk" ? `${captions.maxWords} words at a time` : "One word at a time"} · ${captions.case}` : "No captions (finish in an editor from the .srt)"}`
+// The lanes' inputs from what the editor has loaded, by format.
+const inputOf = (e: EditorState, videos: ReadonlyArray<TrackVideo>): TracksInput => {
+  const { ws } = e
   if (ws.project.format === "ranking") {
-    const ranking = e.ranking
-    if (e.rankingPlanDraft === null || ranking === null) {
-      return <div className="grid h-[120px] place-items-center text-xs text-fg-2">The timeline appears once the moments are picked.</div>
-    }
-    return (
-      <RankingTimeline
-        draft={ranking}
-        videos={ws.videos.length}
-        selected={open === "moments" ? e.rankingRank : null}
-        onSelect={(rank) => {
-          e.setRankingRank(rank)
-          if (open !== "moments") onStep("moments")
-        }}
-        head={open === "moments"
-          ? entryBlocks(ranking).find((b) => b.rank === e.rankingRank)?.start ?? null
-          : (open === "render" || open === "publish") && e.playTime !== null
-          ? e.playTime
-          : null}
-      />
-    )
+    return { format: "ranking", videos, captions: e.captions, ranking: e.ranking, stillOf: e.rankingStillOf }
   }
   if (ws.project.format === "cut-down") {
     const sections = e.timelineSections
-    if (sections === null || ws.cutSource === null) {
-      return <div className="grid h-[120px] place-items-center text-xs text-fg-2">The timeline appears once the sections are planned.</div>
-    }
-    return (
-      <CutTimeline
-        sections={sections.sections}
-        videos={ws.cutSource.videos}
-        stillOf={e.stillOf(sections)}
-        selected={open === "sections" ? Math.min(e.sectionK, sections.sections.length - 1) : null}
-        onSelect={(k) => {
-          e.setSectionK(k)
-          e.setSectionPlaying(false)
-          if (open !== "sections") onStep("sections")
-        }}
-        head={open === "sections"
-          ? sectionBlocks(sections.sections)[Math.min(e.sectionK, sections.sections.length - 1)]?.start ?? null
-          : (open === "render" || open === "publish") && e.playTime !== null
-          ? e.playTime
-          : null}
-        captions={captionsLine}
-      />
-    )
+    return { format: "cut-down", videos, captions: e.captions, sections: sections?.sections ?? null, stillOf: e.stillOf(sections) }
   }
-  const { layout, fitted, shotBlocks } = e
+  const { fitted, shotBlocks } = e
+  const bed = fitted?.bed ?? null
+  return {
+    format: "narrated",
+    videos,
+    captions: e.captions,
+    layout: e.layout,
+    beats: ws.script?.script.beats ?? [],
+    shots: shotBlocks === null ? null : {
+      blocks: shotBlocks,
+      sourceOf: (k) => e.draft.get(k)?.source ?? ws.shotPlan?.plan.shots[k]?.source ?? 0,
+      frameOf: e.shotFrame
+    },
+    realFrame: e.realFrame,
+    voiceUrl: e.voiceUrl,
+    music: ws.project.musicTrackId === null
+      ? { _tag: "None" }
+      : bed === null || fitted === null
+      ? { _tag: "NotFitted" }
+      : {
+        _tag: "Bed",
+        url: homeFileUrl(serverUrl, fitted.media),
+        song: bed.trackTitle,
+        parts: e.musicParts !== null && e.musicParts.parts.length > 0
+          ? e.musicParts.parts.map((p) => ({ index: p.index, start: p.start, end: p.end, label: p.label }))
+          : bedBlocks(bed).map((b) => ({ index: null, ...b })),
+        drop: { at: bed.dropAtS, word: bed.dropWordText }
+      }
+  }
+}
+
+// The short's multi-track timeline under the player (display only): a lane per video, then its sound, music and
+// captions. The playhead follows the open step's player (or the selected shot, section or entry), the play button and
+// seeking drive that player, and clicking a clip opens it where it's edited.
+export function EditorTimeline({ e }: { readonly e: EditorState }) {
+  const { ws, open } = e
+  const named = useShortVideos()
+  const rename = useAtomSet(renameVideo, { mode: "promise" })
+  const refreshOverview = useAtomRefresh(overviewAtom)
+  const videos: ReadonlyArray<TrackVideo> = ws.videos.map((v, i) => ({ id: v.source.id, name: nameOf(named, i), title: v.source.title, color: videoColor(i) }))
+  const timeline = tracksFor(inputOf(e, videos))
+  const playerTime = e.hasTransport
+    ? open === "voice" && e.voTime !== null && e.layout !== null
+      ? shortTimeOf(e.layout, e.voTime)
+      : open === "music" ? e.bedTime
+      : e.playTime
+    : null
+  const head = e.hasTransport ? playerTime ?? 0 : (
+    open === "shots" && e.shotBlocks !== null
+      ? e.shotBlocks.find((b) => b.k === e.shotK)?.start ?? null
+      : open === "sections" && e.timelineSections !== null
+      ? sectionBlocks(e.timelineSections.sections)[Math.min(e.sectionK, e.timelineSections.sections.length - 1)]?.start ?? null
+      : open === "moments" && e.ranking !== null
+      ? entryBlocks(e.ranking).find((b) => b.rank === e.rankingRank)?.start ?? null
+      : null
+  )
   return (
-    <Timeline
-      layout={layout}
-      head={open === "voice" && e.voTime !== null && layout !== null
-        ? shortTimeOf(layout, e.voTime)
-        : open === "shots" && shotBlocks !== null
-        ? shotBlocks.find((b) => b.k === e.shotK)?.start ?? null
-        : (open === "render" || open === "publish") && e.playTime !== null
-        ? e.playTime
-        : open === "music" && e.bedTime !== null
-        ? e.bedTime
-        : null}
-      drop={ws.project.musicTrackId === null ? null : fitted?.bed.dropAtS ?? layout?.narration.at(-1)?.start ?? null}
-      musicBlocks={ws.project.musicTrackId === null || fitted === null ? null : bedBlocks(fitted.bed)}
-      musicParts={e.musicParts}
-      marks={e.musicMarks}
-      captions={captionsLine}
-      music={ws.project.musicTrackId === null ? "No music · voice only" : "Music · fitted when the short is laid out"}
-      shots={ws.shotPlan !== null ? `${ws.shotPlan.plan.shots.length} shots` : "Shots are planned in step 3"}
-      videos={ws.videos.length}
-      shotBlocks={shotBlocks === null ? null : {
-        blocks: shotBlocks,
-        frameOf: e.shotFrame,
-        sourceOf: (k) => e.draft.get(k)?.source ?? ws.shotPlan?.plan.shots[k]?.source ?? 0,
-        selected: open === "shots" ? e.shotK : null,
-        onSelect: (k) => {
-          // a shot opens in the Library panel, at its frame picker and framing
-          e.selectShot(k)
-          e.setLibraryTab("short")
-          e.setLibraryType("Frames")
-          e.setShotDetail(true)
-          if (open !== "shots") onStep("shots")
-          else e.setPanel("library")
-        }
+    <MultiTrack
+      timeline={timeline}
+      head={head}
+      playing={e.transportPlaying}
+      canPlay={e.hasTransport}
+      onToggle={e.toggleTransport}
+      onSeek={e.seekTransport}
+      selected={e.timelineSelected}
+      onSelect={(clip) => e.selectClip(clip.target, clip.start)}
+      captionsFrom={e.captions?.from ?? null}
+      onRename={(video, name) => {
+        const source = ws.videos[video]?.source
+        if (source === undefined) return Promise.resolve(null)
+        return rename({ payload: { id: source.id, shortName: name } })
+          .then(() => {
+            e.refresh()
+            refreshOverview()
+            return null
+          })
+          .catch(() => "Couldn't rename it. Is the server running?")
       }}
     />
   )

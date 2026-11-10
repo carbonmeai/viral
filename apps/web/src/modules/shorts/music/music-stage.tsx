@@ -7,6 +7,7 @@ import { Mic, MicOff, Music, Pause, Play, Plus } from "lucide-react"
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react"
 import { Detail } from "../../system/detail.tsx"
 import { clockOf, shortTimeOf, type TimelineLayout } from "../editor-values.ts"
+import { type TransportLink, useTransport } from "../transport.ts"
 import { wordIndexAt } from "../voice/voice-values.ts"
 import { bedBlocks, blockLabel, voiceAt } from "./music-values.ts"
 import { MusicWaveform } from "./music-waveform.tsx"
@@ -39,7 +40,7 @@ function Calm({ title, children }: { readonly title: string; readonly children: 
 // words follow along; the drop word is marked, and the words parts of the arrangement are pinned to. While you pick
 // a word for a part (`onPickWord`), clicking a word picks it instead of playing from it. `preview`: the bed is a
 // preview of your arrangement, not yet applied.
-export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layout, hasSongs, onAddSong, onTime, pins, onPickWord, preview }: {
+export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layout, hasSongs, onAddSong, onTime, pins, onPickWord, preview, transport }: {
   readonly bed: MusicBed | null
   readonly bedUrl: string | null
   // the short's song, when it has one (it may not be fitted yet)
@@ -56,6 +57,8 @@ export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layou
   readonly pins?: ReadonlyMap<number, string>
   readonly onPickWord?: ((word: number) => void) | null
   readonly preview?: boolean
+  // the timeline's play button and seeking (the bed plays on the short's own clock)
+  readonly transport?: TransportLink
 }) {
   if (track === null && !fitting) {
     return (
@@ -98,11 +101,12 @@ export function MusicStage({ bed, bedUrl, track, fitting, voiceUrl, words, layou
       pins={pins ?? new Map()}
       onPickWord={onPickWord ?? null}
       preview={preview ?? false}
+      {...(transport === undefined ? {} : { transport })}
     />
   )
 }
 
-function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime, pins, onPickWord, preview }: {
+function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime, pins, onPickWord, preview, transport }: {
   readonly bed: MusicBed
   readonly bedUrl: string
   readonly voiceUrl: string | null
@@ -112,6 +116,7 @@ function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime, pins, onPickW
   readonly pins: ReadonlyMap<number, string>
   readonly onPickWord: ((word: number) => void) | null
   readonly preview: boolean
+  readonly transport?: TransportLink
 }) {
   const music = useRef<HTMLAudioElement>(null)
   const voice = useRef<HTMLAudioElement>(null)
@@ -164,6 +169,7 @@ function BedPlayer({ bed, bedUrl, voiceUrl, words, layout, onTime, pins, onPickW
     setTime(t)
     onTime(t)
   }
+  useTransport(transport, toggle, seek, playing)
   const voTime = voiceAt(pauses, time).t
   const current = playing || time > 0 ? wordIndexAt(words, voTime) : -1
   // an arranged bed is labelled by its parts ("Bars 13–16 ×3", "Drop"); an older one by the automatic recipe's

@@ -19,7 +19,7 @@ export function PublishStepStage({ e }: { readonly e: EditorState }) {
   const video = metadata.media.video ?? e.ws.render?.media.video ?? null
   return video === null
     ? <div className="grid flex-1 place-items-center text-fg-2">The published file isn't in the library.</div>
-    : <ShortPlayer url={`${homeFileUrl(serverUrl, video)}?v=${metadata.version}`} onTime={e.setPlayTime} />
+    : <ShortPlayer url={`${homeFileUrl(serverUrl, video)}?v=${metadata.version}`} onTime={e.setPlayTime} transport={e.transportLink} />
 }
 
 export const publishNote = (e: EditorState) => e.ws.metadata === null ? null : postTitle(e)
