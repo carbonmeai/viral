@@ -10,9 +10,9 @@ export type CutDraft = Pick<CutPlan, "hookText"> & {
 }
 
 export const SECTION_LIMITS = {
-  // seconds per section, and for the whole short
+  // seconds per section, and for the whole short (approach-cut-down: 30–120 s, so an exchange lands whole)
   minSection: 0.8,
-  total: [20, 60] as const,
+  total: [30, 120] as const,
   hookWords: 8
 }
 

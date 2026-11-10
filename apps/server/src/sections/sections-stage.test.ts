@@ -31,7 +31,7 @@ const asked: Array<AgentTask<Schema.Top>> = []
 const replay = AgentSession.replay((task) => {
   asked.push(task)
   const sections = [
-    { beat: "rising_action", start: 5, end: 15, note: "the goal" },
+    { beat: "rising_action", start: 5, end: 25, note: "the goal" },
     { beat: "payoff", start: 40, end: 48, note: "the result" }
   ]
   return asked.length === 1
@@ -130,7 +130,7 @@ test("a cut-down short from two videos: sections name their video, are checked a
   const seen: Array<AgentTask<Schema.Top>> = []
   const twoVideos = AgentSession.replay((task) => {
     seen.push(task)
-    const v1 = [{ beat: "hook", start: 50, end: 53, note: "the line" }, { beat: "rising_action", start: 5, end: 15, note: "the goal" }]
+    const v1 = [{ beat: "hook", start: 50, end: 53, note: "the line" }, { beat: "rising_action", start: 5, end: 25, note: "the goal" }]
     return seen.length === 1
       // V2's section starts in V2's intro
       ? { hookText: null, sections: [...v1, { beat: "payoff", start: 1, end: 9, video: 2, note: "the other video" }] }
@@ -226,7 +226,7 @@ test("a cut-down short from two videos: sections name their video, are checked a
     hookText: null,
     sections: [
       { beat: "hook", start: 50, end: 53, note: "a" },
-      { beat: "rising_action", start: 5, end: 15, note: "b" },
+      { beat: "rising_action", start: 5, end: 25, note: "b" },
       { beat: "payoff", start: 10, end: 18, video: 2, note: "c" }
     ]
   }), (a) => a.text))

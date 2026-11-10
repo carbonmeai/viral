@@ -29,7 +29,7 @@ test("a good plan passes, with each section's words", () => {
     hookText: "Did it really work?",
     sections: [
       { beat: "hook", start: 60, end: 64, note: "the payoff line" },
-      { beat: "rising_action", start: 10, end: 20, note: "the goal" },
+      { beat: "rising_action", start: 10, end: 30, note: "the goal" },
       { beat: "payoff", start: 70, end: 78, note: "the result" }
     ]
   }
@@ -57,7 +57,7 @@ test("reports a missing hook, short or empty sections, overlaps, ads, length and
   assert.match(text, /section 4 .* touches an excluded range \(90\.0–100\.0s\)/)
   assert.match(text, /section 5 .* is outside the video/)
   assert.match(text, /section 5 .* has no speech/)
-  assert.match(text, /the short is .*s; keep it 20–60s/)
+  assert.match(text, /the short is .*s; keep it 30–120s/)
   assert.match(text, /hook text is 9 words/)
 })
 

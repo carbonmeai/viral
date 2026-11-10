@@ -6,6 +6,13 @@ test("the stage prompt names its tools", () => {
   for (const tool of ["`contact_sheet`", "`preview_sections`", "`propose_sections`"]) assert.ok(SECTIONS_PROMPT.includes(tool), tool)
 })
 
+test("the stage prompt asks for 30–120 seconds of whole sentences, ending on the payoff", () => {
+  assert.match(SECTIONS_PROMPT, /Total 30–120 seconds/)
+  assert.match(SECTIONS_PROMPT, /Every section is whole sentences/)
+  assert.match(SECTIONS_PROMPT, /Never end on a half-answer/)
+  assert.match(SECTIONS_PROMPT, /the closing question isn't a section/)
+})
+
 test("the brief carries the angle, the story beats, the excluded ranges and the transcript", () => {
   const brief = buildSectionsBrief({
     title: "Extreme candy",

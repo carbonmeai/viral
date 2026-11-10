@@ -277,7 +277,7 @@ test("a cut-down short's workspace carries what its sections are cut from, and a
       narrated: yield* workspaces.get(story.id),
       good: yield* workspaces.checkSections(cut.id, {
         hookText: "It worked",
-        sections: [section("hook", 10, 15), section("rising_action", 20, 30), section("payoff", 40, 50)]
+        sections: [section("hook", 10, 15), section("rising_action", 18, 32), section("payoff", 38, 50)]
       }),
       refused: yield* workspaces.checkSections(cut.id, {
         hookText: null,
@@ -289,7 +289,7 @@ test("a cut-down short's workspace carries what its sections are cut from, and a
   assert.equal(ws.cutSource?.videos[0]?.words.length, 120, "the long video's words, for nudging a section to them")
   assert.equal(ws.cutSource?.videos[0]?.sourceSeconds, 59.9)
   assert.deepEqual(ws.cutSource?.videos[0]?.excluded, [{ start: 55, end: 60 }])
-  assert.deepEqual(ws.cutSource?.limits, { minSection: 0.8, total: [20, 60], hookWords: 8 })
+  assert.deepEqual(ws.cutSource?.limits, { minSection: 0.8, total: [30, 120], hookWords: 8 })
   assert.equal(narrated.cutSource, null, "a narrated short isn't cut from the transcript")
 
   assert.deepEqual(good, [])

@@ -12,6 +12,9 @@ approach-cut-down skill and the story-arc skill below.
    stretches that carry the story: the goal, the struggle, the turn, the payoff.
 2. Choose sections in playing order (not source order), each with its beat and source seconds from the transcript.
    Use several short sections to jump-cut filler out of a beat. Total ${SECTION_LIMITS.total[0]}–${SECTION_LIMITS.total[1]} seconds.
+   Every section is whole sentences: it starts on a sentence's first word and ends on a sentence's last word (only a
+   pause over 1.5 s ends a sentence). Never end on a half-answer; if a reply runs long, keep it and cut elsewhere.
+   The last section ends on the payoff; the closing question isn't a section.
 3. Look at what's on screen: the overview contact sheets (Read the files listed), and \`contact_sheet\` for a frame
    every second around a moment. Set framing "blur" for a section whose frame shouldn't be cropped (a screen share,
    a wide shot), and cropX when the speaker sits off-centre.
