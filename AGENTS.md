@@ -27,6 +27,9 @@ apps/server/src/
                        Links download at 1080p, else 720p, never higher, through Viral's own yt-dlp CLI like scans and
                        pieces (one retry for a 403 or a dropped connection); the size is kept in source-video. A video a
                        short or video set uses can't be deleted (SourceInUse, "used by N shorts").
+                       LookupVideoLink (video-links.ts): a link pasted on Home read with yt-dlp (no download; any
+                       site yt-dlp reads), a YouTube one's thumbnail kept in ~/.viral/link-previews/ (served under
+                       /media), answers cached while the server runs
                        Scans (R3): a link with `scan` (every video research adds) downloads 480p only, through Viral's
                        own yt-dlp CLI (fetch-source.py --scan; source-video `scan: true`), and everything reads it.
                        SourcePieces (source-pieces.ts, piece-ranges.ts, fetch-pieces.py) fetches the seconds a render
@@ -300,12 +303,18 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
   routes/              thin file routes; each renders one module's page
   modules/<feature>/   a feature's page, parts, data atoms, pure values and tests (layout, system, home, waiting,
                        videos, shorts, settings, …). layout/ is the fixed frame: sidebar, title bar, page column.
-                       videos/: New source and a video's page (GetSourceOverview; the source run followed live
+                       home/: "What would you like to create?" One box (prompt-box.tsx) tells an idea, one or several
+                       links, or a dropped/chosen file apart (prompt-values.ts readPrompt; the footer chip says which):
+                       an idea → StartResearch, one video → CreateSource + StartSourceRun, several → a video set (the
+                       words besides the links are its brief). Link cards show LookupVideoLink's title before anything
+                       downloads. Format cards are a hint (made-as.ts outlines the matching set suggestion). Recents
+                       (recents.tsx, recents-values.ts): shorts, sets and single videos with their status, tabs,
+                       + Status filter, search, list/grid (kept per viewer). No stat cards. Waiting for you is
+                       /?status=waiting (home-search.ts); /waiting and /videos/new redirect to Home.
+                       videos/: a video's page (GetSourceOverview; the source run followed live
                        by folding SubscribeRun in run-progress.ts); frames come from contact-sheet stills, or from
                        sheet tiles on older sheets. "Make this short" asks for the optional brief first
-                       (make-short-dialog.tsx). New has three tabs (?kind=several|idea): One video, Several videos
-                       (sets/new-set-form.tsx: pick from the library or add links/files, reorder, a required brief)
-                       and From an idea (research/research-form.tsx). research/: while a research set has no videos
+                       (make-short-dialog.tsx). research/: while a research set has no videos
                        (or a replacement waits) its page is the shortlist (shortlist-view.tsx: grey rows while it
                        searches; then remove, ⋯ ask for another (backups first), earlier/later, add a link
                        (LookupShortlistVideo), ask for a new list, undo; a changed list goes through
