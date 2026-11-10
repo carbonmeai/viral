@@ -34,10 +34,14 @@ test("the post notes carry the credit when the footage isn't yours", () => {
   assert.match(notes, /Credit: NileBlue\n\n#shorts #science/)
 })
 
-test("a ranking's post ends \"Wait for #1.\", credits its footage and lists each rank's source", () => {
+test("a ranking's post ends on a tease of #1, credits its footage and lists each rank's source", () => {
   const ranking = { ...good, title: "Top 5 Animal Comebacks (Before & After)", description: "Five rescues, from skin and bone to running free. Wait for #1." }
   assert.deepEqual(checkRankingMetadata(ranking), [])
-  assert.match(checkRankingMetadata(good).join(), /ends "Wait for #1\."/)
+  assert.deepEqual(checkRankingMetadata({ ...ranking, title: "He Had Already Given Up… 😢", description: "A donkey on curled hooves for ten years. Number one will get you." }), [])
+  assert.match(checkRankingMetadata(good).join(), /ends on a line that teases #1/)
+  // #1 named earlier doesn't count, and #10 isn't #1
+  assert.match(checkRankingMetadata({ ...ranking, description: "Number one was lifted by a tractor. They all made it." }).join(), /teases #1/)
+  assert.match(checkRankingMetadata({ ...ranking, description: "Ten comebacks. Wait for #10." }).join(), /teases #1/)
   const notes = postNotes({
     post: ranking,
     alternates: [],

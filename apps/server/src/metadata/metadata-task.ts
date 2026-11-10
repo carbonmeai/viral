@@ -29,15 +29,17 @@ export interface MetadataInput {
   }>
   // with several videos: what joins them (the set's story summary), when known
   readonly acrossVideos?: string | null
-  // a ranking short: how many entries (its title reads "Top 5 …", its description ends "Wait for #1.")
+  // a ranking short: how many entries (its title reads "Top 5 …" or teases #1, its description ends on a tease of #1)
   readonly ranking?: { readonly entries: number } | null
 }
 
 // What a ranking's post text needs (approach-ranking skill).
 const rankingLines = (entries: number) =>
-  `This short is a ranking of ${entries}. Title it like "Top ${entries} Animal Comebacks (Before & After)" (under 40 characters), ` +
-  `with alternates that tease #1 without saying what it is ("#1 Was Lying Down To Die"). The description is two sentences ` +
-  `with the real numbers, no spoiled ending, and ends with "Wait for #1." The channels are credited for you; don't list them.`
+  `This short is a ranking of ${entries}. Title it like "Top ${entries} Animal Comebacks (Before & After)" or tease #1 ` +
+  `("He Had Already Given Up… 😢"), under 40 characters; a ranking's title may end with one emoji, nowhere else. The ` +
+  `alternates tease #1 without saying what it is ("#1 Was Lying Down To Die"). The description is two sentences with ` +
+  `the real numbers and no spoiled ending, and its last line teases #1 ("Number one will get you." or "Wait for #1."). ` +
+  `The channels are credited for you; don't list them.`
 
 const videoLines = (input: MetadataInput) => {
   const videos = input.videos

@@ -60,7 +60,12 @@ export const postNotes = ({ post, alternates, credit, approach, style, durationS
   ].join("\n\n") + "\n"
 }
 
-// A ranking's post text keeps #1 a secret and makes the viewer wait for it.
-export const RANKING_ENDING = "Wait for #1."
-export const checkRankingMetadata = (metadata: ShortMetadata): ReadonlyArray<string> =>
-  metadata.description.trim().endsWith(RANKING_ENDING) ? [] : [`a ranking's description ends "${RANKING_ENDING}"`]
+// A ranking's post text keeps #1 a secret and makes the viewer wait for it: its last sentence teases #1 ("Number one
+// will get you.", "Wait for #1.").
+const TEASES_NUMBER_ONE = /(#1|number one)\b/i
+export const checkRankingMetadata = (metadata: ShortMetadata): ReadonlyArray<string> => {
+  const sentences = metadata.description.trim().split(/(?<=[.!?…])\s+/)
+  return TEASES_NUMBER_ONE.test(sentences.at(-1) ?? "")
+    ? []
+    : [`a ranking's description ends on a line that teases #1 ("Number one will get you." or "Wait for #1.")`]
+}

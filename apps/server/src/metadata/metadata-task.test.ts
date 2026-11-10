@@ -22,3 +22,11 @@ test("several videos: each one labelled with what it brings, and what joins them
   assert.match(brief, /What joins them: The candy, then why it hurts\./)
   assert.doesNotMatch(brief, /^Video: /m)
 })
+
+test("a ranking's brief allows one closing emoji in the title and ends the description on a tease of #1", () => {
+  const { brief, skills } = metadataTask({ ...input, approach: "ranking", ranking: { entries: 5 } })
+  assert.deepEqual(skills, ["short-metadata", "approach-ranking"])
+  assert.match(brief, /ranking's title may end with one emoji/)
+  assert.match(brief, /last line teases #1 \("Number one will get you\." or "Wait for #1\."\)/)
+  assert.doesNotMatch(metadataTask(input).brief, /emoji/)
+})
