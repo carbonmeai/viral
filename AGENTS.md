@@ -209,7 +209,11 @@ apps/server/src/
                        analyse-track.py (librosa) measures tempo (beats fitted to a line), the drop (where the bass
                        below 150 Hz jumps, snapped to a beat; null when unclear) and LUFS, in the background on
                        add and via AnalyseMusicTrack. A beat set by hand (beat_source manual) is never overwritten
-  sound-library/       sound-effect samples by category, with variants, in ~/.viral/sounds/
+  sound-library/       sound-effect samples by category, with variants, in ~/.viral/sounds/<category>/. The generator
+                       (sound-generator.ts, GenerateSoundEffect): ElevenLabs Sound Effects v3 takes from a prompt (length,
+                       loop, takes, prompt influence), each kept with its prompt (origin Generated, a name from the
+                       prompt + variant) and billed to usage_records; DeleteSoundEffect (never a bundled one). Placing
+                       sounds on a short waits for the sound-design plan
   references/          viral videos kept to learn from; their analyses are reference-owned artifacts
   runs/                runs a source, a video set or a short through its stages: reuse of approved work, gates
                        (approve, reject with a note, edit), cancel, resume after restart, events + live progress. A
@@ -239,6 +243,9 @@ apps/server/src/
                        The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice.
                        Library › Voices: Explore ElevenLabs' shared library (ExploreVoices; Narration first), add one
                        (AddLibraryVoice; a full plan's voice slots fail as code "limit"), RemoveVoice (never premade).
+                       Voice design (voice-design.ts, DesignVoice): three previews from a description speaking a
+                       100–1000-character line (eleven_ttv_v3), saved to voice-previews/ and billed to usage_records;
+                       SaveDesignedVoice keeps one on your account only when you click Save. Never cloned from a clip
                        Tests run against a fake HTTP server via ELEVENLABS_API_URL — never add voices to a real account
   sections/            the sections stage (cut-down shorts): an agent picks the creator's best stretches of
                        speech by story beat, hook first (`contact_sheet`, `preview_sections`); the server snaps
@@ -277,8 +284,11 @@ apps/server/src/
                        run-checked.ts: the loop every agent stage uses (ask → server check → hand problems back).
                        A short's agent stages are also offered `tell_creator` when they revise after your note
                        (1–3 plain sentences for the chat, stored on stage_runs.reply; TELL_CREATOR_ON is "revisions"
-                       after the evals of decision 10); a revision whose old session can't be resumed
-                       starts afresh with the brief and the note. Replays can call helper tools (replayAnswer).
+                       after the evals of decision 10); a revision whose old session can't be resumed, or whose step
+                       now runs on another provider (store.latestSession carries the session's provider; AgentSession
+                       refuses a cross-provider resume), starts afresh with the brief, its last version as stored
+                       (ctx.previous) and the note; a model change on the same provider continues the session on the
+                       step's model. Replays can call helper tools (replayAnswer).
                        A task can offer helper tools (`agentTool`) besides its propose_* tool; a helper answers
                        text plus the image files it drew (`toolAnswer(text, images)`): CLIs read the files named in
                        the text, the AI SDK providers attach the images.
@@ -315,8 +325,10 @@ apps/server/src/
                        reference); eval.html shows each run's 3 proposals side by side, its videos as a colour dot and
                        short name (V labels in the text are put as names too)
   settings/            app preferences as JSON under keys; app-settings.ts is the typed view: agents.default and
-                       stage.<name>.provider/.model (Settings › Agents: a provider menu in two groups, signed-in apps
-                       and your API keys, one without a key greyed out; a key provider's model menu shows the curated
+                       stage.<name>.provider/.model (Settings › Agents: the Picker for providers in three groups, your
+                       plans (Claude CLI Recommended, Codex), pay per run (your API keys), on this Mac (OpenCode), each
+                       saying who pays and what it can do, one not set up greyed out with where to set it up, a step's
+                       starting with "Use default"; the CLI models carry descriptions and "On your plan"; a key provider's model menu shows the curated
                        MODEL_CATALOG with descriptions, badges Recommended / Sees images / Fast / Cheapest and a cost (an
                        average eval run, else the price per million tokens), then "More from your key" and "Other
                        model…"), transcription.provider; keys.<name>.check holds each key's last Test result (never the key)
@@ -325,7 +337,9 @@ apps/server/src/
                        in characters (voice takes + "Try a line" previews, recorded in voice_previews) by day, model and
                        short, and the plan's characters used/left and reset date (GetElevenLabsPlan: GET /v1/user/subscription,
                        read-only, cached a minute; needs the key's User › Read permission). A cost estimate shows only when
-                       the plan's price is known (its next invoice, in USD)
+                       the plan's price is known (its next invoice, in USD). Spend outside a run (usage_records,
+                       migration 0009, usage-records.ts: the chat's intent agent as step "chat", voice-design,
+                       sound-effect) is read like stage runs, under its short
   render/              the render stage (gated; a rejection goes back to the shots, the sections for a cut-down
                        short or the moments for a ranking, with your note, via the stage's `rejectTo`) + render engine
                        + its Python
@@ -425,9 +439,17 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        same cues. State lives in
                        use-editor-state.ts (gateFor(step), each step's selection and draft, the open panel); each
                        step's player and panel in <step>/<step>-step.tsx; library-panel.tsx (This short: videos,
-                       frames, real lines, song, voice; Your library; Explore's shared voices; type chips, search,
-                       + Video / + Used / + Rights; a frame opens Library › Shot n with the frame picker and
-                       framing), captions-panel.tsx (read-only style settings, highlighted words, the captions as
+                       frames, real lines, song, voice; Your library with your sounds; Explore: ElevenLabs' shared
+                       voices (free samples), Viral's bundled songs and sounds and your kept references
+                       (library-panel-values.ts exploreItems/soundItems); type chips, search, + Video / + Used /
+                       + Rights; a frame opens Library › Shot n with the frame picker and framing; Create + opens a
+                       generator), generator/ (one shape, Model → Prompt → Inputs → Properties → Generate, with the
+                       cost before Generate: voice-generator.tsx (Voice Design; also Library › Voices' Create Voice in
+                       a Sheet and the Voice panel's Create), sound-generator.tsx (At a word / Match the song hints,
+                       kind, length, loop, takes, follow the prompt), thumbnail-generator.tsx (the Thumbnail panel's
+                       Generate view: the thumbnail step's model in the shared picker, a prompt and another hero become
+                       a note sent through SendChat; properties alone at the gate redraw with CheckThumbnailEdit +
+                       Edit; generator-values.ts holds the mapping), captions-panel.tsx (read-only style settings, highlighted words, the captions as
                        they'll be shown; a ranking's titles), style-panel.tsx (SetProjectPreset, then a re-render
                        from assemble once the steps before the render are approved). The Script panel holds the
                        lines (edit a line at the gate; CheckScriptEdit first so a bad one never fails the run) and
@@ -521,7 +543,10 @@ packages/provider-opencode/ OpenCode 2 only: `opencode serve` per run (free port
                        the OpenCode Console, whose opencode/* models count) is signed in. Tests use a fake
 packages/provider-testing/ replayRun, the replay provider behind AgentSession.replay, and the live checks' task (*.live.ts)
 packages/ui/           @viral/ui: Tailwind v4 tokens (theme.css: CarbonMe's values, lemon primary, dark and light,
-                       28/32px controls) and primitives on Base UI + cva (incl. Dialog, Textarea)
+                       28/32px controls) and primitives on Base UI + cva (incl. Dialog, Textarea, Sheet, EmptyState: an
+                       icon, a title, one sentence and at most one button, used for every empty place; Picker: the
+                       searchable grouped popover with descriptions and badges that Settings › Agents' provider and
+                       model choices and the generators' Model rows use)
 repos/                 gitignored reference source checkouts — read-only
 scripts/               repo tooling (sync-repos.ts)
 ```
