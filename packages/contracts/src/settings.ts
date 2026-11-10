@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { CliName, CliPreset, CliSetup } from "./cli-setup.ts"
-import { KeyProvider } from "./model-catalog.ts"
+import { isKeyProvider, KeyProvider, knownToSeeImages } from "./model-catalog.ts"
 import { PresetNotFound } from "./presets.ts"
 
 // The services Viral talks to. Claude, Codex and OpenCode run through their CLIs, signed in as you; the rest use API
@@ -94,10 +94,6 @@ export type CostBasis = typeof CostBasis.Type
 // Stages that look at images (contact sheets, previews).
 export const VISION_STAGES: ReadonlyArray<AgentStage> = ["shots", "sections", "moments", "thumbnail"]
 
-// Providers checked to see images in a stage (the files it reads and its tools' results). Vision stages run only on
-// these; the others fall back to the Claude CLI there.
-export const VISION_PROVIDERS: ReadonlyArray<AgentProvider> = ["claude-cli"]
-
 // A model a CLI offers on your account (Codex's catalog, `opencode models`).
 export const CliModel = Schema.Struct({ id: Schema.String, label: Schema.String })
 export type CliModel = typeof CliModel.Type
@@ -136,7 +132,8 @@ export const AgentChoice = Schema.Struct({ provider: AgentProvider, model: Schem
 export type AgentChoice = typeof AgentChoice.Type
 
 // What actually runs a stage: its own choice, or the default for all steps. `inherited` is true when the stage
-// uses the default; `forcedCli` when the choice can't see images but the stage needs to, so the Claude CLI runs it.
+// uses the default; `forcedCli` when the choice's model can't see images but the stage needs to, so the Claude CLI
+// runs it.
 export const AgentRoute = Schema.Struct({
   provider: AgentProvider,
   model: Schema.NullOr(Schema.String),
@@ -145,19 +142,32 @@ export const AgentRoute = Schema.Struct({
 })
 export type AgentRoute = typeof AgentRoute.Type
 
-// Whether a provider can run a stage: vision stages need one of VISION_PROVIDERS.
-export const canRunStage = (provider: AgentProvider, stage: AgentStage) =>
-  !VISION_STAGES.includes(stage) || VISION_PROVIDERS.includes(provider)
+// How a model the vendor's own list says takes images is remembered (AppSettings.visionModels): "openrouter:qwen/qwen3-vl".
+export const visionModelKey = (provider: AgentProvider, model: string) => `${provider}:${model}`
+
+// Whether a choice can look at images (the files a stage reads and its tools' pictures): the Claude CLI; a key
+// provider's model that Viral knows takes images (the catalog's "Sees images", or its family), or that the vendor's
+// list said does when it was chosen (`seen`). Codex and OpenCode don't, in Viral.
+export const seesImages = (choice: AgentChoice, seen: ReadonlyArray<string> = []) => {
+  if (choice.provider === "claude-cli") return true
+  if (!isKeyProvider(choice.provider) || choice.model === null) return false
+  return knownToSeeImages(choice.provider, choice.model) || seen.includes(visionModelKey(choice.provider, choice.model))
+}
+
+// Whether a choice can run a stage: vision stages need a model that sees images.
+export const canRunStage = (choice: AgentChoice, stage: AgentStage, seen: ReadonlyArray<string> = []) =>
+  !VISION_STAGES.includes(stage) || seesImages(choice, seen)
 
 // One rule for every client and the server: a stage's own choice wins, then the default for all steps; a stage
-// that needs vision runs on the Claude CLI (on its own default model) when the choice can't see images.
+// that needs vision runs on the Claude CLI (on its own default model) when the choice's model can't see images.
 export const resolveAgentRoute = (
   stage: AgentStage,
   defaultAgent: AgentChoice,
-  own: AgentChoice | null
+  own: AgentChoice | null,
+  seen: ReadonlyArray<string> = []
 ): AgentRoute => {
   const choice = own ?? defaultAgent
-  const forced = !canRunStage(choice.provider, stage)
+  const forced = !canRunStage(choice, stage, seen)
   return forced
     ? { provider: "claude-cli", model: null, inherited: own === null, forcedCli: true }
     : { provider: choice.provider, model: choice.model, inherited: own === null, forcedCli: false }
@@ -188,6 +198,9 @@ export const AppSettings = Schema.Struct({
   stageAgents: perStage(Schema.NullOr(AgentChoice)),
   // what each step will actually run on (resolveAgentRoute over the two above)
   routes: perStage(AgentRoute),
+  // models outside Viral's knowledge that their vendor's list says take images, remembered when chosen
+  // ("openrouter:qwen/qwen3-vl"); they can run the image steps
+  visionModels: Schema.Array(Schema.String),
   transcriber: TranscriberChoice,
   // VIRAL_TRANSCRIBER was set when the server started, which overrides the choice above
   transcriberFromEnvironment: Schema.NullOr(Schema.String)
@@ -350,7 +363,8 @@ export class SettingsRpcs extends RpcGroup.make(
   Rpc.make("GetSettings", { success: AppSettings }),
   // The provider and model for every step that hasn't got its own. A key provider needs a model.
   Rpc.make("SetDefaultAgent", { payload: { agent: AgentChoice }, success: AppSettings, error: SettingsError }),
-  // A step's own provider and model, or null to use the default. Vision steps stay on the Claude CLI for now.
+  // A step's own provider and model, or null to use the default. The image steps (shots, sections, moments,
+  // thumbnail) need a model that sees images: the Claude CLI, or a key model Viral or its vendor says takes images.
   Rpc.make("SetStageAgent", {
     payload: { stage: AgentStage, agent: Schema.NullOr(AgentChoice) },
     success: AppSettings,

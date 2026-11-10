@@ -1,4 +1,4 @@
-import { type Account, type CliModels, KeyName, SettingsRpcs } from "@viral/contracts"
+import { type Account, type AgentChoice, type CliModels, isKeyProvider, KeyName, seesImages, SettingsRpcs } from "@viral/contracts"
 import { codexStatus } from "@viral/provider-codex"
 import { MIN_OPENCODE_VERSION, opencodeStatus, updateHint } from "@viral/provider-opencode"
 import { NO_CLI_ENVIRONMENT } from "@viral/provider-core"
@@ -112,6 +112,17 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
     return { voiceId: updated.config.voice.voiceId, wordsPerSecond: updated.config.voice.wordsPerSecond }
   })
 
+  // A model Viral doesn't know to take images, chosen on a key: the vendor's own list (kept a day, never fails) may
+  // say it does, which is remembered so it can run the image steps.
+  const learnVision = Effect.fn("SettingsRpc.learnVision")(function*(agent: AgentChoice | null) {
+    if (agent === null || !isKeyProvider(agent.provider) || agent.model === null || agent.model.trim() === "") return
+    const settings = yield* store.get
+    if (seesImages(agent, settings.visionModels)) return
+    const model = agent.model.trim()
+    const listed = yield* keyModels.list(agent.provider)
+    if (listed.models.some((m) => m.id === model && m.vision === true)) yield* store.rememberVision(agent.provider, model)
+  })
+
   return SettingsRpcs.of({
     GetAccounts: () =>
       Effect.all([claude, codexAccount, opencodeAccount, ...KeyName.literals.map(keys.account)], { concurrency: "unbounded" }),
@@ -125,8 +136,8 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
     SetCliEnvVar: ({ cli, name, value, secret }) => setups.setVar(cli, name, value, secret),
     RemoveCliEnvVar: ({ cli, name }) => setups.removeVar(cli, name),
     GetSettings: () => store.get,
-    SetDefaultAgent: ({ agent }) => store.setDefaultAgent(agent),
-    SetStageAgent: ({ stage, agent }) => store.setStageAgent(stage, agent),
+    SetDefaultAgent: ({ agent }) => learnVision(agent).pipe(Effect.andThen(store.setDefaultAgent(agent))),
+    SetStageAgent: ({ stage, agent }) => learnVision(agent).pipe(Effect.andThen(store.setStageAgent(stage, agent))),
     GetModelEvals: () => evals.byModel,
     SetTranscriber: ({ choice }) => store.setTranscriber(choice),
     SetDefaultVoice: ({ voiceId, wordsPerSecond }) => setDefaultVoice(voiceId, wordsPerSecond),

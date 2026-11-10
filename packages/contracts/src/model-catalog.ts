@@ -100,6 +100,28 @@ export const catalogFor = (provider: AgentProvider) => MODEL_CATALOG.filter((m) 
 export const catalogModel = (provider: AgentProvider, id: string | null) =>
   id === null ? undefined : MODEL_CATALOG.find((m) => m.provider === provider && m.id === id)
 
+// Model families that take images, for ids outside the catalog: every Claude and Gemini model, and OpenAI's GPT-4o
+// and later and its o3/o4 reasoning models. On OpenRouter and the AI Gateway the id's vendor part must be one of
+// those three. Anything else is only known to see images when the vendor's own list says so.
+const VISION_FAMILIES: Record<string, RegExp> = {
+  anthropic: /^claude-/,
+  openai: /^(gpt-(4o|4\.1|4\.5|[5-9])|o[3-9]\b)/,
+  google: /^gemini-(?!embedding)/
+}
+
+// Whether Viral knows a key provider's model takes images, without asking the vendor: the catalog's "Sees images"
+// badge, else the model's family.
+export const knownToSeeImages = (provider: KeyProvider, model: string): boolean => {
+  const entry = catalogModel(provider, model)
+  if (entry !== undefined) return entry.badges.includes("vision")
+  if (provider === "openrouter" || provider === "ai-gateway") {
+    const [vendor, ...rest] = model.split("/")
+    const family = vendor === undefined ? undefined : VISION_FAMILIES[vendor]
+    return family !== undefined && rest.length > 0 && family.test(rest.join("/"))
+  }
+  return VISION_FAMILIES[provider]?.test(model) ?? false
+}
+
 // Prices of models outside the catalog that runs may still name (older ids, dated snapshots). The catalog's own
 // prices come first.
 const MORE_PRICES: Record<string, TokenPrice> = {

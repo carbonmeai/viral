@@ -100,7 +100,7 @@ export class AgentSession extends Context.Service<AgentSession, {
         const stage = Schema.decodeUnknownOption(AgentStage)(task.stage)
         if (Option.isNone(stage)) return { provider: "claude-cli", model: task.defaultModel } satisfies AgentRoute
         const settings = yield* appSettings.get
-        const route = resolveAgentRoute(stage.value, settings.defaultAgent, settings.stageAgents[stage.value])
+        const route = resolveAgentRoute(stage.value, settings.defaultAgent, settings.stageAgents[stage.value], settings.visionModels)
         return {
           provider: route.provider,
           model: route.provider === "claude-cli" ? route.model ?? task.defaultModel : route.model
