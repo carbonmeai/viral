@@ -1,4 +1,4 @@
-import type { ThumbConfig } from "@viral/contracts"
+import { type GeneratedThumbnail, type ThumbConfig, THUMBNAIL_OPTIONS, THUMBNAIL_USD_PER_CREDIT, thumbnailRoundCredits } from "@viral/contracts"
 
 // The thumbnail's words, line by line, as you edit them.
 export type ThumbnailWords = ReadonlyArray<string>
@@ -25,3 +25,28 @@ export const momentsOf = (config: ThumbConfig) => [
   ...(config.inset === undefined ? [] : [{ name: "Face", t: config.inset.src, source: config.inset.source ?? 0 }]),
   ...(config.layout === "bold" ? [] : [{ name: "Background", t: config.background.src, source: config.background.source ?? 0 }])
 ]
+
+// ── AI thumbnails ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+// The option in use (1-based): the one you chose, else the agent's pick; null when none is.
+export const optionInUse = (generated: GeneratedThumbnail): number | null => generated.chosen ?? generated.recommended
+
+// What a round is expected to cost, said before Generate: ElevenLabs credits and about what they're worth.
+export const roundCost = () => {
+  const credits = thumbnailRoundCredits()
+  return `${THUMBNAIL_OPTIONS} images · about ${credits.toLocaleString("en-US")} credits (≈ $${(credits * THUMBNAIL_USD_PER_CREDIT).toFixed(2)})`
+}
+
+// Each real frame's name, in the order the image model numbers them: "Reaction 1", "Reaction 2", "Hero", "Graphic".
+export const inputNames = (inputs: GeneratedThumbnail["inputs"]): ReadonlyArray<string> => {
+  let reaction = 0
+  return inputs.map((i) => i.role === "reaction" ? `Reaction ${++reaction}` : i.role === "hero" ? "Hero" : "Graphic")
+}
+
+// One option's line under it: why it wasn't made, or how its faces matched the real frames.
+export const optionNote = (option: GeneratedThumbnail["options"][number]) =>
+  option.image === null
+    ? option.failure ?? "Not made."
+    : option.faces === null
+    ? "Not checked."
+    : `Faces ${Math.round(option.faces)}/10${option.note === null || option.note === "" ? "" : ` · ${option.note}`}`

@@ -100,7 +100,7 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   // a generator opened over a panel (Library › Create, the Voice panel's Create): which, and the panel it came from
   const [generator, setGenerator] = useState<{ readonly kind: GeneratorKind; readonly from: PanelId } | null>(null)
   // the Thumbnail panel's view: its generator or its words
-  const [thumbView, setThumbView] = useState<"generate" | "words">("generate")
+  const [thumbView, setThumbView] = useState<"generate" | "details">("generate")
   // the chat column's message box, focused by "Ask in chat" and "Ask for changes"
   const composer = useRef<HTMLTextAreaElement | null>(null)
   const focusComposer = () => setTimeout(() => composer.current?.focus(), 80)
@@ -189,7 +189,8 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
           ? checkSections({ payload: { projectId: ws.project.id, proposal: artifact as SectionsProposal } }).then((r) => r.problems)
           : stepId === "moments"
           ? checkRanking({ payload: { projectId: ws.project.id, proposal: artifact as RankingProposal } }).then((r) => r.problems)
-          : stepId === "thumbnail"
+          // choosing one of an AI round's options ({choose: n}) has nothing to check
+          : stepId === "thumbnail" && !(typeof artifact === "object" && artifact !== null && "choose" in artifact)
           ? checkThumbnail({ payload: { projectId: ws.project.id, config: artifact as ThumbConfig } }).then((r) => r.problems)
           : Promise.resolve([] as ReadonlyArray<string>)
         return checked.then((problems) => problems.length > 0 ? problems : answer({ _tag: "Edit", artifact }).then(() => []))

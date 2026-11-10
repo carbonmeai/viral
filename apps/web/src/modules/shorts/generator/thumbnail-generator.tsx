@@ -1,5 +1,5 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { AgentProvider, SourceId } from "@viral/contracts"
+import { type AgentProvider, type SourceId, THUMBNAIL_IMAGE_MODEL, THUMBNAIL_OPTIONS } from "@viral/contracts"
 import { cn } from "@viral/ui/cn"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
@@ -17,6 +17,8 @@ import { sendChat } from "../chat/chat-api.ts"
 import { clockOf } from "../editor-values.ts"
 import { framesAroundAtom, framesKey } from "../shorts-api.ts"
 import { nameOf, useShortVideos } from "../short-videos.tsx"
+import { useImageKey } from "../thumbnail/thumbnail-options.tsx"
+import { inputNames, optionInUse, roundCost } from "../thumbnail/thumbnail-values.ts"
 import type { EditorState } from "../use-editor-state.ts"
 import { type PickedHero, propsOf, type ThumbProps, thumbnailPlan } from "./generator-values.ts"
 import { GeneratorPreview, GeneratorShell, InputTile, ModelRow, PromptBox, PropertyRow } from "./generator-panel.tsx"
@@ -81,11 +83,91 @@ function useStill(sourceId: SourceId | undefined, t: number, source: number, sti
   return frame === null ? null : stillUrl(frame.path, source)
 }
 
-// The Thumbnail panel's generator (no new API): the thumbnail agent's model, a prompt that becomes its note, the hero
+// The Thumbnail panel's generator: an AI round (the default with an ElevenLabs key), or the basic drawn thumbnail.
+export function ThumbnailGenerator({ e }: { readonly e: EditorState }) {
+  const imageKey = useImageKey()
+  const ai = e.ws.thumbnail?.thumbnail.generated !== undefined || (imageKey === true && e.ws.thumbnail?.thumbnail.config == null)
+  return ai ? <AiThumbnailGenerator e={e} /> : <BasicThumbnailGenerator e={e} />
+}
+
+// An AI thumbnail's generator: the thumbnail agent's model and the image model, a note for the next round, the real
+// frames the last round was made from, and what a round costs before Generate. At the gate Generate asks for another
+// round with the note (the agent revises the design, the image model makes 3 new options); once approved, the note goes
+// to the thumbnail agent through the chat, which redoes the step with it.
+function AiThumbnailGenerator({ e }: { readonly e: EditorState }) {
+  const send = useAtomSet(sendChat, { mode: "promise" })
+  const thumbnail = e.ws.thumbnail
+  const generated = thumbnail?.thumbnail.generated ?? null
+  const [prompt, setPrompt] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [sent, setSent] = useState<string | null>(null)
+  const gate = e.gateFor("thumbnail")
+  const fileUrl = (file: string) => thumbnail === null ? "" : artifactFileUrl(serverUrl, e.projectOwner, "thumbnail", thumbnail.version, file)
+  const inUse = generated === null ? null : optionInUse(generated)
+  const shown = inUse === null ? null : generated?.options[inUse - 1]?.image ?? null
+  const names = generated === null ? [] : inputNames(generated.inputs)
+  const note = prompt.trim()
+
+  const generate = () => {
+    setProblem(null)
+    setSent(null)
+    if (gate.request !== null) {
+      gate.ask(note === "" ? "Another round, please: the same design, fresh options." : note)
+      setPrompt("")
+      setSent("Asked for another round. The thumbnail agent revises the design and the image model makes 3 new options.")
+      return
+    }
+    if (note === "") return
+    setBusy(true)
+    void send({ payload: { projectId: e.ws.project.id, step: "thumbnail", text: note } })
+      .then((result) => {
+        const item = result.said.item
+        setSent(item._tag === "YouSaid" && item.action._tag === "NotDone" ? item.action.reason : "Sent to the thumbnail agent. Follow it in the chat.")
+        setPrompt("")
+      })
+      .catch((err: unknown) => setProblem(err instanceof Error ? err.message : "Couldn’t send it to the thumbnail agent."))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <GeneratorShell
+      preview={
+        <GeneratorPreview state={busy || (gate.busy && gate.request !== null) ? "working" : shown === null ? "empty" : "done"}>
+          {shown === null ? null : <img src={fileUrl(shown)} alt="The thumbnail in use" className="mx-auto aspect-[9/16] h-[260px] rounded-[8px] object-cover" />}
+          {sent === null ? null : <span className="px-1 pt-1 text-xs text-fg-1">{sent}</span>}
+        </GeneratorPreview>
+      }
+      model={<ModelRow picker={<ThumbnailModel />} />}
+      prompt={<PromptBox label="Note for the next round" value={prompt} onChange={setPrompt} placeholder="Angrier faces, the pepper on fire, the words LEVEL 10" />}
+      inputs={generated === null || generated.inputs.length === 0 ? undefined : (
+        <div className="flex flex-wrap gap-2">
+          {generated.inputs.map((input, i) => <InputTile key={input.file} picture={fileUrl(input.file)} value={clockOf(input.src)} label={`${i + 1}. ${names[i]}`} />)}
+        </div>
+      )}
+      properties={
+        <>
+          <PropertyRow label="Image model"><span className="text-sm text-fg-1">{THUMBNAIL_IMAGE_MODEL} · ElevenLabs</span></PropertyRow>
+          <PropertyRow label="Options"><span className="text-sm text-fg-1">{THUMBNAIL_OPTIONS} per round</span></PropertyRow>
+        </>
+      }
+      cost={thumbnail === null ? `Opens when the run gets to the thumbnail · ${roundCost()}` : `${roundCost()} + the thumbnail agent`}
+      problem={problem ?? gate.error}
+      generate={{
+        label: thumbnail === null ? "Generate" : "Another round",
+        disabled: thumbnail === null || (gate.request === null && note === ""),
+        busy: busy || gate.busy,
+        onClick: generate
+      }}
+    />
+  )
+}
+
+// The basic thumbnail's generator (no new API): the thumbnail agent's model, a prompt that becomes its note, the hero
 // and face moments plus "Another frame", and the layout and arrow. Properties alone, at the gate, redraw it with no agent
 // (CheckThumbnailEdit + Edit); anything else goes to the thumbnail agent as a note through the chat, which asks for
 // changes at the gate or redoes the approved step with it.
-export function ThumbnailGenerator({ e }: { readonly e: EditorState }) {
+function BasicThumbnailGenerator({ e }: { readonly e: EditorState }) {
   const names = useShortVideos()
   const send = useAtomSet(sendChat, { mode: "promise" })
   const thumbnail = e.ws.thumbnail
