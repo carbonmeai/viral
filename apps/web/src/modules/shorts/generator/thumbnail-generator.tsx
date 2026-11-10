@@ -147,7 +147,7 @@ function AiThumbnailGenerator({ e }: { readonly e: EditorState }) {
       )}
       properties={
         <>
-          <PropertyRow label="Image model"><span className="text-sm text-fg-1">{THUMBNAIL_IMAGE_MODEL} · ElevenLabs</span></PropertyRow>
+          <PropertyRow label="Image model"><span className="text-sm text-fg-1">{THUMBNAIL_IMAGE_MODEL}{generated?.service === "ai-gateway" ? " · AI Gateway" : generated === null ? "" : " · ElevenLabs"}</span></PropertyRow>
           <PropertyRow label="Options"><span className="text-sm text-fg-1">{THUMBNAIL_OPTIONS} per round</span></PropertyRow>
         </>
       }

@@ -9,7 +9,7 @@ import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import type { GateControls } from "../gate.ts"
 import { accountsAtom } from "../../settings/settings-api.ts"
 import { StepDetails } from "../step-details.tsx"
-import { inputNames, optionInUse, optionNote } from "./thumbnail-values.ts"
+import { inputNames, optionInUse, optionNote, roundSpend } from "./thumbnail-values.ts"
 
 // a file of the thumbnail's version (its options and real frames), as a URL
 export type ThumbnailFileUrl = (file: string) => string
@@ -30,15 +30,16 @@ export function ThumbnailOptionsStage({ generated, fileUrl, gate }: {
     )
   }
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center gap-4 overflow-x-auto px-5 py-1.5">
+    <div className="flex min-h-0 flex-1 items-center justify-center gap-4 overflow-hidden px-5 py-1.5">
       {generated.options.map((o, i) => {
         const n = i + 1
         const used = inUse === n
         return (
-          <figure key={n} className="m-0 flex h-full max-h-[560px] min-w-0 flex-col items-center gap-2">
+          // three across, each as wide as the stage allows and never taller than it
+          <figure key={n} className="m-0 flex min-w-0 max-w-[min(260px,calc((100vh-330px)*0.5625))] flex-1 basis-0 flex-col items-center gap-2">
             <div
               className={cn(
-                "relative aspect-[9/16] min-h-0 flex-1 overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_var(--line-2)]",
+                "relative aspect-[9/16] w-full overflow-hidden rounded-[14px] bg-black shadow-[0_0_0_1px_var(--line-2)]",
                 used && "shadow-[0_0_0_2px_var(--lemon)]"
               )}
             >
@@ -50,8 +51,8 @@ export function ThumbnailOptionsStage({ generated, fileUrl, gate }: {
                 {generated.chosen === n ? " · chosen" : generated.recommended === n ? " · agent's pick" : ""}
               </span>
             </div>
-            <figcaption className="flex items-center gap-2 text-xs text-fg-2">
-              <span className="max-w-[170px] truncate" title={optionNote(o)}>{o.image === null ? "Not made" : optionNote(o)}</span>
+            <figcaption className="flex w-full min-w-0 items-center gap-2 text-xs text-fg-2">
+              <span className="min-w-0 flex-1 truncate" title={optionNote(o)}>{o.image === null ? "Not made" : optionNote(o)}</span>
               {gate.request === null || o.image === null ? null : (
                 <Button size="sm" variant={used ? "primary" : "ghost"} disabled={gate.busy} onClick={() => void gate.edit({ choose: n })}>
                   Use this
@@ -87,7 +88,7 @@ export function ThumbnailOptionsPanel({ generated, fileUrl, gate, stages }: {
               </div>
               <span className="grid min-w-0 flex-1">
                 <span className="text-sm">Option {i + 1}{generated.chosen === i + 1 ? " · chosen" : generated.recommended === i + 1 ? " · agent's pick" : ""}</span>
-                <span className="text-xs text-fg-2">{optionNote(o)}</span>
+                <span className="line-clamp-2 text-xs text-fg-2" title={optionNote(o)}>{optionNote(o)}</span>
               </span>
               {gate.request === null || o.image === null ? null : (
                 <Button size="sm" variant="ghost" disabled={gate.busy} onClick={() => void gate.edit({ choose: i + 1 })}>Use</Button>
@@ -117,8 +118,8 @@ export function ThumbnailOptionsPanel({ generated, fileUrl, gate, stages }: {
         <Facts
           rows={[
             ["Words", generated.design.words],
-            ["Image model", generated.model],
-            ["Credits", generated.credits === 0 ? "None" : `about ${generated.credits.toLocaleString("en-US")}`]
+            ["Image model", `${generated.model} · ${generated.service === "ai-gateway" ? "AI Gateway" : "ElevenLabs"}`],
+            ["Cost", roundSpend(generated)]
           ]}
         />
       </InspectorBlock>
@@ -127,11 +128,11 @@ export function ThumbnailOptionsPanel({ generated, fileUrl, gate, stages }: {
   )
 }
 
-// Whether thumbnails can be made by the image model: an ElevenLabs key is set in Settings › Accounts (or the
-// environment). Unknown while the accounts load.
+// Whether thumbnails can be made by the image model: an ElevenLabs or AI Gateway key is set in Settings › Accounts (or
+// the environment). Unknown while the accounts load.
 export function useImageKey(): boolean | null {
   const accounts = Option.getOrNull(AsyncResult.value(useAtomValue(accountsAtom)))
-  return accounts === null ? null : accounts.some((a) => a.name === "elevenlabs" && a.status === "ready")
+  return accounts === null ? null : accounts.some((a) => (a.name === "elevenlabs" || a.name === "gateway") && a.status === "ready")
 }
 
 // Said on a basic thumbnail (drawn by Viral, Decision 8): why it isn't an AI one.
@@ -139,7 +140,7 @@ export function BasicNote({ imageKey }: { readonly imageKey: boolean | null }) {
   return (
     <p className="m-0 rounded-[10px] bg-panel px-3 py-2 text-xs text-fg-1">
       {imageKey === false
-        ? "Basic thumbnail, drawn by Viral. Add an ElevenLabs key (Pro plan) in Settings › Accounts for AI thumbnails made from real frames."
+        ? "Basic thumbnail, drawn by Viral. Add an ElevenLabs key (Pro plan) or an AI Gateway key in Settings › Accounts for AI thumbnails made from real frames."
         : "Basic thumbnail, drawn by Viral. Ask for another round to have the image model make it from real frames."}
     </p>
   )

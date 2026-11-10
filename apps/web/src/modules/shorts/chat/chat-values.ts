@@ -176,7 +176,7 @@ export const chipsFor = (step: ChatStep, ctx: ChipContext): ReadonlyArray<Chip> 
     case "thumbnail":
       return [
         { label: "Bigger words", send: "Make the words bigger and fewer." },
-        { label: "Classic layout", send: "Use the classic layout." },
+        { label: "Stronger reactions", send: "Use the most extreme real reactions." },
         ...(second === undefined ? [] : [{ label: `Use ${second} as the face`, send: `Use ${second} for the face.` }])
       ]
     case "style":

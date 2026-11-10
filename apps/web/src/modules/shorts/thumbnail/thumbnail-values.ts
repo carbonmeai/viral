@@ -31,11 +31,15 @@ export const momentsOf = (config: ThumbConfig) => [
 // The option in use (1-based): the one you chose, else the agent's pick; null when none is.
 export const optionInUse = (generated: GeneratedThumbnail): number | null => generated.chosen ?? generated.recommended
 
-// What a round is expected to cost, said before Generate: ElevenLabs credits and about what they're worth.
-export const roundCost = () => {
-  const credits = thumbnailRoundCredits()
-  return `${THUMBNAIL_OPTIONS} images · about ${credits.toLocaleString("en-US")} credits (≈ $${(credits * THUMBNAIL_USD_PER_CREDIT).toFixed(2)})`
-}
+// What a round is expected to cost, said before Generate: about $0.25 an image (ElevenLabs bills it in credits, the AI
+// Gateway in dollars).
+export const roundCost = () => `${THUMBNAIL_OPTIONS} images · about $${(thumbnailRoundCredits() * THUMBNAIL_USD_PER_CREDIT).toFixed(2)}`
+
+// What a round cost: the Gateway's dollars, or ElevenLabs' credits.
+export const roundSpend = (generated: GeneratedThumbnail) =>
+  generated.service === "ai-gateway"
+    ? generated.costUsd === undefined ? "Not reported" : `$${generated.costUsd.toFixed(2)}`
+    : generated.credits === 0 ? "None" : `about ${generated.credits.toLocaleString("en-US")} ElevenLabs credits`
 
 // Each real frame's name, in the order the image model numbers them: "Reaction 1", "Reaction 2", "Hero", "Graphic".
 export const inputNames = (inputs: GeneratedThumbnail["inputs"]): ReadonlyArray<string> => {
