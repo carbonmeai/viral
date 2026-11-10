@@ -4,7 +4,8 @@
 // MCP endpoint from OPENCODE_CONFIG_CONTENT, like OpenCode makes them; each is a step that costs $0.002. The launch,
 // the session calls and each tool result are appended to $FAKE_OPENCODE_LOG as JSON lines.
 // FAKE_OPENCODE_AUTH: "console" (default: signed in to the OpenCode Console), "none" (nothing stored) or "key" (an
-// API key in the environment for another provider, whose models are listed too).
+// API key in the environment for another provider, whose models are listed too). A shared Anthropic key
+// (ANTHROPIC_API_KEY starting "test-") lists an Anthropic model too; test values of shared keys are logged at launch.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { appendFileSync } from "node:fs"
@@ -13,6 +14,9 @@ import { createServer } from "node:http"
 const args = process.argv.slice(2)
 const log = (entry) => process.env.FAKE_OPENCODE_LOG && appendFileSync(process.env.FAKE_OPENCODE_LOG, `${JSON.stringify(entry)}\n`)
 const auth = process.env.FAKE_OPENCODE_AUTH ?? "console"
+// only test values are ever logged
+const testValue = (name) => process.env[name]?.startsWith("test-") ? process.env[name] : process.env[name] === undefined ? null : "(set)"
+const sharedAnthropic = process.env.ANTHROPIC_API_KEY?.startsWith("test-") ?? false
 
 if (args[0] === "--version") {
   process.stdout.write(`opencode v${process.env.FAKE_OPENCODE_VERSION ?? "2.2.6"}\n`)
@@ -30,14 +34,21 @@ if (args[0] === "auth") {
 }
 if (args[0] === "models") {
   log({ argv: args })
-  process.stdout.write(`opencode/claude-haiku-5-5\nopencode/big-pickle\n${auth === "key" ? "vercel/anthropic/claude-haiku-5.5\n" : ""}`)
+  process.stdout.write(`opencode/claude-haiku-5-5\nopencode/big-pickle\n${auth === "key" ? "vercel/anthropic/claude-haiku-5.5\n" : ""}${sharedAnthropic ? "anthropic/claude-haiku-5-5\n" : ""}`)
   process.exit(0)
 }
 
 const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT ?? "{}")
 const port = Number(args.find((arg) => arg.startsWith("--port="))?.slice(7))
 const basic = `Basic ${Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString("base64")}`
-log({ argv: args, config, env: { claude: process.env.OPENCODE_DISABLE_CLAUDE_CODE } })
+log({
+  argv: args,
+  config,
+  env: {
+    claude: process.env.OPENCODE_DISABLE_CLAUDE_CODE,
+    keys: Object.fromEntries(["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "OPENROUTER_API_KEY", "MY_FLAG"].map((name) => [name, testValue(name)]))
+  }
+})
 
 const subscribers = new Set()
 let seq = 0

@@ -54,6 +54,8 @@ export const startOpencodeServer = Effect.fn("startOpencodeServer")(function*(op
   readonly command: readonly [string, ...Array<string>]
   readonly cwd: string
   readonly config: object
+  // a run's own variables (your keys, when you share them with OpenCode); Viral's OPENCODE_* settings win
+  readonly env?: Readonly<Record<string, string>>
 }) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const random = yield* SecureRandom.SecureRandom
@@ -68,6 +70,7 @@ export const startOpencodeServer = Effect.fn("startOpencodeServer")(function*(op
     detached: true,
     extendEnv: true,
     env: {
+      ...options.env,
       OPENCODE_CONFIG_CONTENT: config,
       OPENCODE_SERVER_PASSWORD: password,
       OPENCODE_DISABLE_CLAUDE_CODE: "1",

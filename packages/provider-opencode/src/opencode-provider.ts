@@ -1,6 +1,6 @@
 import { Deferred, Effect, FileSystem, Option, Schema, Stream } from "effect"
 import { SecureRandom } from "effect/crypto"
-import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolEndpoint } from "@viral/provider-core"
+import { AgentError, type AgentHooks, type AgentRun, type AgentTask, type CliEnvironment, NO_CLI_ENVIRONMENT, toolEndpoint } from "@viral/provider-core"
 import type { OpencodeEvent, SessionInfo } from "./opencode-api.ts"
 import { atLeast, MIN_OPENCODE_VERSION, opencodeVersion, startOpencodeServer, updateHint } from "./opencode-server.ts"
 
@@ -88,7 +88,8 @@ export const makeOpencodeProvider = Effect.fn("makeOpencodeProvider")(function*(
     task: AgentTask<S>,
     hooks: AgentHooks,
     model: string | null,
-    system: string
+    system: string,
+    cli: CliEnvironment = NO_CLI_ENVIRONMENT
   ) {
     const version = yield* opencodeVersion(command)
     if (Option.isNone(version)) {
@@ -113,7 +114,8 @@ export const makeOpencodeProvider = Effect.fn("makeOpencodeProvider")(function*(
     const { api } = yield* startOpencodeServer({
       command,
       cwd: scratch,
-      config: runConfig({ system, endpoint, readDirs: task.readDirs ?? [] })
+      config: runConfig({ system, endpoint, readDirs: task.readDirs ?? [] }),
+      env: cli.env
     })
 
     const sessionID = task.resumeSession

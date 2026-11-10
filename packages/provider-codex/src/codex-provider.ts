@@ -1,7 +1,7 @@
-import { Config, Deferred, Effect, FileSystem, Option, Queue, Schema } from "effect"
+import { Config, Deferred, Effect, FileSystem, Option, Queue, Redacted, Schema } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { SecureRandom } from "effect/crypto"
-import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolEndpoint } from "@viral/provider-core"
+import { AgentError, type AgentHooks, type AgentRun, type AgentTask, type CliEnvironment, NO_CLI_ENVIRONMENT, toolEndpoint } from "@viral/provider-core"
 import { type CodexClient, codexClient, type CodexNotification } from "./codex-client.ts"
 
 // Codex features a Viral run never uses. Each one would add tools or context the stage doesn't want: the shell,
@@ -106,6 +106,45 @@ const ErrorEvent = Schema.Struct({ error: Schema.Struct({ message: Schema.String
 const decodeAs = <A, I>(schema: Schema.Codec<A, I>, value: unknown) =>
   Schema.decodeUnknownOption(schema)(value)
 
+// On a key, Codex keeps the key in memory only (no auth.json is written) and accepts nothing but API-key sign-in.
+export const API_KEY_ARGS = ["-c", `forced_login_method="api"`, "-c", `cli_auth_credentials_store="ephemeral"`]
+
+// Starts an app-server for the surrounding scope and opens the session (initialize). The CLI environment's variables
+// go to the process. With an API key, Codex runs in that key's own folder (CODEX_HOME) and is signed in with it over
+// stdin (`account/login/start`), so the key is never in the arguments, the environment or on disk, and your own
+// login (~/.codex) isn't touched.
+export const startCodex = Effect.fnUntraced(function*(
+  spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
+  fs: FileSystem.FileSystem,
+  command: readonly [string, ...Array<string>],
+  args: ReadonlyArray<string>,
+  cli: CliEnvironment,
+  cwd?: string
+) {
+  const [bin, ...lead] = command
+  if (cli.apiKey !== null) {
+    yield* fs.makeDirectory(cli.apiKey.home, { recursive: true }).pipe(
+      Effect.mapError((cause) => new AgentError({ code: "session", message: cause.message }))
+    )
+  }
+  const env = { ...cli.env, ...(cli.apiKey === null ? {} : { CODEX_HOME: cli.apiKey.home }) }
+  const client = yield* codexClient(ChildProcess.make(bin, [...lead, ...args, ...(cli.apiKey === null ? [] : API_KEY_ARGS)], {
+    ...(cwd === undefined ? {} : { cwd }),
+    stdin: "pipe",
+    // a cancel closes the scope, which kills the whole process group
+    detached: true,
+    ...(Object.keys(env).length === 0 ? {} : { extendEnv: true, env })
+  })).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner))
+  yield* client.request("initialize", { clientInfo: { name: "viral", title: "Viral", version: "1.0.0" }, capabilities: null }, Schema.Unknown)
+  yield* client.notify("initialized")
+  if (cli.apiKey !== null) {
+    yield* client.request("account/login/start", { type: "apiKey", apiKey: Redacted.value(cli.apiKey.key) }, Schema.Unknown).pipe(
+      Effect.mapError(() => new AgentError({ code: "no-key", message: "Codex didn't accept your OpenAI key" }))
+    )
+  }
+  return client
+})
+
 // Runs an agent job on the user's Codex CLI through `codex app-server`, signed in with their ChatGPT plan or API
 // key. One app-server per run, in an empty scratch folder (no AGENTS.md to pick up), read-only sandbox, approvals
 // never, and only Viral's tools (over the per-run MCP endpoint). The stage's system prompt replaces Codex's own
@@ -136,22 +175,17 @@ export const makeCodexProvider = Effect.fn("makeCodexProvider")(function*(option
       task: AgentTask<S>,
       hooks: AgentHooks,
       model: string | null,
-      system: string
+      system: string,
+      cli: CliEnvironment = NO_CLI_ENVIRONMENT
     ) {
       const endpoint = yield* toolEndpoint(task).pipe(Effect.provideService(SecureRandom.SecureRandom, random))
       const scratch = yield* fs.makeTempDirectoryScoped({ prefix: "viral-codex-" }).pipe(
         Effect.mapError((cause) => new AgentError({ code: "session", message: cause.message }))
       )
       const readsImages = (task.readDirs ?? []).length > 0
-      const client = yield* codexClient(ChildProcess.make(bin, [...lead, ...launchArgs(yield* userMcpServers, readsImages)], {
-        cwd: scratch,
-        stdin: "pipe",
-        // a cancel closes the scope, which kills the whole process group
-        detached: true
-      }))
-
-      yield* client.request("initialize", { clientInfo: { name: "viral", title: "Viral", version: "1.0.0" }, capabilities: null }, Schema.Unknown)
-      yield* client.notify("initialized")
+      // on a key, Codex runs in Viral's own folder, where none of your MCP servers are defined
+      const servers = cli.apiKey === null ? yield* userMcpServers : []
+      const client = yield* startCodex(spawner, fs, [bin, ...lead], launchArgs(servers, readsImages), cli, scratch)
 
       // the account's catalog decides the model and its effort: the user's config.toml may name a model their
       // plan doesn't offer, or an effort (xhigh) far beyond what a stage needs

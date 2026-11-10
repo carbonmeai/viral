@@ -1,7 +1,7 @@
 import { createSdkMcpServer, query, type SDKMessage, tool } from "@anthropic-ai/claude-agent-sdk"
 import { Effect, Option, Path, Schema, Stream, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { AgentError, type AgentHooks, type AgentRun, type AgentTask, toolShape } from "@viral/provider-core"
+import { AgentError, type AgentHooks, type AgentRun, type AgentTask, type CliEnvironment, NO_CLI_ENVIRONMENT, toolShape } from "@viral/provider-core"
 
 const isInside = (dir: string, file: string, path: Path.Path) => {
   const relative = path.relative(dir, path.resolve(file))
@@ -13,21 +13,33 @@ const isInside = (dir: string, file: string, path: Path.Path) => {
 // the stage's folders. The system prompt (the stage's instructions followed by its skills) comes from the app. Cost
 // and the session id are reported through `hooks`, so a rejected attempt can resume the same conversation with
 // your note.
-export const makeClaudeCliProvider = Effect.gen(function*() {
+// A run's environment for the CLI: the server's own, with the run's variables over it (a key setup in Settings ›
+// Accounts: an OpenRouter token, a config folder…). Undefined when there are none, so the CLI simply inherits.
+export const claudeEnv = (base: Readonly<Record<string, string | undefined>>, extra: Readonly<Record<string, string>>) =>
+  Object.keys(extra).length === 0 ? undefined : { ...base, ...extra }
+
+export interface ClaudeCliOptions {
+  // the claude executable (a fake in tests); found on the PATH otherwise
+  readonly claudePath?: string
+}
+
+export const makeClaudeCliProviderWith = Effect.fn("makeClaudeCliProvider")(function*(options: ClaudeCliOptions = {}) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const path = yield* Path.Path
-  const claudePath = yield* spawner.string(ChildProcess.make("which", ["claude"])).pipe(
+  const claudePath = options.claudePath ?? (yield* spawner.string(ChildProcess.make("which", ["claude"])).pipe(
     Effect.map(Str.trim),
     Effect.orDie
-  )
+  ))
 
   const run: AgentRun = Effect.fn("ClaudeCli.run")(function*<S extends Schema.Top>(
     task: AgentTask<S>,
     hooks: AgentHooks,
     model: string | null,
-    system: string
+    system: string,
+    cli: CliEnvironment = NO_CLI_ENVIRONMENT
   ) {
     const readDirs = task.readDirs ?? []
+    const env = claudeEnv(process.env, cli.env)
 
     const helpers = task.tools ?? []
     const services = yield* Effect.context<never>()
@@ -56,6 +68,7 @@ export const makeClaudeCliProvider = Effect.gen(function*() {
           options: {
             abortController,
             pathToClaudeCodeExecutable: claudePath,
+            ...(env === undefined ? {} : { env }),
             ...(model === null ? {} : { model }),
             ...(task.resumeSession ? { resume: task.resumeSession } : {}),
             systemPrompt: system,
@@ -133,3 +146,5 @@ export const makeClaudeCliProvider = Effect.gen(function*() {
 
   return run
 })
+
+export const makeClaudeCliProvider = makeClaudeCliProviderWith()

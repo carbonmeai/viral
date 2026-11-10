@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Exit, Layer, Option, Schema } from "effect"
+import { Effect, Exit, Layer, Option, Redacted, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import assert from "node:assert/strict"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -158,4 +158,51 @@ test("status: the version, the account and its models", async () => {
 
   const missing = await Effect.runPromise(codexStatus(["codex-not-installed-here"]).pipe(Effect.provide(NodeServices.layer)))
   assert.ok(Option.isNone(missing.version))
+})
+
+test("on an OpenAI key: Viral's own CODEX_HOME, the key over stdin only, API sign-in forced; your variables passed", async () => {
+  const { hooks } = recorder()
+  const keyHome = join(home, "key-home")
+  let entries: Array<Record<string, unknown>> = []
+  const cli = { env: { MY_FLAG: "on" }, apiKey: { key: Redacted.make("test-openai-key-0042"), home: keyHome } }
+  const exit = await run("api-key", (log) =>
+    Effect.gen(function*() {
+      const go = yield* provider
+      const script = { calls: [{ tool: "propose_answer", args: { answer: 5 } }], end: "wait" }
+      return yield* go(task(script), hooks, null, "SYSTEM", cli).pipe(Effect.ensuring(Effect.sync(() => void (entries = log()))))
+    }))
+  assert.deepEqual(exit, Exit.succeed({ answer: 5 }))
+  const launch = entries[0]!
+  const argv = launch["argv"] as Array<string>
+  assert.deepEqual(launch["env"], { CODEX_HOME: keyHome, MY_FLAG: "on" })
+  assert.ok(argv.includes(`forced_login_method="api"`) && argv.includes(`cli_auth_credentials_store="ephemeral"`))
+  assert.ok(!argv.some((arg) => arg.includes("test-openai-key")), "the key is never an argument")
+  // your own MCP servers live in your ~/.codex, which this run doesn't use
+  assert.ok(!argv.includes("mcp_servers.mine.enabled=false"))
+  const requests = entries.flatMap((entry) => "request" in entry ? [entry["request"] as { method?: string; params?: Record<string, unknown> }] : [])
+  const methods = requests.map((r) => r.method)
+  assert.ok(methods.indexOf("account/login/start") < methods.indexOf("thread/start"), "signed in before the thread starts")
+  assert.deepEqual(requests.find((r) => r.method === "account/login/start")!.params, { type: "apiKey", apiKey: "test-openai-key-0042" })
+})
+
+test("signed in as usual, the run gets no CODEX_HOME of Viral's and no API sign-in", async () => {
+  const { hooks } = recorder()
+  let entries: Array<Record<string, unknown>> = []
+  await run("plain", (log) =>
+    Effect.gen(function*() {
+      const go = yield* provider
+      const script = { calls: [{ tool: "propose_answer", args: { answer: 1 } }], end: "wait" }
+      return yield* go(task(script), hooks, null, "SYSTEM").pipe(Effect.ensuring(Effect.sync(() => void (entries = log()))))
+    }))
+  const launch = entries[0]!
+  assert.equal((launch["env"] as Record<string, unknown>)["MY_FLAG"], null)
+  assert.notEqual((launch["env"] as Record<string, unknown>)["CODEX_HOME"], join(home, "key-home"))
+  assert.ok(!(launch["argv"] as Array<string>).includes(`forced_login_method="api"`))
+  assert.ok(!entries.some((entry) => (entry["request"] as { method?: string } | undefined)?.method === "account/login/start"))
+})
+
+test("status on an OpenAI key reads the key's account", async () => {
+  const cli = { env: {}, apiKey: { key: Redacted.make("test-openai-key-0042"), home: join(home, "status-home") } }
+  const status = await Effect.runPromise(codexStatus(["node", fake], cli).pipe(Effect.provide(NodeServices.layer)))
+  assert.deepEqual(status.account, Option.some({ type: "apiKey", plan: null }))
 })

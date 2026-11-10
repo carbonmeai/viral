@@ -1,1 +1,1 @@
-export { makeClaudeCliProvider } from "./claude-cli-provider.ts"
+export { claudeEnv, type ClaudeCliOptions, makeClaudeCliProvider, makeClaudeCliProviderWith } from "./claude-cli-provider.ts"

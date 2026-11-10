@@ -1,7 +1,7 @@
-import { Effect, Option, Schema, String as Str } from "effect"
+import { Effect, FileSystem, Option, Schema, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { codexClient } from "./codex-client.ts"
-import { type CodexModel, launchArgs, listModels } from "./codex-provider.ts"
+import { type CliEnvironment, NO_CLI_ENVIRONMENT } from "@viral/provider-core"
+import { type CodexModel, launchArgs, listModels, startCodex } from "./codex-provider.ts"
 
 const Account = Schema.Struct({
   account: Schema.NullOr(Schema.Struct({
@@ -24,8 +24,13 @@ const STATUS_TIMEOUT = "20 seconds"
 
 // What Settings shows for Codex: installed, signed in, and the account's models. Asks an app-server (the same
 // isolated launch a run uses), so it takes a second or two.
-export const codexStatus = Effect.fn("codexStatus")(function*(command: readonly [string, ...Array<string>] = ["codex"]) {
+// With a CLI environment (Codex on your OpenAI key), it's asked the way a run will start it.
+export const codexStatus = Effect.fn("codexStatus")(function*(
+  command: readonly [string, ...Array<string>] = ["codex"],
+  cli: CliEnvironment = NO_CLI_ENVIRONMENT
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const fs = yield* FileSystem.FileSystem
   const [bin, ...lead] = command
   const version = yield* spawner.string(ChildProcess.make(bin, [...lead, "--version"])).pipe(
     Effect.map((out) => Option.some(Str.trim(out))),
@@ -34,9 +39,7 @@ export const codexStatus = Effect.fn("codexStatus")(function*(command: readonly 
   if (Option.isNone(version)) return { version, account: Option.none(), models: [] } satisfies CodexStatus
 
   const signedIn = Effect.gen(function*() {
-    const client = yield* codexClient(ChildProcess.make(bin, [...lead, ...launchArgs([], false)], { stdin: "pipe", detached: true }))
-    yield* client.request("initialize", { clientInfo: { name: "viral", title: "Viral", version: "1.0.0" }, capabilities: null }, Schema.Unknown)
-    yield* client.notify("initialized")
+    const client = yield* startCodex(spawner, fs, command, launchArgs([], false), cli)
     const { account } = yield* client.request("account/read", { refreshToken: false }, Account)
     const models = account === null ? [] : yield* listModels(client)
     return {

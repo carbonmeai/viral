@@ -183,3 +183,25 @@ test("status: OpenCode 1.x is outdated", async () => {
   assert.deepEqual(old, { version: Option.some("1.19.5"), outdated: true, signedIn: false, models: [] })
   assert.deepEqual(connectedIntegrations("not json"), [])
 })
+
+test("shared keys and your own variables reach OpenCode's process; Viral's OPENCODE_* settings still win", async () => {
+  const { hooks } = recorder()
+  const script = { calls: [{ tool: "propose_answer", args: { answer: 3 } }], end: "wait" }
+  const cli = { env: { ANTHROPIC_API_KEY: "test-anthropic-key-0001", MY_FLAG: "test-on", OPENCODE_DISABLE_CLAUDE_CODE: "0" }, apiKey: null }
+  const { exit, log } = await run("shared", Effect.flatMap(makeOpencodeProvider({ command: ["node", fake] }), (provider) =>
+    provider(task(script), hooks, "zen/big", "SYSTEM", cli)) as Effect.Effect<unknown, AgentError, NodeServices.NodeServices | SecureRandom.SecureRandom>)
+  assert.deepEqual(exit, Exit.succeed({ answer: 3 }))
+  const env = log()[0]!["env"] as { claude: string; keys: Record<string, string | null> }
+  assert.equal(env.claude, "1")
+  assert.equal(env.keys["ANTHROPIC_API_KEY"], "test-anthropic-key-0001")
+  assert.equal(env.keys["MY_FLAG"], "test-on")
+})
+
+test("status with shared keys counts the models they open up", async () => {
+  process.env["FAKE_OPENCODE_AUTH"] = "none"
+  const { exit } = await run("status-shared", opencodeStatus(["node", fake], { ANTHROPIC_API_KEY: "test-anthropic-key-0001" }))
+  delete process.env["FAKE_OPENCODE_AUTH"]
+  assert.ok(Exit.isSuccess(exit))
+  assert.equal(exit.value.signedIn, true)
+  assert.ok(exit.value.models.includes("anthropic/claude-haiku-5-5"))
+})

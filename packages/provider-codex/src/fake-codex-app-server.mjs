@@ -18,7 +18,9 @@ if (args[0] === "mcp") {
   process.stdout.write(JSON.stringify([{ name: "mine", enabled: true }, { name: "plugin-one", enabled: true }]))
   process.exit(0)
 }
-log({ argv: args, cwd: process.cwd() })
+log({ argv: args, cwd: process.cwd(), env: { CODEX_HOME: process.env.CODEX_HOME ?? null, MY_FLAG: process.env.MY_FLAG ?? null } })
+// signed in with an API key over `account/login/start` (kept in memory, like Codex's ephemeral store)
+let apiKeyLogin = false
 
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
 const notify = (method, params) => send({ method, params })
@@ -53,9 +55,17 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   switch (message.method) {
     case "initialize":
       return reply({ userAgent: "fake", codexHome: "/tmp", platformFamily: "unix", platformOs: "macos" })
+    case "account/login/start":
+      if (message.params.type !== "apiKey" || !message.params.apiKey.startsWith("test-")) {
+        return send({ id: message.id, error: { code: -32600, message: "API key login is disabled." } })
+      }
+      apiKeyLogin = true
+      return reply({ type: "apiKey" })
     case "account/read":
       return reply({
-        account: process.env.FAKE_CODEX_SIGNED_OUT ? null : { type: "chatgpt", email: "me@example.com", planType: "plus" },
+        account: apiKeyLogin
+          ? { type: "apiKey" }
+          : process.env.FAKE_CODEX_SIGNED_OUT ? null : { type: "chatgpt", email: "me@example.com", planType: "plus" },
         requiresOpenaiAuth: true
       })
     case "model/list":

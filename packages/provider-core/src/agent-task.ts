@@ -1,5 +1,5 @@
 import { AgentProvider } from "@viral/contracts"
-import { Effect, Schema } from "effect"
+import { Effect, type Redacted, Schema } from "effect"
 import { fromJSONSchema, type ZodObject } from "zod"
 
 // `code`: "session" (the CLI, SDK or gateway failed), "no-output" (the agent never called its tool),
@@ -88,13 +88,26 @@ export interface AgentHooks {
   recordSession(sessionId: string): Effect.Effect<void>
 }
 
+// How a signed-in CLI runs this time (its key setup in Settings › Accounts), resolved by the app for one run and
+// handed only to that run's process. Nothing here ever goes into the server's own environment.
+export interface CliEnvironment {
+  // variables added over the server's environment ("" sets one empty); secrets already read from the store
+  readonly env: Readonly<Record<string, string>>
+  // Codex: sign in with this API key instead of your login, in its own folder (CODEX_HOME), keeping the key in
+  // memory only; null on your sign-in
+  readonly apiKey: { readonly key: Redacted.Redacted<string>; readonly home: string } | null
+}
+
+export const NO_CLI_ENVIRONMENT: CliEnvironment = { env: {}, apiKey: null }
+
 // One provider's way of running a job on a model. `system` is the full system prompt (the stage's instructions
-// followed by its skills), built by the app.
+// followed by its skills), built by the app. `cli` is a CLI's environment for this run (the key providers ignore it).
 export type AgentRun = <S extends Schema.Top>(
   task: AgentTask<S>,
   hooks: AgentHooks,
   model: string | null,
-  system: string
+  system: string,
+  cli?: CliEnvironment
 ) => Effect.Effect<S["Type"], AgentError, S["DecodingServices"]>
 
 // The result of the output tool once the schema accepts it, or the message that sends a mismatch back to the

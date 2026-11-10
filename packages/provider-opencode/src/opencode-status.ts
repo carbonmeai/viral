@@ -32,7 +32,11 @@ export const connectedIntegrations = (json: string): ReadonlyArray<string> =>
 // What Settings shows for OpenCode: installed, new enough, signed in, and its models. Asked of a private server
 // (`--standalone`), not OpenCode's background service, so the answer reflects this environment's keys, as Viral's
 // own `opencode serve` will see them.
-export const opencodeStatus = Effect.fn("opencodeStatus")(function*(command: readonly [string, ...Array<string>] = ["opencode"]) {
+// `env`: the variables a run adds (your keys, when you share them), so the models they open up are counted.
+export const opencodeStatus = Effect.fn("opencodeStatus")(function*(
+  command: readonly [string, ...Array<string>] = ["opencode"],
+  env: Readonly<Record<string, string>> = {}
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const [bin, ...lead] = command
   const version = yield* opencodeVersion(command)
@@ -40,7 +44,9 @@ export const opencodeStatus = Effect.fn("opencodeStatus")(function*(command: rea
   if (Option.isNone(version)) return none
   if (!atLeast(version.value, MIN_OPENCODE_VERSION)) return { ...none, outdated: true }
   const output = (args: ReadonlyArray<string>) =>
-    spawner.string(ChildProcess.make(bin, [...lead, ...args, "--standalone"])).pipe(Effect.orElseSucceed(() => ""))
+    spawner.string(ChildProcess.make(bin, [...lead, ...args, "--standalone"], Object.keys(env).length === 0 ? {} : { extendEnv: true, env })).pipe(
+      Effect.orElseSucceed(() => "")
+    )
   const [auth, list] = yield* Effect.all([output(["auth", "list", "--format", "json"]), output(["models"])], { concurrency: "unbounded" })
   const models = list.split("\n").map(Str.trim).filter((line) => /^[\w.-]+\/\S+$/.test(line))
   return {
