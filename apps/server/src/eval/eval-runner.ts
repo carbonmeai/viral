@@ -9,6 +9,10 @@ import type { EvalStage, EvalStageName } from "./eval-stages.ts"
 //   claude-cli:opus              a CLI model alias or id
 //   codex | codex:gpt-6-astra    Codex's default model, or one from its catalog
 //   opencode:anthropic/claude-haiku-5.5   an OpenCode provider/model
+//   anthropic:claude-haiku-5-5   a model on your Anthropic key (its own ids)
+//   openai:gpt-6-luna            a model on your OpenAI key
+//   google:gemini-3.8-flash      a model on your Google Gemini key
+//   openrouter:anthropic/claude-haiku-5.5  an OpenRouter model id
 //   gateway:openai/gpt-6-luna    an AI Gateway model id (or the bare id, openai/gpt-6-luna)
 export interface EvalModel {
   readonly label: string
@@ -18,6 +22,8 @@ export interface EvalModel {
 }
 
 const GATEWAY_ID = /^[a-z0-9-]+\/[A-Za-z0-9._-]+$/
+// a vendor's own model id: letters, digits, dots, dashes and underscores (no slash)
+const VENDOR_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 export const parseModel = (spec: string): EvalModel | null => {
   const trimmed = spec.trim()
@@ -29,6 +35,12 @@ export const parseModel = (spec: string): EvalModel | null => {
       return { label: model === "" ? provider : trimmed, provider, model: model === "" ? null : model }
     case "opencode":
       return model.includes("/") ? { label: trimmed, provider: "opencode", model } : null
+    case "anthropic":
+    case "openai":
+    case "google":
+      return VENDOR_ID.test(model) ? { label: trimmed, provider, model } : null
+    case "openrouter":
+      return GATEWAY_ID.test(model) ? { label: trimmed, provider: "openrouter", model } : null
     case "gateway":
       return GATEWAY_ID.test(model) ? { label: model, provider: "ai-gateway", model } : null
   }
@@ -47,7 +59,11 @@ export interface EvalRunResult {
   // the budget would have run out
   readonly status: "passed" | "failed" | "skipped"
   readonly error: string | null
+  // what the run cost; with costBasis "unknown" (a model Viral has no price for) it's 0 and means "price unknown"
   readonly costUsd: number
+  // reported by the service (the gateway, OpenRouter, a CLI), an estimate from tokens at Viral's prices (Anthropic,
+  // OpenAI, Google), or unknown; null when the provider doesn't say (CLIs: reported)
+  readonly costBasis: "reported" | "estimate" | "unknown" | null
   readonly inputTokens: number
   readonly outputTokens: number
   readonly seconds: number
@@ -114,6 +130,7 @@ export const runEval = Effect.fn("runEval")(function*(input: EvalInput) {
             status: "skipped",
             error: over,
             costUsd: 0,
+            costBasis: null,
             inputTokens: 0,
             outputTokens: 0,
             seconds: 0,
@@ -130,6 +147,8 @@ export const runEval = Effect.fn("runEval")(function*(input: EvalInput) {
 
         const checks: Array<ReadonlyArray<string>> = []
         let costUsd = 0
+        // set from the cost hook (a callback, so kept in an object the compiler doesn't narrow)
+        const basis: { value: EvalRunResult["costBasis"] } = { value: null }
         let inputTokens = 0
         let outputTokens = 0
         let reportedModel: string | null = null
@@ -145,6 +164,12 @@ export const runEval = Effect.fn("runEval")(function*(input: EvalInput) {
           recordCost: (cost) =>
             Effect.sync(() => {
               costUsd += cost.costUsd ?? 0
+              const next = cost.costBasis ?? null
+              basis.value = next === "unknown" || basis.value === "unknown"
+                ? "unknown"
+                : next === "estimate" || basis.value === "estimate"
+                ? "estimate"
+                : next ?? basis.value
               inputTokens += cost.inputTokens ?? 0
               outputTokens += cost.outputTokens ?? 0
               reportedModel = cost.model ?? reportedModel
@@ -155,9 +180,12 @@ export const runEval = Effect.fn("runEval")(function*(input: EvalInput) {
         const started = yield* Clock.currentTimeMillis
         const exit = yield* Effect.exit(stage.run(agent, ctx, route, (problems) => void checks.push(problems)))
         const seconds = ((yield* Clock.currentTimeMillis) - started) / 1000
+        // a priced run with no known price still counts toward the budget, at the cautious guess
+        const costBasis = basis.value
+        const counted = costBasis === "unknown" ? Math.max(costUsd, estimate) : costUsd
         if (billing === "subscription") planRuns.set(model.provider, used + 1)
-        else spent += costUsd
-        worst.set(key, Math.max(worst.get(key) ?? 0, costUsd))
+        else spent += counted
+        worst.set(key, Math.max(worst.get(key) ?? 0, counted))
 
         const first = checks[0]
         const result: EvalRunResult = {
@@ -167,6 +195,7 @@ export const runEval = Effect.fn("runEval")(function*(input: EvalInput) {
             ? null
             : Option.match(Cause.findErrorOption(exit.cause), { onNone: () => Cause.pretty(exit.cause), onSome: (e) => `${e.code}: ${e.message}` }),
           costUsd,
+          costBasis,
           inputTokens,
           outputTokens,
           seconds,

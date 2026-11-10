@@ -4,8 +4,9 @@ import { SecureRandom } from "effect/crypto"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { EvalRunResult } from "./eval-runner.ts"
 
-// Which runs count as real money: the gateway and OpenCode always, the Claude CLI only with an API key (otherwise
-// its reported cost is a plan's value), Codex never (Viral runs it on your ChatGPT sign-in and gets tokens only).
+// Which runs count as real money: the key providers (Anthropic, OpenAI, Google, OpenRouter, the gateway) and OpenCode
+// always, the Claude CLI only with an API key (otherwise its reported cost is a plan's value), Codex never (Viral runs
+// it on your ChatGPT sign-in and gets tokens only).
 export const evalBilling = (provider: AgentProvider, cliBilled: boolean) =>
   provider === "codex"
     ? "subscription" as const
@@ -20,6 +21,9 @@ const SummaryRow = Schema.Struct({
   passed: Schema.Int,
   first_try_passed: Schema.Int,
   avg_cost_usd: Schema.Number,
+  unknown_runs: Schema.Int,
+  estimated_runs: Schema.Int,
+  reported_runs: Schema.Int,
   stages: Schema.String,
   last_run_at: Schema.String
 })
@@ -41,14 +45,15 @@ export class EvalRecords extends Context.Service<EvalRecords, {
           const id = yield* random.uuidV7()
           yield* sql`
             INSERT INTO eval_runs (id, eval_id, stage, provider, model, reported_model, run, status, first_try_pass, fix_rounds,
-                                   input_tokens, output_tokens, cost_usd, billing, duration_ms, created_at)
+                                   input_tokens, output_tokens, cost_usd, cost_basis, billing, duration_ms, created_at)
             VALUES (${id}, ${evalId}, ${r.stage}, ${r.provider}, ${r.model}, ${r.reportedModel}, ${r.run}, ${r.status},
                     ${r.firstTryPass === null ? null : r.firstTryPass ? 1 : 0}, ${r.fixRounds}, ${r.inputTokens}, ${r.outputTokens},
-                    ${r.costUsd}, ${billing}, ${Math.round(r.seconds * 1000)}, ${createdAt})
+                    ${r.costUsd}, ${r.costBasis}, ${billing}, ${Math.round(r.seconds * 1000)}, ${createdAt})
             ON CONFLICT (eval_id, stage, model, run) DO UPDATE SET
               provider = excluded.provider, reported_model = excluded.reported_model, status = excluded.status,
               first_try_pass = excluded.first_try_pass, fix_rounds = excluded.fix_rounds, input_tokens = excluded.input_tokens,
-              output_tokens = excluded.output_tokens, cost_usd = excluded.cost_usd, billing = excluded.billing,
+              output_tokens = excluded.output_tokens, cost_usd = excluded.cost_usd, cost_basis = excluded.cost_basis,
+              billing = excluded.billing,
               duration_ms = excluded.duration_ms, created_at = excluded.created_at
           `
         },
@@ -63,6 +68,9 @@ export class EvalRecords extends Context.Service<EvalRecords, {
                  sum(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS passed,
                  sum(CASE WHEN first_try_pass = 1 THEN 1 ELSE 0 END) AS first_try_passed,
                  avg(cost_usd) AS avg_cost_usd,
+                 sum(CASE WHEN cost_basis = 'unknown' THEN 1 ELSE 0 END) AS unknown_runs,
+                 sum(CASE WHEN cost_basis = 'estimate' THEN 1 ELSE 0 END) AS estimated_runs,
+                 sum(CASE WHEN cost_basis = 'reported' THEN 1 ELSE 0 END) AS reported_runs,
                  group_concat(DISTINCT stage) AS stages,
                  max(created_at) AS last_run_at
           FROM eval_runs WHERE status <> 'skipped'
@@ -79,6 +87,7 @@ export class EvalRecords extends Context.Service<EvalRecords, {
             passed: r.passed,
             firstTryPassed: r.first_try_passed,
             avgCostUsd: Math.round(r.avg_cost_usd * 1e6) / 1e6,
+            costBasis: r.unknown_runs > 0 ? "unknown" : r.estimated_runs > 0 ? "estimate" : r.reported_runs > 0 ? "reported" : null,
             stages: r.stages.split(",").sort(),
             lastRunAt: r.last_run_at
           }))

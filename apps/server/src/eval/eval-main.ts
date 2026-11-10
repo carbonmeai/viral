@@ -59,7 +59,7 @@ const readReport = Effect.fn("readReport")(function*(dir: string) {
   return {
     ...rest,
     ...(videos === undefined ? {} : { videos }),
-    results: stored.results.map((r) => ({ ...r, billing: r.billing ?? evalBilling(r.provider, billed) }))
+    results: stored.results.map((r) => ({ ...r, billing: r.billing ?? evalBilling(r.provider, billed), costBasis: r.costBasis ?? null }))
   } satisfies EvalReport
 })
 
@@ -76,7 +76,8 @@ const run = Effect.gen(function*() {
     const model = parseModel(spec)
     if (model === null) {
       return yield* fail(
-        `can't read the model "${spec}": use claude-cli[:<model>], codex[:<model>], opencode:<provider/model> or gateway:<id> (e.g. gateway:openai/gpt-6-luna)`
+        `can't read the model "${spec}": use claude-cli[:<model>], codex[:<model>], opencode:<provider/model>, anthropic:<id>, openai:<id>, ` +
+          `google:<id>, openrouter:<vendor/model> or gateway:<vendor/model> (e.g. anthropic:claude-haiku-5-5, gateway:openai/gpt-6-luna)`
       )
     }
     models.push(model)
@@ -134,7 +135,13 @@ const run = Effect.gen(function*() {
     onResult: (r, spent) =>
       records.record(evalId, r, r.billing, createdAt).pipe(Effect.andThen(Console.log(
         `  run ${r.run} ${r.stage.padEnd(8)} ${r.model.padEnd(28)} ${r.status.padEnd(7)} ` +
-          `${r.billing === "subscription" ? `${r.inputTokens + r.outputTokens} tok (plan)` : `$${r.costUsd.toFixed(4)}`} ${r.seconds.toFixed(1)}s` +
+          `${
+            r.billing === "subscription"
+              ? `${r.inputTokens + r.outputTokens} tok (plan)`
+              : r.costBasis === "unknown"
+              ? `${r.inputTokens + r.outputTokens} tok (price unknown)`
+              : `$${r.costUsd.toFixed(4)}${r.costBasis === "estimate" ? " est." : ""}`
+          } ${r.seconds.toFixed(1)}s` +
           (r.status === "skipped" ? "" : ` first try ${r.firstTryPass === true ? "yes" : "no"}, ${r.fixRounds} fix`) +
           (r.error === null ? "" : `  (${r.error.split("\n")[0]})`) +
           `  · spent $${spent.toFixed(4)}`

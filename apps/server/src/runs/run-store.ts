@@ -72,6 +72,7 @@ const StageRunRow = Schema.Struct({
   input_tokens: Schema.NullOr(Schema.Int),
   output_tokens: Schema.NullOr(Schema.Int),
   cost_usd: Schema.NullOr(Schema.Finite),
+  cost_basis: Schema.NullOr(Schema.Literals(["reported", "estimate", "unknown"])),
   tts_characters: Schema.NullOr(Schema.Int),
   duration_ms: Schema.NullOr(Schema.Int),
   started_at: Iso,
@@ -90,6 +91,7 @@ const toStageRun = (row: typeof StageRunRow.Type): StageRun => ({
   inputTokens: row.input_tokens,
   outputTokens: row.output_tokens,
   costUsd: row.cost_usd,
+  costBasis: row.cost_basis,
   ttsCharacters: row.tts_characters,
   durationMs: row.duration_ms,
   startedAt: row.started_at,
@@ -138,7 +140,10 @@ export interface StageCost {
   readonly billing?: "billed" | "subscription" | null
   readonly inputTokens?: number | null
   readonly outputTokens?: number | null
+  // null = no known price (the tokens still count); never recorded as $0
   readonly costUsd?: number | null
+  // reported by the service, estimated from tokens at Viral's prices, or unknown (no price)
+  readonly costBasis?: "reported" | "estimate" | "unknown" | null
   readonly ttsCharacters?: number | null
 }
 
@@ -289,7 +294,14 @@ export class RunStore extends Context.Service<RunStore, {
             billing = coalesce(${cost.billing ?? null}, billing),
             input_tokens = coalesce(input_tokens, 0) + coalesce(${cost.inputTokens ?? null}, 0),
             output_tokens = coalesce(output_tokens, 0) + coalesce(${cost.outputTokens ?? null}, 0),
-            cost_usd = coalesce(cost_usd, 0) + coalesce(${cost.costUsd ?? null}, 0),
+            cost_usd = CASE WHEN ${cost.costUsd ?? null} IS NULL THEN cost_usd ELSE coalesce(cost_usd, 0) + ${cost.costUsd ?? null} END,
+            -- several calls in one stage run (fix rounds): unknown beats estimate beats reported
+            cost_basis = CASE
+              WHEN ${cost.costBasis ?? null} IS NULL THEN cost_basis
+              WHEN cost_basis = 'unknown' OR ${cost.costBasis ?? null} = 'unknown' THEN 'unknown'
+              WHEN cost_basis = 'estimate' OR ${cost.costBasis ?? null} = 'estimate' THEN 'estimate'
+              ELSE 'reported'
+            END,
             tts_characters = coalesce(tts_characters, 0) + coalesce(${cost.ttsCharacters ?? null}, 0)
           WHERE id = ${id}
         `.pipe(Effect.asVoid, Effect.orDie)

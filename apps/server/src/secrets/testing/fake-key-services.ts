@@ -32,6 +32,18 @@ export const startFakeKeyServices = async (): Promise<FakeKeyServices> => {
       if (is("good")) return json(200, { data: [{ id: "claude-haiku-5-5" }, { id: "claude-sonnet-5-5" }, { id: "claude-opus-5-5" }], has_more: false })
       return json(401, { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } })
     }
+    // the AI Gateway's model list (public; a "good-key-gateway…" key tells it apart from OpenAI's on this one server)
+    if (path === "/v1/models" && key.startsWith("good-key-gateway")) {
+      return json(200, {
+        object: "list",
+        data: [
+          { id: "anthropic/claude-haiku-5.5", name: "Claude Haiku 5.5", type: "language", tags: ["tool-use", "vision"], modalities: { input: ["text", "image"], output: ["text"] } },
+          { id: "openai/gpt-6-luna", name: "GPT-6 Luna", type: "language", tags: ["tool-use"], modalities: { input: ["text", "image"], output: ["text"] } },
+          { id: "alibaba/qwen-tiny", name: "Qwen Tiny", type: "language", tags: [], modalities: { input: ["text"], output: ["text"] } },
+          { id: "openai/text-embedding-9", name: "Embedding 9", type: "embedding", tags: [], modalities: { input: ["text"], output: ["text"] } }
+        ]
+      })
+    }
     if (path === "/v1/models") {
       if (is("good")) return json(200, { object: "list", data: [{ id: "gpt-6-luna" }, { id: "gpt-6" }, { id: "gpt-5" }, { id: "o9" }, { id: "whisper-2" }] })
       if (is("busy")) return json(429, { error: { message: "Rate limit reached" } })
@@ -58,6 +70,17 @@ export const startFakeKeyServices = async (): Promise<FakeKeyServices> => {
       if (is("free")) return json(200, { data: { label: "sk-or-v1-abc…", limit: null, usage: 0, limit_remaining: null, is_free_tier: true } })
       if (is("broke")) return json(200, { data: { label: "sk-or-v1-abc…", limit: 5, usage: 5, limit_remaining: 0, is_free_tier: false } })
       return json(401, { error: { message: "No auth credentials found", code: 401 } })
+    }
+    // OpenRouter's model list: only models that take tools can run a step
+    if (path === "/api/v1/models") {
+      if (!is("good")) return json(401, { error: { message: "No auth credentials found", code: 401 } })
+      return json(200, {
+        data: [
+          { id: "anthropic/claude-haiku-5.5", name: "Anthropic: Claude Haiku 5.5", architecture: { input_modalities: ["text", "image"] }, supported_parameters: ["tools", "max_tokens"] },
+          { id: "meta-llama/llama-9-8b", name: "Meta: Llama 9 8B", architecture: { input_modalities: ["text"] }, supported_parameters: ["tools"] },
+          { id: "some/no-tools", name: "No Tools", architecture: { input_modalities: ["text"] }, supported_parameters: ["max_tokens"] }
+        ]
+      })
     }
     // the AI Gateway: credits, as @ai-sdk/gateway's getCredits() reads them
     if (path === "/v1/credits") {

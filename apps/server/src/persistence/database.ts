@@ -7,6 +7,7 @@ import multiVideo from "./migrations/0002-multi-video.ts"
 import voicePreviews from "./migrations/0003-voice-previews.ts"
 import research from "./migrations/0004-research.ts"
 import ranking from "./migrations/0005-ranking.ts"
+import costBasis from "./migrations/0006-cost-basis.ts"
 
 // Migrations run once, in id order, keyed `<id>_<name>`. Never edit one that has shipped; add a new one.
 const migrations = SqliteMigrator.fromRecord({
@@ -14,7 +15,8 @@ const migrations = SqliteMigrator.fromRecord({
   "0002_multi_video": multiVideo,
   "0003_voice_previews": voicePreviews,
   "0004_research": research,
-  "0005_ranking": ranking
+  "0005_ranking": ranking,
+  "0006_cost_basis": costBasis
 })
 
 // Foreign keys are off while migrations run, as SQLite's table rebuild needs (dropping a table would otherwise

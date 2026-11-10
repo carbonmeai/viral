@@ -36,5 +36,5 @@ test("OpenCode runs a helper tool, submits the result and reports its cost", { s
   assert.match(run.costs[0]!.model ?? "", /^[\w.-]+\/\S+$/, "the model is provider/model")
   // some providers behind OpenCode report no input tokens on a turn (the AI Gateway on Gemini did)
   assert.ok(run.costs[0]!.outputTokens > 0)
-  assert.ok(run.costs[0]!.costUsd >= 0)
+  assert.ok((run.costs[0]!.costUsd ?? -1) >= 0)
 })

@@ -4,7 +4,7 @@ import { fromJSONSchema, type ZodObject } from "zod"
 
 // `code`: "session" (the CLI, SDK or gateway failed), "no-output" (the agent never called its tool),
 // "invalid-output" (it called it with something the schema rejects), "ended" (the session ended with an error),
-// "no-key" / "no-model" (the AI Gateway isn't set up for this stage).
+// "no-key" / "no-model" (a key provider isn't set up for this stage).
 export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   code: Schema.String,
   message: Schema.String
@@ -40,7 +40,8 @@ export const AgentProviderName = AgentProvider
 export type AgentProviderName = AgentProvider
 export interface AgentRoute {
   readonly provider: AgentProviderName
-  // a CLI alias or id ("haiku"; null = the CLI's default), or a gateway model id ("openai/gpt-6-luna")
+  // a CLI alias or id ("haiku"; null = the CLI's default), or a key provider's model id ("claude-haiku-5-5",
+  // "openai/gpt-6-luna" on OpenRouter or the gateway)
   readonly model: string | null
 }
 
@@ -69,11 +70,14 @@ export interface AgentTask<S extends Schema.Top, Skill extends string = string> 
 }
 
 // What one agent job cost. The provider and billing are filled in by AgentSession, which knows the route.
+// `costUsd` is null when the model has no known price (its tokens still count); `costBasis` says whether the
+// service reported the cost or it was estimated from tokens (CLIs leave it out: theirs is reported).
 export interface AgentCost {
   readonly model: string | null
   readonly inputTokens: number
   readonly outputTokens: number
-  readonly costUsd: number
+  readonly costUsd: number | null
+  readonly costBasis?: "reported" | "estimate" | "unknown" | null
   readonly provider?: string | null
   readonly billing?: "billed" | "subscription" | null
 }

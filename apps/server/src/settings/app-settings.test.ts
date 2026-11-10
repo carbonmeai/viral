@@ -68,3 +68,21 @@ test("an OpenCode choice needs a provider/model id", async () => {
   const ok = await Effect.runPromise(checkChoice("story", { provider: "opencode", model: " anthropic/claude-haiku-5.5 " }))
   assert.deepEqual(ok, { provider: "opencode", model: "anthropic/claude-haiku-5.5" })
 })
+
+test("a direct key provider runs a text step with its own model ids, needs a model, and can't take a vision step yet", async () => {
+  const noModel = await Effect.runPromiseExit(checkChoice("script", { provider: "anthropic", model: null }))
+  assert.match(JSON.stringify(noModel), /choose a model for Anthropic, e\.g\. claude-haiku-5-5/)
+  const ok = await Effect.runPromise(checkChoice("script", { provider: "openrouter", model: " anthropic/claude-haiku-5.5 " }))
+  assert.deepEqual(ok, { provider: "openrouter", model: "anthropic/claude-haiku-5.5" })
+  const vision = await Effect.runPromiseExit(checkChoice("thumbnail", { provider: "google", model: "gemini-3.8-flash" }))
+  assert.match(JSON.stringify(vision), /looks at images/)
+  assert.deepEqual(
+    resolveAgentRoute("shots", { provider: "openai", model: "gpt-6-luna" }, null),
+    { provider: "claude-cli", model: null, inherited: true, forcedCli: true },
+    "a direct-key default leaves the image steps on the Claude CLI"
+  )
+  assert.deepEqual(
+    resolveAgentRoute("ads", { provider: "openai", model: "gpt-6-luna" }, null),
+    { provider: "openai", model: "gpt-6-luna", inherited: true, forcedCli: false }
+  )
+})

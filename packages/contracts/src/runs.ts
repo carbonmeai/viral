@@ -80,7 +80,7 @@ export const StageRun = Schema.Struct({
   attempt: Schema.Int,
   status: StageRunStatus,
   model: Schema.NullOr(Schema.String),
-  // who ran it (claude-cli, ai-gateway, elevenlabs), and whether its cost is real money or a CLI plan's value
+  // who ran it (claude-cli, anthropic, ai-gateway, elevenlabs…), and whether its cost is real money or a CLI plan's value
   // older libraries stored run events before these existed, so a missing key reads as null
   provider: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   billing: Schema.NullOr(Schema.Literals(["billed", "subscription"])).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
@@ -88,6 +88,8 @@ export const StageRun = Schema.Struct({
   inputTokens: Schema.NullOr(Schema.Int),
   outputTokens: Schema.NullOr(Schema.Int),
   costUsd: Schema.NullOr(Schema.Finite),
+  // reported by the service, estimated from tokens, or unknown (no price); null for CLI runs and older ones
+  costBasis: Schema.NullOr(Schema.Literals(["reported", "estimate", "unknown"])).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   ttsCharacters: Schema.NullOr(Schema.Int).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   durationMs: Schema.NullOr(Schema.Int),
   startedAt: Schema.DateTimeUtcFromString,

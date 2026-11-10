@@ -3,6 +3,7 @@ import { codexStatus } from "@viral/provider-codex"
 import { MIN_OPENCODE_VERSION, opencodeStatus, updateHint } from "@viral/provider-opencode"
 import { Effect, Option, String as Str } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import { KeyModelLists } from "../agent-session/key-models.ts"
 import { Presets } from "../presets/presets.ts"
 import { KeyAccounts } from "../secrets/key-accounts.ts"
 import { StorageReport } from "../storage/storage.ts"
@@ -17,6 +18,7 @@ const cli = (row: CliAccount): Account => ({ ...row, envVar: null, last4: null, 
 
 export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
   const keys = yield* KeyAccounts
+  const keyModels = yield* KeyModelLists
   const store = yield* AppSettingsStore
   const presets = yield* Presets
   const storage = yield* StorageReport
@@ -83,6 +85,7 @@ export const SettingsRpcLive = SettingsRpcs.toLayer(Effect.gen(function*() {
     GetAccounts: () =>
       Effect.all([claude, codexAccount, opencodeAccount, ...KeyName.literals.map(keys.account)], { concurrency: "unbounded" }),
     GetCliModels: () => cliModels,
+    ListKeyModels: ({ provider }) => keyModels.list(provider),
     SetSecret: ({ name, value }) => keys.save(name, value),
     TestSecret: ({ name, value }) => keys.test(name, value),
     RemoveSecret: ({ name }) => keys.remove(name),

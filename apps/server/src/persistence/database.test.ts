@@ -36,7 +36,7 @@ test("creates every table from the design", async () => {
       "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_set_research", "source_sets", "sources", "stage_runs", "voice_previews"
     ]
   )
-  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking"])
+  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking", "cost_basis"])
 })
 
 test("enforces foreign keys and the one-owner rule on artifacts", async () => {
@@ -125,4 +125,16 @@ test("upgrades an existing library in place, keeping every row and its links", a
   assert.deepEqual([upgraded.before.runs, upgraded.before.artifacts, upgraded.before.requests, upgraded.before.violations], [2, 2, 1, 0])
   assert.ok(Exit.isFailure(upgraded.deleteUsedVideo), "a video a short uses can't be deleted")
   assert.deepEqual(upgraded.cascaded, { videos: 1, runs: 1, artifacts: 1, requests: 0 })
+})
+
+test("stage and eval runs say where a cost comes from, and nothing else", async () => {
+  const [stage, evals] = await run(Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient
+    return [
+      yield* sql<{ readonly name: string }>`SELECT name FROM pragma_table_info('stage_runs') WHERE name = 'cost_basis'`,
+      yield* sql<{ readonly name: string }>`SELECT name FROM pragma_table_info('eval_runs') WHERE name = 'cost_basis'`
+    ] as const
+  }))
+  assert.equal(stage.length, 1)
+  assert.equal(evals.length, 1)
 })

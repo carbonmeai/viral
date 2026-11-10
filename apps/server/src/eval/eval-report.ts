@@ -38,6 +38,8 @@ export const StoredEvalReport = Schema.fromJsonString(Schema.Struct({
     status: Schema.Literals(["passed", "failed", "skipped"]),
     error: Schema.NullOr(Schema.String),
     costUsd: Schema.Number,
+    // reports from before direct keys have none (their costs were all reported)
+    costBasis: Schema.optional(Schema.NullOr(Schema.Literals(["reported", "estimate", "unknown"]))),
     inputTokens: Schema.Number,
     outputTokens: Schema.Number,
     seconds: Schema.Number,
@@ -93,6 +95,8 @@ export interface EvalSummaryRow {
   // every run that ran was on a plan (its cost is a plan's value, or nothing for Codex)
   readonly onPlan: boolean
   readonly avgSeconds: number
+  // the weakest cost basis of its runs: unknown (some had no price) or estimate (tokens × Viral's prices)
+  readonly costBasis: "reported" | "estimate" | "unknown" | null
 }
 
 // Per stage and model: how many runs passed, passed first try, the fix rounds they took, and the average cost
@@ -114,6 +118,13 @@ export const summarize = (report: EvalReport): ReadonlyArray<EvalSummaryRow> =>
         avgCostUsd: avg((r) => r.costUsd),
         avgTokens: avg((r) => r.inputTokens + r.outputTokens),
         onPlan: ran.length > 0 && ran.every((r) => r.billing === "subscription"),
+        costBasis: ran.some((r) => r.costBasis === "unknown")
+          ? "unknown"
+          : ran.some((r) => r.costBasis === "estimate")
+          ? "estimate"
+          : ran.some((r) => r.costBasis === "reported")
+          ? "reported"
+          : null,
         avgSeconds: avg((r) => r.seconds)
       }
     })
@@ -124,8 +135,15 @@ const tokens = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k tok` : `${M
 
 // What a run (or a row's average) cost: dollars, or on a plan the tokens it used (and the plan's value when the CLI
 // reports one, as the Claude CLI does).
-const costText = (costUsd: number, tokenCount: number, onPlan: boolean) =>
-  !onPlan ? usd(costUsd) : costUsd === 0 ? `${tokens(tokenCount)} · plan` : `${usd(costUsd)} plan value`
+// A model Viral has no price for shows its tokens and "price unknown", never $0; an estimate from tokens says so.
+const costText = (costUsd: number, tokenCount: number, onPlan: boolean, basis: EvalSummaryRow["costBasis"] = null) =>
+  basis === "unknown"
+    ? `${tokens(tokenCount)} · price unknown`
+    : !onPlan
+    ? `${usd(costUsd)}${basis === "estimate" ? " est." : ""}`
+    : costUsd === 0
+    ? `${tokens(tokenCount)} · plan`
+    : `${usd(costUsd)} plan value`
 
 export const reportMarkdown = (report: EvalReport): string =>
   [
@@ -136,7 +154,7 @@ export const reportMarkdown = (report: EvalReport): string =>
     "| stage | model | passed | first try | fix rounds | avg cost | avg time | skipped |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ...summarize(report).map((r) =>
-      `| ${r.stage} | ${r.model} | ${r.passed}/${r.runs} | ${r.firstTryPassed}/${r.runs} | ${r.fixRounds} | ${costText(r.avgCostUsd, r.avgTokens, r.onPlan)} | ${r.avgSeconds.toFixed(1)}s | ${r.skipped} |`
+      `| ${r.stage} | ${r.model} | ${r.passed}/${r.runs} | ${r.firstTryPassed}/${r.runs} | ${r.fixRounds} | ${costText(r.avgCostUsd, r.avgTokens, r.onPlan, r.costBasis)} | ${r.avgSeconds.toFixed(1)}s | ${r.skipped} |`
     ),
     ""
   ].join("\n")
@@ -234,7 +252,7 @@ const renderRun = (r: EvalRunResult, videos: Videos, label?: string): string => 
   const status = r.status === "passed"
     ? r.firstTryPass === true ? "passed first try" : `passed after ${r.fixRounds} fix round${r.fixRounds === 1 ? "" : "s"}`
     : r.status
-  const facts = r.status === "skipped" ? "" : ` · ${costText(r.costUsd, r.inputTokens + r.outputTokens, r.billing === "subscription")} · ${r.seconds.toFixed(1)}s${r.reportedModel === null ? "" : ` · ${escape(r.reportedModel)}`}`
+  const facts = r.status === "skipped" ? "" : ` · ${costText(r.costUsd, r.inputTokens + r.outputTokens, r.billing === "subscription", r.costBasis)} · ${r.seconds.toFixed(1)}s${r.reportedModel === null ? "" : ` · ${escape(r.reportedModel)}`}`
   const problems = r.firstTryProblems.length === 0 || r.firstTryPass === true
     ? ""
     : `<details><summary>first try: ${r.firstTryProblems.length} problem(s)</summary><ul>${r.firstTryProblems.map((p) => `<li>${escape(named(videos, p))}</li>`).join("")}</ul></details>`
@@ -249,7 +267,7 @@ export const reportHtml = (report: EvalReport): string => {
   const rows = summarize(report)
   const summary = `<table><thead><tr><th>stage</th><th>model</th><th>passed</th><th>first try</th><th>fix rounds</th><th>avg cost</th><th>avg time</th><th>skipped</th></tr></thead><tbody>${
     rows.map((r) =>
-      `<tr><td>${r.stage}</td><td>${escape(r.model)}</td><td>${r.passed}/${r.runs}</td><td>${r.firstTryPassed}/${r.runs}</td><td>${r.fixRounds}</td><td>${costText(r.avgCostUsd, r.avgTokens, r.onPlan)}</td><td>${r.avgSeconds.toFixed(1)}s</td><td>${r.skipped}</td></tr>`
+      `<tr><td>${r.stage}</td><td>${escape(r.model)}</td><td>${r.passed}/${r.runs}</td><td>${r.firstTryPassed}/${r.runs}</td><td>${r.fixRounds}</td><td>${costText(r.avgCostUsd, r.avgTokens, r.onPlan, r.costBasis)}</td><td>${r.avgSeconds.toFixed(1)}s</td><td>${r.skipped}</td></tr>`
     ).join("")
   }</tbody></table>`
   const videos = report.videos ?? []

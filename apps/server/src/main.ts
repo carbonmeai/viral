@@ -43,6 +43,7 @@ import { HealthRouteLive, MediaRouteLive } from "./media/media-route.ts"
 import { prependToolsPath, Tools } from "./tools/tools.ts"
 import { ToolsRpcLive } from "./tools/tools-rpc.ts"
 import { KeyAccounts } from "./secrets/key-accounts.ts"
+import { KeyModelLists } from "./agent-session/key-models.ts"
 import { Secrets } from "./secrets/secrets.ts"
 import { AppSettingsStore } from "./settings/app-settings.ts"
 import { SettingsRpcLive } from "./settings/settings-rpc.ts"
@@ -74,6 +75,7 @@ const DomainsLive = Layer.mergeAll(
   Tools.layer,
   Secrets.layer,
   KeyAccounts.layer,
+  KeyModelLists.layer,
   AppSettingsStore.layer,
   StorageReport.layer,
   UsageReport.layer,

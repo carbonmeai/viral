@@ -12,6 +12,7 @@ const run = (overrides: Partial<EvalRunResult>): EvalRunResult => ({
   status: "passed",
   error: null,
   costUsd: 0.01,
+  costBasis: "reported",
   inputTokens: 100,
   outputTokens: 20,
   seconds: 2,
@@ -51,6 +52,7 @@ test("summarize averages the runs that ran and leaves the skipped ones out", () 
     avgCostUsd: 0.02,
     avgTokens: 120,
     onPlan: false,
+    costBasis: "reported",
     avgSeconds: 3
   }])
   assert.match(reportMarkdown(report), /\| metadata \| openai\/gpt-6-luna \| 2\/2 \| 1\/2 \| 1 \|/)
@@ -104,4 +106,23 @@ test("runs on a plan show their tokens instead of dollars", () => {
   }
   assert.match(reportMarkdown(report), /\| 18\.9k tok · plan \|/)
   assert.match(reportHtml(report), /18\.9k tok · plan/)
+})
+
+test("direct-key runs say their cost is an estimate; a model with no price shows its tokens, never $0", () => {
+  const report: EvalReport = {
+    createdAt: "2026-11-10T00:00:00.000Z",
+    fixture: "candy",
+    stages: ["metadata"],
+    models: ["anthropic:claude-haiku-5-5", "google:gemini-0"],
+    runs: 1,
+    budgetUsd: 3,
+    spentUsd: 0.002,
+    results: [
+      run({ model: "anthropic:claude-haiku-5-5", provider: "anthropic", costUsd: 0.002, costBasis: "estimate" }),
+      run({ model: "google:gemini-0", provider: "google", costUsd: 0, costBasis: "unknown", inputTokens: 4000, outputTokens: 100 })
+    ],
+    reference: {}
+  }
+  assert.match(reportMarkdown(report), /\| \$0\.0020 est\. \|/)
+  assert.match(reportMarkdown(report), /\| 4\.1k tok · price unknown \|/)
 })

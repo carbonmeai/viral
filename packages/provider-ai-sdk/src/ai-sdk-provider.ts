@@ -1,53 +1,53 @@
-import { createGateway } from "@ai-sdk/gateway"
+import type { KeyProvider } from "@viral/contracts"
 import { generateText, type ImagePart, isStepCount, jsonSchema, type LanguageModel, type ModelMessage, type TextPart, tool, type ToolSet } from "ai"
 import { Effect, FileSystem, Option, Path, Redacted, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
 import { AgentError, type AgentHooks, type AgentRun, type AgentTask, outputMismatch, redactSecrets, toolJsonSchema } from "@viral/provider-core"
-import { decodeHistory, encodeHistory } from "./ai-gateway-history.ts"
+import { decodeHistory, encodeHistory } from "./ai-sdk-history.ts"
+import { VENDORS } from "./ai-sdk-vendors.ts"
 
-export interface AiGatewayOptions {
-  // the AI Gateway key, read when a job runs (none = the job fails with "no-key")
+export interface AiSdkOptions {
+  // which vendor: Anthropic, OpenAI, Google, OpenRouter or the AI Gateway
+  readonly provider: KeyProvider
+  // the vendor's key, read when a job runs (none = the job fails with "no-key")
   readonly apiKey: Effect.Effect<Option.Option<Redacted.Redacted<string>>>
   // where conversations are kept between attempts
   readonly sessionsDir: string
-  // the language model behind a gateway id; tests pass a mock
+  // the service's address (no path), when it isn't the real one: tests point it at a fake server
+  readonly baseUrl?: string
+  // the language model behind an id; tests pass a mock
   readonly languageModel?: (modelId: string, apiKey: string) => LanguageModel
 }
 
 // Anthropic models cache a marked prefix (the system prompt, then the brief) for 5 minutes, so fix rounds and
-// resumes re-read it cheaply; OpenAI and Google cache repeated prefixes on their own.
-const ANTHROPIC_CACHE = { anthropic: { cacheControl: { type: "ephemeral" } } }
+// resumes re-read it cheaply (directly, on the gateway and on OpenRouter); OpenAI and Google cache repeated
+// prefixes on their own.
 const IMAGE_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" }
 // the overview contact sheets of a long video are about 8; more than this is a mistake, not a brief
 const MAX_BRIEF_IMAGES = 12
-const SESSION_PREFIX = "gateway:"
-
-// What the gateway reports a call cost, per step. `cost` is what it charged; with your own provider key (BYOK)
-// that's 0 and the provider bills you `marketCost` instead, so the higher of the two is the real spend.
-const Usd = Schema.Union([Schema.String, Schema.Finite])
-const GatewayCost = Schema.Struct({ gateway: Schema.Struct({ cost: Usd, marketCost: Schema.optional(Usd) }) })
-const stepCost = (m: typeof GatewayCost.Type) => Math.max(Number(m.gateway.cost) || 0, Number(m.gateway.marketCost ?? 0) || 0)
-const decodeCost = Schema.decodeUnknownOption(GatewayCost)
 const StoredHistory = Schema.fromJsonString(Schema.Array(Schema.Unknown))
 
 const fail = (code: string) => (message: string) => new AgentError({ code, message })
 
-// Runs an agent job on any model behind the Vercel AI Gateway, through the AI SDK: the same instructions and
-// skills as the CLI, the stage's output tool with the same JSON Schema (the run stops when it's called, and the
-// result is decoded with the same Effect Schema), and the stage's helper tools. Instead of reading files, the
-// images in the stage's folders are attached to the brief. The conversation is stored under
-// `sessionsDir`, so a fix round or a rejection continues it, like a CLI session.
-export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function*(options: AiGatewayOptions) {
+// Runs an agent job on a vendor's model with your key, through the AI SDK (Anthropic, OpenAI, Google, OpenRouter,
+// or any model behind the Vercel AI Gateway): the same instructions and skills as the CLI, the stage's output tool
+// with the same JSON Schema (the run stops when it's called, and the result is decoded with the same Effect
+// Schema), and the stage's helper tools. Instead of reading files, the images in the stage's folders are attached
+// to the brief. The conversation is stored under `sessionsDir`, so a fix round or a rejection continues it, like
+// a CLI session. Cost is what the service reports (the gateway, OpenRouter) or tokens × Viral's prices.
+export const makeAiSdkProvider = Effect.fn("makeAiSdkProvider")(function*(options: AiSdkOptions) {
   const random = yield* SecureRandom.SecureRandom
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const sessionsDir = options.sessionsDir
-  const languageModel = options.languageModel ?? ((modelId: string, apiKey: string) => createGateway({ apiKey })(modelId))
+  const vendor = VENDORS[options.provider]
+  const SESSION_PREFIX = vendor.sessionPrefix
+  const languageModel = options.languageModel ?? ((modelId: string, apiKey: string) => vendor.model(modelId, apiKey, options.baseUrl))
 
   const sessionFile = (id: string) => path.join(sessionsDir, `${id}.json`)
 
   // The images directly inside the stage's folders (contact sheets), each with its file name as a label.
-  const briefImages = Effect.fn("AiGateway.briefImages")(function*(dirs: ReadonlyArray<string>, fileOf: Map<unknown, string>) {
+  const briefImages = Effect.fn("AiSdk.briefImages")(function*(dirs: ReadonlyArray<string>, fileOf: Map<unknown, string>) {
     const files: Array<string> = []
     for (const dir of dirs) {
       const names = yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed((): Array<string> => []))
@@ -66,7 +66,7 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
     return parts
   })
 
-  const loadHistory = Effect.fn("AiGateway.loadHistory")(function*(id: string) {
+  const loadHistory = Effect.fn("AiSdk.loadHistory")(function*(id: string) {
     const json = yield* fs.readFileString(sessionFile(id)).pipe(Effect.mapError((e) => fail("session")(`can't resume ${id}: ${e.message}`)))
     const stored = yield* Schema.decodeEffect(StoredHistory)(json).pipe(Effect.mapError((e) => fail("session")(e.message)))
     const images = new Map<string, Uint8Array>()
@@ -82,26 +82,26 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
     return decodeHistory(stored, (file) => images.get(file))
   })
 
-  const saveHistory = Effect.fn("AiGateway.saveHistory")(function*(id: string, messages: ReadonlyArray<ModelMessage>, fileOf: Map<unknown, string>) {
+  const saveHistory = Effect.fn("AiSdk.saveHistory")(function*(id: string, messages: ReadonlyArray<ModelMessage>, fileOf: Map<unknown, string>) {
     const json = yield* Schema.encodeEffect(StoredHistory)(encodeHistory(messages, (image) => fileOf.get(image)))
     yield* fs.makeDirectory(sessionsDir, { recursive: true })
     yield* fs.writeFileString(sessionFile(id), json)
   }, Effect.orElseSucceed(() => undefined))
 
-  const run: AgentRun = Effect.fn("AiGateway.run")(function*<S extends Schema.Top>(
+  const run: AgentRun = Effect.fn("AiSdk.run")(function*<S extends Schema.Top>(
     task: AgentTask<S>,
     hooks: AgentHooks,
     model: string | null,
     system: string
   ) {
     if (model === null) {
-      return yield* fail("no-model")(`choose a gateway model for the ${task.stage} stage (e.g. anthropic/claude-haiku-4.5)`)
+      return yield* fail("no-model")(`choose a ${vendor.name} model for the ${task.stage} stage (e.g. ${vendor.modelExample})`)
     }
     const key = yield* options.apiKey
     if (Option.isNone(key)) {
-      return yield* fail("no-key")("add your AI Gateway key (AI_GATEWAY_API_KEY, or Settings › Accounts)")
+      return yield* fail("no-key")(vendor.keyHint)
     }
-    const anthropic = model.startsWith("anthropic/")
+    const cache = vendor.cache(model)
     const fileOf = new Map<unknown, string>()
 
     // a resumed run continues its stored conversation; a new one starts with the brief and its images
@@ -113,7 +113,7 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
     const user: ModelMessage = {
       role: "user",
       content: [{ type: "text", text: task.message }, ...images],
-      ...(anthropic && !resuming ? { providerOptions: ANTHROPIC_CACHE } : {})
+      ...(cache !== undefined && !resuming ? { providerOptions: cache } : {})
     }
     const messages = [...history, user]
 
@@ -149,7 +149,7 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
       try: (signal) =>
         generateText({
           model: languageModel(model, Redacted.value(key.value)),
-          instructions: anthropic ? { role: "system", content: system, providerOptions: ANTHROPIC_CACHE } : system,
+          instructions: cache !== undefined ? { role: "system", content: system, providerOptions: cache } : system,
           messages,
           tools,
           stopWhen: [() => Option.isSome(accepted), isStepCount(task.maxTurns ?? 8)],
@@ -165,13 +165,13 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
       catch: (cause) => fail("session")(redactSecrets(cause instanceof Error ? cause.message : String(cause), [Redacted.value(key.value)]))
     })
 
-    const costUsd = result.steps.reduce((sum, step) =>
-      sum + Option.match(decodeCost(step.providerMetadata), { onNone: () => 0, onSome: stepCost }), 0)
+    const cost = vendor.cost(model, result.steps, result.totalUsage)
     yield* hooks.recordCost({
       model,
       inputTokens: result.totalUsage.inputTokens ?? 0,
       outputTokens: result.totalUsage.outputTokens ?? 0,
-      costUsd
+      costUsd: cost.costUsd,
+      costBasis: cost.basis
     })
 
     // the output tool answered every call itself, so the stored conversation is already well formed

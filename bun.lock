@@ -38,7 +38,7 @@
         "@effect/platform-node": "4.1.2",
         "@effect/sql-sqlite-node": "4.1.2",
         "@viral/contracts": "workspace:*",
-        "@viral/provider-ai-gateway": "workspace:*",
+        "@viral/provider-ai-sdk": "workspace:*",
         "@viral/provider-claude-cli": "workspace:*",
         "@viral/provider-codex": "workspace:*",
         "@viral/provider-core": "workspace:*",
@@ -80,16 +80,23 @@
         "effect": "4.1.2",
       },
     },
-    "packages/provider-ai-gateway": {
-      "name": "@viral/provider-ai-gateway",
+    "packages/provider-ai-sdk": {
+      "name": "@viral/provider-ai-sdk",
       "dependencies": {
+        "@ai-sdk/anthropic": "4.0.52",
         "@ai-sdk/gateway": "4.0.78",
+        "@ai-sdk/google": "4.0.67",
+        "@ai-sdk/openai": "4.0.65",
+        "@openrouter/ai-sdk-provider": "3.1.0",
+        "@viral/contracts": "workspace:*",
         "@viral/provider-core": "workspace:*",
         "ai": "7.0.97",
         "effect": "4.1.2",
+        "zod": "^4",
       },
       "devDependencies": {
         "@effect/platform-node": "4.1.2",
+        "@viral/provider-testing": "workspace:*",
       },
     },
     "packages/provider-claude-cli": {
@@ -171,7 +178,13 @@
     "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
   },
   "packages": {
+    "@ai-sdk/anthropic": ["@ai-sdk/anthropic@4.0.52", "", { "dependencies": { "@ai-sdk/provider": "4.0.13", "@ai-sdk/provider-utils": "5.0.39" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-IQt/y++kSUdqa9EbFOJntxLGjZMURTm/MnTUikNBZ5X86K5l96t/BwsRsX/SrH5kx+7yRPrmJ1WBNlmE8quSVg=="],
+
     "@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.78", "", { "dependencies": { "@ai-sdk/provider": "4.0.13", "@ai-sdk/provider-utils": "5.0.39", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-fcamzmFlcy+c/tIc7QcATLe/kArgSVGQ1QxaddMjhOSX8zypc2hmD5sHB2bp1DSFcSxDD32d6usF9a7xLCTULg=="],
+
+    "@ai-sdk/google": ["@ai-sdk/google@4.0.67", "", { "dependencies": { "@ai-sdk/provider": "4.0.13", "@ai-sdk/provider-utils": "5.0.39" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-F+o3bRDz0ua2hJbpnuEsoNsKR11NT+nAhq1eZfaRJr2rzs5eKi/E9wJw8ZXeJx7NlYeBF6il5/+itTBdkM1kJg=="],
+
+    "@ai-sdk/openai": ["@ai-sdk/openai@4.0.65", "", { "dependencies": { "@ai-sdk/provider": "4.0.13", "@ai-sdk/provider-utils": "5.0.39" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-rpk1Tv7TR0H338zTKmSVMxv4yo++HDOxioiuvBySb8cWkx2fS10tWl/5cEwL0diJbcV/+p3+9gpIOre52UoQJA=="],
 
     "@ai-sdk/provider": ["@ai-sdk/provider@4.0.13", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-sJvnbFIFLzmKFXIjfwS8XCOAj6puHCawItwvA9PBZgk2f/l/TiC4OSfK3ueDbUVXfRCOn5eJN97EIF10toIOmQ=="],
 
@@ -310,6 +323,8 @@
     "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.32.2", "", { "dependencies": { "@hono/node-server": "^1.19.9 || ^2.0.5", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.2.1", "express-rate-limit": "^8.2.1", "hono": "^4.11.4", "jose": "^6.1.3", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw=="],
 
     "@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
+
+    "@openrouter/ai-sdk-provider": ["@openrouter/ai-sdk-provider@3.1.0", "", { "peerDependencies": { "ai": "^7.0.0", "zod": "^3.25.76 || ^4.1.8" } }, "sha512-BQy1TA9fKrh47s9ivsO6FY5QimN7GUF0i8Qon3pkxQclEgShso0dClpcWn8OIyPLEZZPFaFKgI8TW4S/O0p0Dw=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.10.0", "", {}, "sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ=="],
 
@@ -567,7 +582,7 @@
 
     "@viral/desktop": ["@viral/desktop@workspace:apps/desktop"],
 
-    "@viral/provider-ai-gateway": ["@viral/provider-ai-gateway@workspace:packages/provider-ai-gateway"],
+    "@viral/provider-ai-sdk": ["@viral/provider-ai-sdk@workspace:packages/provider-ai-sdk"],
 
     "@viral/provider-claude-cli": ["@viral/provider-claude-cli@workspace:packages/provider-claude-cli"],
 

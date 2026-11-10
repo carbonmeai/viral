@@ -69,7 +69,7 @@ test("runs the helper, takes the result and interrupts the turn once its step ha
   assert.equal(costs[0]!.model, "zen/big")
   assert.equal(costs[0]!.inputTokens, 300)
   assert.equal(costs[0]!.outputTokens, 50)
-  assert.ok(Math.abs(costs[0]!.costUsd - 0.004) < 1e-9)
+  assert.ok(Math.abs((costs[0]!.costUsd ?? 0) - 0.004) < 1e-9)
 
   const entries = log()
   assert.deepEqual(entries.filter((e) => "tool" in e).map((e) => e["result"]), ["nothing new at 3", "Received. Stop here."])
@@ -98,7 +98,7 @@ test("a resumed session moves into this run's folder and counts only this turn",
   const { exit, log } = await run("resume", go(script, hooks, "zen/big", { resumeSession: "ses_9" }))
   assert.deepEqual(exit, Exit.succeed({ answer: 7 }))
   assert.deepEqual(sessions, ["ses_9"])
-  assert.ok(Math.abs(costs[0]!.costUsd - 0.002) < 1e-9)
+  assert.ok(Math.abs((costs[0]!.costUsd ?? 0) - 0.002) < 1e-9)
   assert.equal(costs[0]!.inputTokens, 150)
   const entries = log()
   assert.ok(!entries.some((e) => "create" in e))

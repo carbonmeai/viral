@@ -34,7 +34,7 @@ const rows: ReadonlyArray<UsageRow> = [
 
 test("usage adds up the period: totals, every day, the costliest shorts and each step", () => {
   const usage = summarizeUsage(rows, 7, "2026-11-06")
-  assert.deepEqual(usage.totals, { costUsd: 1.88, ttsCharacters: 180, inputTokens: 100, outputTokens: 10, shorts: 1, costPerShortUsd: 0.25 })
+  assert.deepEqual(usage.totals, { costUsd: 1.88, ttsCharacters: 180, inputTokens: 100, outputTokens: 10, shorts: 1, costPerShortUsd: 0.25, estimatedUsd: 0, unpricedRuns: 0 })
   assert.equal(usage.byDay.length, 7)
   assert.deepEqual(usage.byDay.at(0), { day: "2026-10-31", costUsd: 0, ttsCharacters: 0 })
   assert.deepEqual(usage.byDay.slice(-2), [
@@ -87,7 +87,8 @@ test("usage splits real money from a CLI plan's value, by provider and model, an
     runs: 1,
     costUsd: 0.01,
     inputTokens: 20,
-    outputTokens: 2
+    outputTokens: 2,
+    costBasis: null
   })
   // evals: only the period, kept out of the pipeline's totals
   assert.deepEqual(usage.evals, {
@@ -125,5 +126,22 @@ test("ElevenLabs characters add up by day, model and short, with previews counte
   assert.deepEqual(elevenLabs.byShort, [
     { projectId: "a", title: "Every taste", characters: 580, takes: 2 },
     { projectId: "b", title: "What if", characters: 500, takes: 1 }
+  ])
+})
+
+test("direct-key runs: estimated costs are counted and said to be estimates; a model with no price is unknown, never $0", () => {
+  const direct = [
+    row({ stage: "script", model: "claude-haiku-5-5", provider: "anthropic", billing: "billed", costUsd: 0.002, costBasis: "estimate", inputTokens: 5000, outputTokens: 200 }),
+    row({ stage: "ads", model: "gemini-0-new", provider: "google", billing: "billed", costUsd: null, costBasis: "unknown", inputTokens: 4000, outputTokens: 100 }),
+    row({ stage: "story", model: "anthropic/claude-haiku-5.5", provider: "openrouter", billing: "billed", costUsd: 0.003, costBasis: "reported", inputTokens: 6000, outputTokens: 300 })
+  ]
+  const usage = summarizeUsage(direct, 7, "2026-11-06")
+  assert.equal(usage.totals.costUsd, 0.005)
+  assert.equal(usage.totals.estimatedUsd, 0.002)
+  assert.equal(usage.totals.unpricedRuns, 1)
+  assert.deepEqual(usage.byModel.map((m) => [m.model, m.costUsd, m.costBasis, m.inputTokens]), [
+    ["anthropic/claude-haiku-5.5", 0.003, "reported", 6000],
+    ["claude-haiku-5-5", 0.002, "estimate", 5000],
+    ["gemini-0-new", 0, "unknown", 4000]
   ])
 })

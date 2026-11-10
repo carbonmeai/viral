@@ -1,0 +1,19 @@
+{
+  "name": "@viral/provider-ai-sdk",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.52",
+    "@ai-sdk/gateway": "4.0.78",
+    "@ai-sdk/google": "4.0.67",
+    "@ai-sdk/openai": "4.0.65",
+    "@openrouter/ai-sdk-provider": "3.1.0",
+    "@viral/contracts": "workspace:*",
+    "@viral/provider-core": "workspace:*",
+    "ai": "7.0.97",
+    "effect": "4.1.2",
+    "zod": "^4"
+  },
+  "devDependencies": { "@effect/platform-node": "4.1.2", "@viral/provider-testing": "workspace:*" }
+}

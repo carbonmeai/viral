@@ -4,6 +4,8 @@ import {
   AgentStage,
   type AppSettings,
   canRunStage,
+  catalogFor,
+  isKeyProvider,
   resolveAgentRoute,
   SettingsError,
   TranscriberChoice
@@ -22,12 +24,15 @@ const CLI_DEFAULT: AgentChoice = { provider: "claude-cli", model: null }
 
 const invalid = (message: string) => new SettingsError({ message })
 
-// A choice the server will accept: the gateway and OpenCode need a model; the vision steps need a provider that
-// sees images.
+const KEY_PROVIDER_NAMES = { anthropic: "Anthropic", openai: "OpenAI", google: "Google Gemini", openrouter: "OpenRouter", "ai-gateway": "the AI Gateway" }
+
+// A choice the server will accept: the key providers (Anthropic, OpenAI, Google, OpenRouter, the AI Gateway) and
+// OpenCode need a model; the vision steps need a provider that sees images.
 export const checkChoice = (stage: AgentStage | null, choice: AgentChoice) => {
   const model = choice.model?.trim() ?? ""
-  if (choice.provider === "ai-gateway" && model === "") {
-    return Effect.fail(invalid("choose a model for the AI Gateway, e.g. anthropic/claude-haiku-5.5"))
+  if (isKeyProvider(choice.provider) && model === "") {
+    const example = catalogFor(choice.provider)[0]?.id
+    return Effect.fail(invalid(`choose a model for ${KEY_PROVIDER_NAMES[choice.provider]}${example === undefined ? "" : `, e.g. ${example}`}`))
   }
   if (choice.provider === "opencode" && !model.includes("/")) {
     return Effect.fail(invalid("choose an OpenCode model (provider/model), e.g. anthropic/claude-haiku-5.5"))

@@ -1,7 +1,7 @@
 import type { ModelMessage } from "ai"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { decodeHistory, encodeHistory } from "./ai-gateway-history.ts"
+import { decodeHistory, encodeHistory } from "./ai-sdk-history.ts"
 
 const sheet = new Uint8Array([1, 2, 3])
 const messages: Array<ModelMessage> = [

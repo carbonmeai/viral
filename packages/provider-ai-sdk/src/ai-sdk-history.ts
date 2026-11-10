@@ -1,7 +1,7 @@
 import type { ModelMessage } from "ai"
 
-// A gateway run's conversation, kept between attempts so a rejected or fixed result continues the same
-// conversation (the CLI keeps its own sessions; the gateway has none). Image bytes aren't written into it:
+// An AI SDK run's conversation, kept between attempts so a rejected or fixed result continues the same
+// conversation (the CLI keeps its own sessions; the model APIs keep none). Image bytes aren't written into it:
 // each image part keeps the file it came from, and is read again on resume.
 
 type Part = { readonly type: string } & Record<string, unknown>

@@ -1,11 +1,11 @@
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
+import { KeyProvider } from "./model-catalog.ts"
 import { PresetNotFound } from "./presets.ts"
 
 // The services Viral talks to. Claude, Codex and OpenCode run through their CLIs, signed in as you; the rest use API
-// keys: model keys (Anthropic, OpenAI, Google Gemini, OpenRouter, the AI Gateway) and voice and transcription keys
-// (ElevenLabs, xAI). The AI Gateway runs agent steps on other models today; the direct model keys are only kept and
-// checked for now (running steps on them comes later).
+// keys: model keys (Anthropic, OpenAI, Google Gemini, OpenRouter, the AI Gateway), which run agent steps on their
+// models, and voice and transcription keys (ElevenLabs, xAI).
 export const AccountName = Schema.Literals([
   "claude",
   "codex",
@@ -73,14 +73,22 @@ export const AgentStage = Schema.Literals(["research", "ads", "story", "set-stor
 export type AgentStage = typeof AgentStage.Type
 
 // Who runs an agent stage. The Claude CLI is the out-of-the-box default; Codex runs on your ChatGPT plan (or OpenAI
-// key); OpenCode on the providers you've signed in to there; the AI Gateway runs other models (Haiku, GPT-6 Luna,
-// Gemini…) on your gateway key.
-export const AgentProvider = Schema.Literals(["claude-cli", "codex", "opencode", "ai-gateway"])
+// key); OpenCode on the providers you've signed in to there. The rest run on your own API keys through the AI SDK,
+// each with its vendor's model ids: Anthropic, OpenAI, Google (Gemini), OpenRouter, and the AI Gateway (one key for
+// many vendors' models).
+export const AgentProvider = Schema.Literals(["claude-cli", "codex", "opencode", "anthropic", "openai", "google", "openrouter", "ai-gateway"])
 export type AgentProvider = typeof AgentProvider.Type
 
 // Whether a cost is real money (an API key, the gateway) or the API-equivalent value a CLI plan reports.
 export const CostBilling = Schema.Literals(["billed", "subscription"])
 export type CostBilling = typeof CostBilling.Type
+
+// Where a recorded cost comes from: reported by the service (the AI Gateway, OpenRouter, a CLI); an estimate from
+// the tokens at Viral's price table (Anthropic, OpenAI and Google report tokens, not dollars); or unknown (a model
+// Viral has no price for: its tokens are kept, its cost isn't guessed). Null on runs recorded before this existed,
+// which were all reported.
+export const CostBasis = Schema.Literals(["reported", "estimate", "unknown"])
+export type CostBasis = typeof CostBasis.Type
 
 // Stages that look at images (contact sheets, previews).
 export const VISION_STAGES: ReadonlyArray<AgentStage> = ["shots", "sections", "moments", "thumbnail"]
@@ -106,18 +114,23 @@ export const CLI_MODELS: ReadonlyArray<{ readonly id: string | null; readonly la
   { id: "haiku", label: "Haiku" }
 ]
 
-// The gateway models offered in Settings › Agents (any other gateway id can be typed in).
-export const GATEWAY_MODELS: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
-  { id: "anthropic/claude-haiku-5.5", label: "Claude Haiku 5.5" },
-  { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" },
-  { id: "anthropic/claude-sonnet-5.5", label: "Claude Sonnet 5.5" },
-  { id: "anthropic/claude-opus-5.5", label: "Claude Opus 5.5" },
-  { id: "openai/gpt-6-luna", label: "GPT-6 Luna" },
-  { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash" }
-]
+// A model a key can use, from the vendor's own list (ListKeyModels). `vision`: whether the vendor says it takes
+// images (null when its list doesn't say).
+export const KeyModel = Schema.Struct({ id: Schema.String, label: Schema.String, vision: Schema.NullOr(Schema.Boolean) })
+export type KeyModel = typeof KeyModel.Type
+export const KeyModels = Schema.Struct({
+  provider: KeyProvider,
+  // the key's models that can call tools (an agent step needs them); empty without a key or when listing failed
+  models: Schema.Array(KeyModel),
+  // why there's no list, in plain words ("Add a key in Accounts", "Couldn't reach OpenAI")
+  problem: Schema.NullOr(Schema.String),
+  // ISO time the list was read from the vendor (lists are kept for a day)
+  fetchedAt: Schema.NullOr(Schema.String)
+})
+export type KeyModels = typeof KeyModels.Type
 
-// A provider and the model on it. A null model means the CLI's (or the stage's) default; on the gateway a model
-// must be chosen.
+// A provider and the model on it. A null model means the CLI's (or the stage's) default; on a key provider (and
+// OpenCode) a model must be chosen.
 export const AgentChoice = Schema.Struct({ provider: AgentProvider, model: Schema.NullOr(Schema.String) })
 export type AgentChoice = typeof AgentChoice.Type
 
@@ -198,7 +211,11 @@ export const Usage = Schema.Struct({
     outputTokens: Schema.Int,
     // shorts with a render in the period, and what an average one cost (all its stage runs in the period)
     shorts: Schema.Int,
-    costPerShortUsd: Schema.NullOr(Schema.Number)
+    costPerShortUsd: Schema.NullOr(Schema.Number),
+    // the part of costUsd estimated from tokens at Viral's prices (Anthropic, OpenAI and Google report no dollars)
+    estimatedUsd: Schema.Number,
+    // billed agent runs on a model Viral has no price for: their tokens count, their cost doesn't
+    unpricedRuns: Schema.Int
   }),
   // one entry per day in the period, oldest first, including empty days
   byDay: Schema.Array(Schema.Struct({ day: Schema.String, costUsd: Schema.Number, ttsCharacters: Schema.Int })),
@@ -231,7 +248,9 @@ export const Usage = Schema.Struct({
     runs: Schema.Int,
     costUsd: Schema.Number,
     inputTokens: Schema.Int,
-    outputTokens: Schema.Int
+    outputTokens: Schema.Int,
+    // reported, an estimate (any run estimated), or unknown (any run without a price)
+    costBasis: Schema.NullOr(CostBasis)
   })),
   // ElevenLabs characters in the period: the voice stage's takes plus "Try a line" previews (which belong to no
   // short). Characters, not dollars: a plan's price is only known from GetElevenLabsPlan.
@@ -289,6 +308,8 @@ export const ModelEval = Schema.Struct({
   passed: Schema.Int,
   firstTryPassed: Schema.Int,
   avgCostUsd: Schema.Number,
+  // estimate: some runs' cost came from Viral's price table; unknown: some had no price (their cost counts as 0)
+  costBasis: Schema.NullOr(CostBasis),
   stages: Schema.Array(Schema.String),
   lastRunAt: Schema.String
 })
@@ -302,6 +323,9 @@ export class SettingsRpcs extends RpcGroup.make(
   Rpc.make("GetAccounts", { success: Schema.Array(Account) }),
   // the models Codex and OpenCode offer on your account (empty for one that isn't installed or signed in)
   Rpc.make("GetCliModels", { success: Schema.Array(CliModels) }),
+  // the models a key provider's key can use, from the vendor's own list (kept for a day); never fails, a missing
+  // key or an unreachable vendor comes back as `problem`
+  Rpc.make("ListKeyModels", { payload: { provider: KeyProvider }, success: KeyModels }),
   // Checks a key with one free call to its service, then saves it (the macOS Keychain today). A refused key isn't
   // saved; an unreachable service saves it anyway, with the check saying so. Refused while the key's environment
   // variable is set (it would be ignored). The value is only ever sent this way, never returned.
@@ -311,9 +335,9 @@ export class SettingsRpcs extends RpcGroup.make(
   Rpc.make("TestSecret", { payload: { name: KeyName, value: Schema.NullOr(Schema.String) }, success: KeyCheck, error: SettingsError }),
   Rpc.make("RemoveSecret", { payload: { name: KeyName }, success: Account, error: SettingsError }),
   Rpc.make("GetSettings", { success: AppSettings }),
-  // The provider and model for every step that hasn't got its own. The gateway needs a model and its key.
+  // The provider and model for every step that hasn't got its own. A key provider needs a model.
   Rpc.make("SetDefaultAgent", { payload: { agent: AgentChoice }, success: AppSettings, error: SettingsError }),
-  // A step's own provider and model, or null to use the default. Vision steps can't move to the gateway yet.
+  // A step's own provider and model, or null to use the default. Vision steps stay on the Claude CLI for now.
   Rpc.make("SetStageAgent", {
     payload: { stage: AgentStage, agent: Schema.NullOr(AgentChoice) },
     success: AppSettings,

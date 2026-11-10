@@ -28,7 +28,7 @@ const recorder = () => {
   const seen = { sessions: [] as Array<string>, costs: [] as Array<number>, messages: [] as Array<string> }
   const hooks: AgentHooks = {
     progress: (_, message) => Effect.sync(() => void (message && seen.messages.push(message))),
-    recordCost: (cost) => Effect.sync(() => void seen.costs.push(cost.costUsd)),
+    recordCost: (cost) => Effect.sync(() => void seen.costs.push(cost.costUsd ?? 0)),
     recordSession: (id) => Effect.sync(() => void seen.sessions.push(id))
   }
   return { seen, hooks }

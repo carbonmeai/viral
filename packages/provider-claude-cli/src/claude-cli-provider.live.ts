@@ -35,7 +35,7 @@ test("the Claude CLI runs a helper tool, submits the result and reports its cost
     assert.equal(run.costs.length, 1)
     assert.match(run.costs[0]!.model ?? "", /haiku/)
     assert.ok(run.costs[0]!.inputTokens > 0 && run.costs[0]!.outputTokens > 0)
-    assert.ok(run.costs[0]!.costUsd > 0, "the CLI reports a dollar cost")
+    assert.ok((run.costs[0]!.costUsd ?? 0) > 0, "the CLI reports a dollar cost")
   } finally {
     process.chdir(cwd)
     rmSync(scratch, { recursive: true, force: true })

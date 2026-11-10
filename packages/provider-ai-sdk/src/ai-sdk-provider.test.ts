@@ -8,7 +8,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
 import { type AgentError, type AgentHooks, type AgentRun, type AgentTask, agentTool } from "@viral/provider-core"
-import { makeAiGatewayProvider } from "./ai-gateway-provider.ts"
+import { makeAiSdkProvider } from "./ai-sdk-provider.ts"
 
 type CallOptions = Parameters<MockLanguageModelV4["doGenerate"]>[0]
 type Content = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>["content"][number]
@@ -16,7 +16,7 @@ type Content = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>["content"]
 let home: string
 let sheets: string
 before(() => {
-  home = mkdtempSync(join(tmpdir(), "viral-gateway-"))
+  home = mkdtempSync(join(tmpdir(), "viral-ai-sdk-"))
   sheets = join(home, "sheets")
   mkdirSync(sheets)
   writeFileSync(join(sheets, "sheet_000.png"), new Uint8Array([137, 80, 78, 71]))
@@ -48,7 +48,7 @@ const scripted = (steps: Array<ReturnType<typeof reply>>) => {
 }
 
 const recorded = () => {
-  const costs: Array<{ model: string | null; inputTokens: number; outputTokens: number; costUsd: number }> = []
+  const costs: Array<{ model: string | null; inputTokens: number; outputTokens: number; costUsd: number | null; costBasis?: string | null }> = []
   const sessions: Array<string> = []
   const hooks: AgentHooks = {
     progress: () => Effect.void,
@@ -62,7 +62,8 @@ const layers = Layer.mergeAll(NodeServices.layer, SecureRandom.layerWebCrypto)
 
 // The provider with the given model, and a key or none.
 const gateway = (model: MockLanguageModelV4, key: string | undefined) =>
-  makeAiGatewayProvider({
+  makeAiSdkProvider({
+    provider: "ai-gateway",
     apiKey: Effect.succeed(key === undefined ? Option.none() : Option.some(Redacted.make(key))),
     sessionsDir: join(home, "agent-sessions"),
     languageModel: () => model
@@ -106,7 +107,7 @@ test("a gateway run sends the brief with its images, stops at the output tool, a
   assert.deepEqual(answer, { answer: 42 })
   assert.equal(calls.length, 2, "the output tool's call ends the run; no wasted turn")
   assert.equal(helped, 1)
-  assert.deepEqual(r.costs, [{ model: "anthropic/claude-haiku-4.5", inputTokens: 200, outputTokens: 40, costUsd: 0.0025 }])
+  assert.deepEqual(r.costs, [{ model: "anthropic/claude-haiku-4.5", inputTokens: 200, outputTokens: 40, costUsd: 0.0025, costBasis: "reported" }])
   assert.match(r.sessions[0]!, /^gateway:/)
 
   // what the model was sent: the skills prompt cached, the brief with only the image file attached
@@ -174,7 +175,7 @@ test("output that doesn't match the schema goes back to the model, which fixes i
   const toolParts = calls[1]!.prompt.flatMap((m: { readonly role: string; readonly content: unknown }) =>
     m.role === "tool" && Array.isArray(m.content) ? m.content : [])
   assert.match(JSON.stringify(toolParts), /doesn't match the expected format/)
-  assert.equal(r.costs.reduce((n, c) => n + c.costUsd, 0), 0.002, "both calls are paid for")
+  assert.equal(r.costs.reduce((n, c) => n + (c.costUsd ?? 0), 0), 0.002, "both calls are paid for")
 })
 
 test("a model that never gets the format right fails with invalid-output", async () => {

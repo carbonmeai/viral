@@ -17,6 +17,16 @@ test("models as typed: provider:model", () => {
   })
   assert.deepEqual(parseModel("gateway:openai/gpt-6-luna"), { label: "openai/gpt-6-luna", provider: "ai-gateway", model: "openai/gpt-6-luna" })
   assert.deepEqual(parseModel("openai/gpt-6-luna"), { label: "openai/gpt-6-luna", provider: "ai-gateway", model: "openai/gpt-6-luna" })
+  assert.deepEqual(parseModel("anthropic:claude-haiku-5-5"), { label: "anthropic:claude-haiku-5-5", provider: "anthropic", model: "claude-haiku-5-5" })
+  assert.deepEqual(parseModel("openai:gpt-6-luna"), { label: "openai:gpt-6-luna", provider: "openai", model: "gpt-6-luna" })
+  assert.deepEqual(parseModel("google:gemini-3.8-flash"), { label: "google:gemini-3.8-flash", provider: "google", model: "gemini-3.8-flash" })
+  assert.deepEqual(parseModel("openrouter:anthropic/claude-haiku-5.5"), {
+    label: "openrouter:anthropic/claude-haiku-5.5",
+    provider: "openrouter",
+    model: "anthropic/claude-haiku-5.5"
+  })
+  assert.equal(parseModel("anthropic:"), null)
+  assert.equal(parseModel("openrouter:haiku"), null, "OpenRouter ids are vendor/model")
   assert.equal(parseModel("opencode:haiku"), null)
   assert.equal(parseModel("gpt"), null)
 })
@@ -51,4 +61,27 @@ test("priced runs stop at the budget, runs on a plan at the per-provider cap", a
   assert.match(results.find((r) => r.model === "codex" && r.status === "skipped")!.error!, /3 runs allowed on the codex plan/)
   assert.equal(results[0]!.billing, "subscription")
   assert.equal(seen.length, 8)
+})
+
+test("a priced run on a model with no known price still counts toward the budget, at the cautious guess", async () => {
+  const unpriced: EvalStage = {
+    name: "metadata",
+    defaultModel: "haiku",
+    run: (_agent, ctx) =>
+      ctx.recordCost({ model: "gemini-0", inputTokens: 1000, outputTokens: 100, costUsd: null, costBasis: "unknown" }).pipe(
+        Effect.andThen(Effect.sync(() => ({ ok: true })))
+      )
+  }
+  const { results, spentUsd } = await Effect.runPromise(runEval({
+    stages: [unpriced],
+    models: [parseModel("google:gemini-0")!],
+    runs: 3,
+    budgetUsd: 0.07,
+    billing: () => "billed",
+    maxSubscriptionRuns: 3,
+    onResult: () => Effect.void
+  }).pipe(Effect.provide(AgentSession.replay(() => null))))
+  // metadata's cautious guess for an API model is $0.03: two runs fit in $0.07, the third would pass it
+  assert.deepEqual(results.map((r) => [r.status, r.costBasis, r.costUsd]), [["passed", "unknown", 0], ["passed", "unknown", 0], ["skipped", null, 0]])
+  assert.equal(spentUsd, 0.06)
 })

@@ -6,10 +6,13 @@ export interface UsageRow {
   readonly stage: string
   readonly status: string
   readonly model: string | null
-  // who ran it (claude-cli, ai-gateway, elevenlabs) and whether its cost is real money; null for older runs
+  // who ran it (claude-cli, anthropic, ai-gateway, elevenlabs…) and whether its cost is real money; null for older runs
   readonly provider: string | null
   readonly billing: "billed" | "subscription" | null
+  // null with tokens on a billed agent run: a model Viral has no price for ("price unknown", never $0)
   readonly costUsd: number | null
+  // reported, estimated from tokens at Viral's prices, or unknown; null for CLI, voice and older runs (reported)
+  readonly costBasis?: "reported" | "estimate" | "unknown" | null
   readonly ttsCharacters: number | null
   readonly inputTokens: number | null
   readonly outputTokens: number | null
@@ -58,6 +61,12 @@ export const summarizeUsage = (
   const inPeriod = rows.filter((r) => dayKeys.includes(dayOf(r.startedAt)))
 
   const cost = (r: UsageRow) => r.costUsd ?? 0
+  // an agent run that did work but has no price: its tokens count, its cost is unknown
+  const unpriced = (r: UsageRow) => r.status !== "reused" && r.costBasis === "unknown"
+  const estimated = (r: UsageRow) => r.costBasis === "estimate"
+  // the weakest basis among some runs: unknown beats estimate beats reported
+  const basisOf = (list: ReadonlyArray<UsageRow>) =>
+    list.some(unpriced) ? "unknown" as const : list.some(estimated) ? "estimate" as const : list.some((r) => r.costBasis === "reported") ? "reported" as const : null
   const chars = (r: UsageRow) => r.ttsCharacters ?? 0
   const sum = (list: ReadonlyArray<UsageRow>, f: (r: UsageRow) => number) => list.reduce((n, r) => n + f(r), 0)
 
@@ -104,7 +113,7 @@ export const summarizeUsage = (
   }
 
   // the runs that did work (not reused) and either cost something or spoke something
-  const spent = inPeriod.filter((r) => r.status !== "reused" && (cost(r) > 0 || chars(r) > 0))
+  const spent = inPeriod.filter((r) => r.status !== "reused" && (cost(r) > 0 || chars(r) > 0 || unpriced(r)))
   const providers = new Map<string, Array<UsageRow>>()
   for (const r of spent) {
     const key = `${r.provider ?? "unknown"}|${r.billing ?? ""}`
@@ -132,7 +141,8 @@ export const summarizeUsage = (
       runs: list.length,
       costUsd: round(sum(list, cost)),
       inputTokens: sum(list, (r) => r.inputTokens ?? 0),
-      outputTokens: sum(list, (r) => r.outputTokens ?? 0)
+      outputTokens: sum(list, (r) => r.outputTokens ?? 0),
+      costBasis: basisOf(list)
     }))
     .sort((a, b) => b.costUsd - a.costUsd)
 
@@ -193,7 +203,9 @@ export const summarizeUsage = (
       inputTokens: sum(inPeriod, (r) => r.inputTokens ?? 0),
       outputTokens: sum(inPeriod, (r) => r.outputTokens ?? 0),
       shorts: rendered.size,
-      costPerShortUsd: rendered.size === 0 ? null : round(renderedCost / rendered.size)
+      costPerShortUsd: rendered.size === 0 ? null : round(renderedCost / rendered.size),
+      estimatedUsd: round(sum(inPeriod.filter(estimated), cost)),
+      unpricedRuns: inPeriod.filter(unpriced).length
     },
     byDay,
     byShort,
