@@ -1,4 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { WaitingPage } from "../modules/waiting/waiting-page.tsx"
+import { createFileRoute, redirect } from "@tanstack/react-router"
+import { WAITING_SEARCH } from "../modules/home/home-search.ts"
 
-export const Route = createFileRoute("/waiting")({ component: WaitingPage })
+// Waiting for you is a filter on Home's recents now; old links land there.
+export const Route = createFileRoute("/waiting")({
+  beforeLoad: () => {
+    throw redirect({ to: "/", search: WAITING_SEARCH, replace: true })
+  }
+})

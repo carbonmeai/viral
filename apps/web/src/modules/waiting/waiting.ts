@@ -3,10 +3,12 @@ import type { StageName, WaitingItem } from "@viral/contracts"
 // The words the app uses for each step that can wait for you.
 export const STEP_NAMES: Partial<Record<StageName, string>> = {
   script: "Script",
+  sections: "Sections",
   voice: "Voice",
   shots: "Shots",
   render: "Render",
   metadata: "Publish",
+  thumbnail: "Thumbnail",
   story: "Story",
   research: "Shortlist",
   moments: "Ranking"

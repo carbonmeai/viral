@@ -30,29 +30,27 @@ export function SkeletonPanel({ rows, thumb, title = true }: {
   )
 }
 
-// A stat card: icon and label, a big number, a sub-line.
-export function SkeletonStat() {
+// Home's recents while they load: the tabs, the search row, then rows with a picture, two lines, a status and a time.
+export function RecentsSkeleton() {
   return (
-    <div className="flex flex-col gap-2 rounded-panel bg-panel px-4 py-3.5">
-      <Skeleton className="h-3 w-24" />
-      <Skeleton className="h-6 w-12" />
-      <Skeleton className="h-2.5 w-32" />
-    </div>
-  )
-}
-
-// Home while it loads: the four stats, the waiting panel, then videos and shorts side by side.
-export function HomeSkeleton() {
-  return (
-    <div className="grid gap-2">
-      <div className="grid grid-cols-4 gap-2">
-        {Array.from({ length: 4 }, (_, i) => <SkeletonStat key={i} />)}
+    <div>
+      <div className="mb-2.5 flex h-8 items-center gap-4 px-2.5">
+        <Skeleton className="h-3 w-10" />
+        <Skeleton className="h-3 w-14" />
+        <Skeleton className="h-3 w-20" />
       </div>
-      <SkeletonPanel rows={2} thumb="tall" />
-      <div className="grid grid-cols-2 items-start gap-2">
-        <SkeletonPanel rows={2} thumb="wide" />
-        <SkeletonPanel rows={3} thumb="tall" />
-      </div>
+      <Skeleton className="mb-2 h-8 w-full" />
+      {Array.from({ length: 4 }, (_, i) => (
+        <div key={i} className="grid min-h-14 grid-cols-[minmax(0,1fr)_190px_112px_28px] items-center gap-3 px-2 py-1.5 shadow-[0_1px_0_var(--line)]">
+          <span className="flex items-center gap-2.5">
+            <Skeleton className="h-10 w-[26px] shrink-0" />
+            <span className="grid flex-1 gap-1.5"><Skeleton className="h-3 w-[50%]" /><Skeleton className="h-2.5 w-[30%]" /></span>
+          </span>
+          <Skeleton className="h-[22px] w-32" />
+          <Skeleton className="h-2.5 w-16" />
+          <span />
+        </div>
+      ))}
     </div>
   )
 }

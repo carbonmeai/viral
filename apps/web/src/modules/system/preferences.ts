@@ -31,6 +31,10 @@ export const themeAtom = persisted<Theme>("viral.theme", ["system", "dark", "lig
 // Detailed shows the numbers behind each item (approach, length, source); it's the default.
 export const modeAtom = persisted<Mode>("viral.mode", ["simple", "detailed"], "detailed")
 
+// Home's recents as a list or a grid of pictures.
+export type RecentsView = "list" | "grid"
+export const recentsViewAtom = persisted<RecentsView>("viral.recents-view", ["list", "grid"], "list")
+
 // A free-text choice kept the same way; an empty value means "use the default".
 const persistedText = (key: string) =>
   Atom.writable(

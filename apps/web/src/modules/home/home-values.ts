@@ -1,7 +1,6 @@
 import type { Project, Run, Source, WaitingItem } from "@viral/contracts"
-import { plural } from "../../lib/format.ts"
 import { videoNames } from "../sets/set-values.ts"
-import { STEP_NAMES, videosSpanned } from "../waiting/waiting.ts"
+import { STEP_NAMES } from "../waiting/waiting.ts"
 
 export type Tone = "neutral" | "ok" | "wait" | "run"
 export interface StatusView {
@@ -35,27 +34,6 @@ export const videoStatus = (latest: Run | undefined, storyMapped: boolean): Stat
   if (storyMapped) return { tone: "ok", label: "Story mapped" }
   if (latest?.status === "failed") return { tone: "neutral", label: "Failed" }
   return { tone: "neutral", label: "Added" }
-}
-
-export interface HomeStatsInput {
-  readonly waiting: ReadonlyArray<WaitingItem>
-  readonly videos: ReadonlyArray<{ readonly status: StatusView }>
-  readonly shorts: ReadonlyArray<{ readonly status: StatusView }>
-}
-
-// The stat row's numbers and lines under them.
-export const homeStats = ({ waiting, videos, shorts }: HomeStatsInput) => {
-  const count = (items: ReadonlyArray<{ readonly status: StatusView }>, label: string) =>
-    items.filter((i) => i.status.label === label).length
-  const mapped = count(videos, "Story mapped")
-  const processing = count(videos, "Processing")
-  const published = count(shorts, "Published")
-  const waitingShorts = shorts.filter((s) => s.status.tone === "wait").length
-  return {
-    waiting: { value: waiting.length, sub: waiting.length === 0 ? "nothing right now" : `across ${plural(videosSpanned(waiting), "video")}` },
-    videos: { value: videos.length, sub: `${mapped} mapped · ${processing} processing` },
-    shorts: { value: shorts.length, sub: `${published} published · ${waitingShorts} waiting` }
-  }
 }
 
 // The line a short's row names its videos with: the one video's title, or each of several by its short name.

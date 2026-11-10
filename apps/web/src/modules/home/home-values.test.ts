@@ -1,7 +1,7 @@
 import type { Run, WaitingItem } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { homeStats, shortStatus, videoStatus, videosOf } from "./home-values.ts"
+import { shortStatus, videoStatus, videosOf } from "./home-values.ts"
 
 const run = (status: Run["status"]) => ({ status }) as Run
 const waitingOn = (stage: string, sourceId = "candy") =>
@@ -19,17 +19,6 @@ test("a video is processing, mapped or just added", () => {
   assert.equal(videoStatus(run("running"), false).label, "Processing")
   assert.equal(videoStatus(run("completed"), true).label, "Story mapped")
   assert.equal(videoStatus(undefined, false).label, "Added")
-})
-
-test("the stat row counts across videos and shorts", () => {
-  const stats = homeStats({
-    waiting: [waitingOn("shots", "candy"), waitingOn("voice", "podcast")],
-    videos: [{ status: { tone: "ok", label: "Story mapped" } }, { status: { tone: "run", label: "Processing" } }],
-    shorts: [{ status: { tone: "ok", label: "Published" } }, { status: { tone: "wait", label: "Shots" } }, { status: { tone: "neutral", label: "Not started" } }]
-  })
-  assert.deepEqual(stats.waiting, { value: 2, sub: "across 2 videos" })
-  assert.deepEqual(stats.videos, { value: 2, sub: "1 mapped · 1 processing" })
-  assert.deepEqual(stats.shorts, { value: 3, sub: "1 published · 1 waiting" })
 })
 
 test("a short's row names its video, or every one of several by its short name", () => {

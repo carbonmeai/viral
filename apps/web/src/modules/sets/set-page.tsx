@@ -16,6 +16,7 @@ import { useEffect, useState } from "react"
 import { serverUrl } from "../../config/server-url.ts"
 import { clock, plural } from "../../lib/format.ts"
 import { homeFileUrl } from "../../lib/media-url.ts"
+import { madeAsFor, matchesMadeAs } from "../home/made-as.ts"
 import { overviewAtom } from "../home/overview.ts"
 import { ServerState } from "../home/server-state.tsx"
 import { Page } from "../layout/page.tsx"
@@ -90,6 +91,8 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
   const startShort = useAtomSet(startProjectRun, { mode: "promise" })
   const startRun = useAtomSet(startSetRun, { mode: "promise" })
   const remove = useAtomSet(deleteVideoSet, { mode: "promise" })
+  // the format card picked on Home before this set started, if any: its suggestion gets a lemon outline
+  const madeAs = madeAsFor(data.set.id)
   const [asking, setAsking] = useState<number | null>(null)
   const [making, setMaking] = useState<number | null>(null)
   const [renaming, setRenaming] = useState(false)
@@ -298,6 +301,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
                       still={still}
                       made={short === null ? null : { short, status: statusOf.get(short.project.id) ?? null }}
                       busy={making === i}
+                      hinted={matchesMadeAs(madeAs, proposal.approach)}
                       onMake={() => setAsking(i)}
                       onOpen={() => short !== null && navigate({ to: "/shorts/$projectId", params: { projectId: short.project.id } })}
                     />

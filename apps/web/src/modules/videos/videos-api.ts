@@ -23,3 +23,7 @@ export const startSourceRun = ViralClient.mutation("StartSourceRun")
 export const setSourceDetails = ViralClient.mutation("SetSourceDetails")
 export const createProjectFromProposal = ViralClient.mutation("CreateProjectFromProposal")
 export const startProjectRun = ViralClient.mutation("StartProjectRun")
+// A pasted link's title, channel, length and thumbnail, before anything downloads.
+export const lookupVideoLink = ViralClient.mutation("LookupVideoLink")
+export const deleteSource = ViralClient.mutation("DeleteSource")
+export const deleteProject = ViralClient.mutation("DeleteProject")

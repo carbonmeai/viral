@@ -6,10 +6,11 @@ import { cn } from "@viral/ui/cn"
 import { Tooltip } from "@viral/ui/primitives/tooltip"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { ChevronRight, Film, Home, Inbox, Layers, Mic, Music, Palette, Plus, Settings } from "lucide-react"
+import { ChevronRight, Film, Home, Inbox, Layers, Mic, Music, Palette, Settings } from "lucide-react"
 import { type ReactNode, useEffect, useRef } from "react"
 import { desktop } from "../../config/server-url.ts"
 import { useWindowControlsInset } from "./window-controls.ts"
+import { WAITING_SEARCH } from "../home/home-search.ts"
 import { overviewAtom } from "../home/overview.ts"
 import { SettingsNav } from "../settings/settings-nav.tsx"
 import { modeAtom, nameAtom } from "../system/preferences.ts"
@@ -45,6 +46,8 @@ export function Sidebar() {
   const displayName = name.trim() || desktop?.userName || "You"
   // while you're in Settings the sidebar lists its sections; its back arrow returns to where you were
   const pathname = useLocation({ select: (location) => location.pathname })
+  // Waiting for you is Home's recents filtered (/?status=waiting): lit instead of Home while the filter is on
+  const onWaiting = useLocation({ select: (location) => location.pathname === "/" && (location.search as { readonly status?: unknown }).status === "waiting" })
   const inSettings = pathname.startsWith("/settings")
   const lastAppPath = useRef("/")
   useEffect(() => {
@@ -72,13 +75,12 @@ export function Sidebar() {
         : (
           <>
           <Group>
-            <Link to="/" {...nav} activeOptions={{ exact: true }}><Home />Home</Link>
-            <Link to="/waiting" {...nav}>
+            <Link to="/" className={cn(navClass, pathname === "/" && !onWaiting && navActive)}><Home />Home</Link>
+            <Link to="/" search={WAITING_SEARCH} className={cn(navClass, onWaiting && navActive)}>
               <Inbox />
               Waiting for you
               {waiting.length > 0 ? <Count className="ml-auto">{waiting.length}</Count> : null}
             </Link>
-            <Link to="/videos/new" {...nav}><Plus />New</Link>
           </Group>
 
           {data !== null && data.videos.length > 0 ? (

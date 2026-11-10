@@ -27,7 +27,7 @@ function MomentStill({ moment, fallback }: { readonly moment: { readonly sourceI
 
 // One short across the set's videos: a still, which videos it uses (each one's colour and title), the
 // approach, the hook, the title, the four scores and why it works, then make it (or open the one already made).
-export function SetProposalCard({ proposal, index, titles, moment, still, made, busy, onMake, onOpen }: {
+export function SetProposalCard({ proposal, index, titles, moment, still, made, busy, hinted = false, onMake, onOpen }: {
   readonly proposal: SetProposal
   readonly index: number
   // each set video's title, by position
@@ -37,13 +37,15 @@ export function SetProposalCard({ proposal, index, titles, moment, still, made, 
   readonly still: string | null
   readonly made: { readonly short: VideoSetShort; readonly status: StatusView | null } | null
   readonly busy: boolean
+  // the format you picked on Home before starting the set (a 1px lemon outline)
+  readonly hinted?: boolean
   readonly onMake: () => void
   readonly onOpen: () => void
 }) {
   const detailed = useDetailed()
   const videos = proposalVideos(proposal.sources)
   return (
-    <article className="flex min-w-0 flex-col rounded-panel bg-panel p-1.5">
+    <article className={hinted ? "flex min-w-0 flex-col rounded-panel bg-panel p-1.5 shadow-[inset_0_0_0_1px_var(--lemon)]" : "flex min-w-0 flex-col rounded-panel bg-panel p-1.5"}>
       <div className="flex flex-1 flex-col gap-2.5 rounded-[10px] bg-item p-3">
         {moment !== null ? <MomentStill moment={moment} fallback={still} /> : still === null
           ? <div className="aspect-video rounded-ctl bg-ctl-active" />

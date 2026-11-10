@@ -1,15 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { type NewKind, NewSourcePage } from "../modules/videos/new-source-page.tsx"
+import { createFileRoute, redirect } from "@tanstack/react-router"
+import { fromNewPage } from "../modules/home/home-search.ts"
 
-// ?kind=several opens the "Several videos" tab, ?kind=idea "From an idea".
+// Everything starts in Home's box now; the old New page (?kind=one|several|idea) lands there, an idea on its card.
 export const Route = createFileRoute("/videos/new")({
-  validateSearch: (search: Record<string, unknown>): { readonly kind?: NewKind } =>
-    search["kind"] === "several" || search["kind"] === "idea" ? { kind: search["kind"] } : {},
-  component: NewRoute
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: "/", search: fromNewPage(search), replace: true })
+  }
 })
-
-function NewRoute() {
-  const { kind } = Route.useSearch()
-  const navigate = Route.useNavigate()
-  return <NewSourcePage kind={kind ?? "one"} onKind={(next) => navigate({ search: next === "one" ? {} : { kind: next }, replace: true })} />
-}
