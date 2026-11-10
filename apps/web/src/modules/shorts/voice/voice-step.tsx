@@ -1,3 +1,5 @@
+import { Button } from "@viral/ui/primitives/button"
+import { Plus } from "lucide-react"
 import { voiceAt } from "../music/music-values.ts"
 import { Panel } from "../panel.tsx"
 import { NothingToInspect, NotYet } from "../step-parts.tsx"
@@ -34,7 +36,7 @@ export const voiceNote = (e: EditorState) => e.ws.voiceover === null ? null : `$
 export function VoiceStepPanel({ e }: { readonly e: EditorState }) {
   const { ws } = e
   return (
-    <Panel title="Voice">
+    <Panel title="Voice" action={<Button onClick={() => e.setGenerator({ kind: "voice", from: "voice" })}><Plus />Create</Button>}>
       {ws.voiceover === null
         ? <NothingToInspect />
         : <VoiceInspector voiceover={ws.voiceover.voiceover} voiceId={ws.voiceId} stages={e.stages} gate={e.gateFor("voice")} onNewVoice={e.newVoice} />}

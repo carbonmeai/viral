@@ -66,9 +66,10 @@ export const SOUND_MIN_S = 0.5
 export const SOUND_MAX_S = 30
 export const SOUND_MAX_TAKES = 4
 
-// What one take is expected to cost in ElevenLabs credits: 40 a second when you set the length, 200 when ElevenLabs
-// picks it (its published rates; the bill it reports is what's recorded).
-export const soundEffectCredits = (durationS: number | null) => durationS === null ? 200 : Math.ceil(durationS * 40)
+// What one take is expected to cost in ElevenLabs credits: 10 a second when you set the length (what ElevenLabs billed
+// for a 1-second take, 2026-11-10), and about five seconds' worth when it picks the length. The bill it reports is
+// what's recorded.
+export const soundEffectCredits = (durationS: number | null) => Math.ceil((durationS ?? 5) * 10)
 
 export const GenerateSoundEffectRequest = Schema.Struct({
   prompt: Schema.String,

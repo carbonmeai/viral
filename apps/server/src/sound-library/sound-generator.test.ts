@@ -14,7 +14,7 @@ import { generateSoundEffects, mp3Seconds } from "./sound-generator.ts"
 import { nextVariant, SoundLibrary, soundStem } from "./sound-library.ts"
 
 // A fake ElevenLabs Sound Effects (never the real account): an mp3 of 16 000 bytes (1 s at 128 kb/s) per call, billed
-// 40 credits a second when a length is asked for.
+// 40 credits a second when a length is asked for (not the estimate, so the test sees the reported bill is what counts).
 let server: Server
 let base: string
 let home: string

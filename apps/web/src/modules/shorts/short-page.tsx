@@ -27,6 +27,7 @@ import { workspaceAtom } from "./shorts-api.ts"
 import { ShortVideosProvider } from "./short-videos.tsx"
 import { shotsNote, ShotsStepStage } from "./shots/shots-step.tsx"
 import { StylePanel } from "./style-panel.tsx"
+import { GeneratorView } from "./generator/generator-view.tsx"
 import { thumbnailNote, ThumbnailStepPanel, ThumbnailStepStage } from "./thumbnail/thumbnail-step.tsx"
 import { type EditorState, useEditorState } from "./use-editor-state.ts"
 import { voiceNote, VoiceStepPanel, VoiceStepStage } from "./voice/voice-step.tsx"
@@ -123,8 +124,8 @@ function Editor(props: {
     <ShortVideosProvider sources={ws.videos.map((v) => v.source)}>
       <EditorFrame
         top={<EditorTopBar e={e} onSide={() => setSideOpen((o) => !o)} />}
-        rail={<EditorRail items={railFor(ws.project.format)} panel={panel} dot={railDot(ws.project.format, e.waitingOn, panel)} onPanel={e.setPanel} />}
-        panel={<Panel e={e} />}
+        rail={<EditorRail items={railFor(ws.project.format)} panel={panel} dot={railDot(ws.project.format, e.waitingOn, panel)} onPanel={(next) => (e.setGenerator(null), e.setPanel(next))} />}
+        panel={e.generator !== null && e.generator.from === panel ? <GeneratorView e={e} /> : <Panel e={e} />}
         player={
           <EditorPlayer e={e} note={stage.note(e)} onAsk={ask} {...(open === "render" ? { below: <RenderToggle e={e} /> } : {})}>
             <stage.Stage e={e} />

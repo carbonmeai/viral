@@ -1,3 +1,5 @@
+import { Segmented } from "@viral/ui/primitives/segmented"
+import { ThumbnailGenerator } from "../generator/thumbnail-generator.tsx"
 import { serverUrl } from "../../../config/server-url.ts"
 import { artifactFileUrl } from "../../../lib/media-url.ts"
 import { Panel } from "../panel.tsx"
@@ -23,15 +25,26 @@ export function ThumbnailStepStage({ e }: { readonly e: EditorState }) {
 
 export const thumbnailNote = (e: EditorState) => e.ws.thumbnail === null ? null : e.ws.thumbnail.thumbnail.config.lines.map((l) => l.text).join(" ")
 
-// The Thumbnail panel: its words (edited while it waits for you), the moments it's made from and its layout.
+// The Thumbnail panel: its generator (a note for the thumbnail agent, another hero, the layout and arrow), and its words
+// (edited while it waits for you), the moments it's made from and its layout.
 export function ThumbnailStepPanel({ e }: { readonly e: EditorState }) {
   const thumbnail = e.ws.thumbnail
-  if (thumbnail === null) return <Panel title="Thumbnail"><NothingToInspect /></Panel>
+  const views = (
+    <Segmented<"generate" | "words">
+      label="Thumbnail"
+      full
+      value={e.thumbView}
+      onChange={e.setThumbView}
+      options={[{ value: "generate", label: "Generate" }, { value: "words", label: "Words" }]}
+    />
+  )
+  if (e.thumbView === "generate") return <Panel title="Thumbnail" under={views}><ThumbnailGenerator e={e} /></Panel>
+  if (thumbnail === null) return <Panel title="Thumbnail" under={views}><NothingToInspect /></Panel>
   const config = thumbnail.thumbnail.config
   const words = e.thumbWords ?? wordsOf(config)
   const gate = e.gateFor("thumbnail")
   return (
-    <Panel title="Thumbnail">
+    <Panel title="Thumbnail" under={views}>
       <ThumbnailInspector
         config={config}
         sourceIds={e.ws.videos.map((v) => v.source.id)}

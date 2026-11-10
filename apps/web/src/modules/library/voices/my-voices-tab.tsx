@@ -3,12 +3,13 @@ import { Link } from "@tanstack/react-router"
 import type { Preset, Voice } from "@viral/contracts"
 import { Button } from "@viral/ui/primitives/button"
 import { Dialog } from "@viral/ui/primitives/dialog"
+import { EmptyState } from "@viral/ui/primitives/empty-state"
 import { Input } from "@viral/ui/primitives/input"
 import { Menu, MenuItem, MenuSeparator, MenuSub } from "@viral/ui/primitives/menu"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { MessageSquareText, Palette, Star, Trash2 } from "lucide-react"
+import { MessageSquareText, Mic, Palette, Star, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { serverUrl } from "../../../config/server-url.ts"
 import { homeFileUrl } from "../../../lib/media-url.ts"
@@ -26,7 +27,12 @@ const SAMPLE_LINE = "This guy made a candy that hits every single taste at the e
 // which every short uses unless its style or the short picks another) tagged, and the other styles narrating with
 // each. A row is a free sample and a ⋯ menu: Set as default, Use for style, Try a line (a line of your own spoken
 // in it, which costs its characters), and Remove for voices you added.
-export function MyVoicesTab({ styles }: { readonly styles: ReadonlyArray<Preset> }) {
+export function MyVoicesTab({ styles, onCreate, onExplore }: {
+  readonly styles: ReadonlyArray<Preset>
+  // opens the voice generator; Explore is where shared voices are added from
+  readonly onCreate: () => void
+  readonly onExplore: () => void
+}) {
   const voices = useAtomValue(voicesAtom)
   return Option.match(AsyncResult.value(voices), {
     onNone: () => AsyncResult.isFailure(voices)
@@ -39,6 +45,14 @@ export function MyVoicesTab({ styles }: { readonly styles: ReadonlyArray<Preset>
       : <RowsSkeleton label="Loading your voices" rows={6} />,
     onSome: (list) => (
       <div className="flex flex-col">
+        {list.some((v) => v.category !== "premade") ? null : (
+          <EmptyState
+            icon={<Mic />}
+            title="No voices of your own"
+            sentence={<>Design one from a description, or add one from <button type="button" className="underline" onClick={onExplore}>Explore</button>.</>}
+            action={{ label: "Create a voice", onClick: onCreate }}
+          />
+        )}
         <div className="pb-1 text-[13px] text-fg-2">{list.length} voices</div>
         {byUse(list, styles).map((voice) => (
           <MyVoiceRow key={voice.voiceId} voice={voice} styles={styles} />

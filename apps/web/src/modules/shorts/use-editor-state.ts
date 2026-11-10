@@ -43,6 +43,7 @@ import type { ClipTarget } from "./track-values.ts"
 import type { Transport, TransportLink } from "./transport.ts"
 import { useCaptionCues } from "./use-caption-cues.ts"
 import type { LibraryTab, LibraryType } from "./library-panel-values.ts"
+import type { GeneratorKind } from "./generator/generator-values.ts"
 
 // The arrangement's parts on the Music lane, where each plays; clicking one selects it.
 export interface TimelineMusicParts {
@@ -96,6 +97,10 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("short")
   const [libraryType, setLibraryType] = useState<LibraryType>("All")
   const [shotDetail, setShotDetail] = useState(false)
+  // a generator opened over a panel (Library › Create, the Voice panel's Create): which, and the panel it came from
+  const [generator, setGenerator] = useState<{ readonly kind: GeneratorKind; readonly from: PanelId } | null>(null)
+  // the Thumbnail panel's view: its generator or its words
+  const [thumbView, setThumbView] = useState<"generate" | "words">("generate")
   // the chat column's message box, focused by "Ask in chat" and "Ask for changes"
   const composer = useRef<HTMLTextAreaElement | null>(null)
   const focusComposer = () => setTimeout(() => composer.current?.focus(), 80)
@@ -504,6 +509,10 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     startEdit: () => setEditSignal((n) => n + 1),
     panel,
     setPanel,
+    generator,
+    setGenerator,
+    thumbView,
+    setThumbView,
     libraryTab,
     setLibraryTab,
     libraryType,

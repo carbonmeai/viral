@@ -29,3 +29,12 @@ export const addLibraryVoice = ViralClient.mutation("AddLibraryVoice")
 export const removeVoice = ViralClient.mutation("RemoveVoice")
 // The default style's voice and pace (Library › Voices › Set as default).
 export const setDefaultVoice = ViralClient.mutation("SetDefaultVoice")
+// The generators (Library › Create): voices designed from a description (previews until one is saved), and sound
+// effects kept in the sound library.
+export const designVoice = ViralClient.mutation("DesignVoice")
+export const saveDesignedVoice = ViralClient.mutation("SaveDesignedVoice")
+export const generateSoundEffect = ViralClient.mutation("GenerateSoundEffect")
+export const deleteSoundEffect = ViralClient.mutation("DeleteSoundEffect")
+export const soundEffectsAtom = ViralClient.query("ListSoundEffects", { category: null }, { reactivityKeys: ["sounds"] })
+// Viral videos kept to learn from (Library panel › Explore).
+export const referencesAtom = ViralClient.query("ListReferenceVideos", undefined, { reactivityKeys: ["references"] })

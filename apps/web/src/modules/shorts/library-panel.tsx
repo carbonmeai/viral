@@ -1,23 +1,27 @@
 import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
-import { MAX_SHORT_SOURCES, type Rights, type Voice } from "@viral/contracts"
+import { MAX_SHORT_SOURCES, type ReferenceVideo, type Rights, type SoundEffect, type Voice } from "@viral/contracts"
+import { EmptyState } from "@viral/ui/primitives/empty-state"
 import { cn } from "@viral/ui/cn"
-import { Button, IconButton } from "@viral/ui/primitives/button"
+import { IconButton } from "@viral/ui/primitives/button"
 import { Input } from "@viral/ui/primitives/input"
-import { Menu, MenuChoices } from "@viral/ui/primitives/menu"
+import { Menu, MenuChoices, MenuItem } from "@viral/ui/primitives/menu"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { AudioLines, Mic, Music, Pause, Play, Plus, Search, X } from "lucide-react"
+import { AudioLines, Film, Image as ImageIcon, Mic, Music, Pause, Plus, Search, Upload, X } from "lucide-react"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { overviewAtom } from "../home/overview.ts"
-import { exploreVoicesAtom } from "../library/library-api.ts"
+import { exploreVoicesAtom, referencesAtom, soundEffectsAtom } from "../library/library-api.ts"
 import { voiceLine } from "../library/voices/voices-values.ts"
+import { serverUrl } from "../../config/server-url.ts"
+import { homeFileUrl } from "../../lib/media-url.ts"
 import { VideoDot } from "../sets/video-badge.tsx"
 import { AddVideoDialog } from "./add-video-dialog.tsx"
 import {
   clock,
+  exploreItems,
   filterItems,
   type LibraryFilter,
   type LibraryItem,
@@ -25,6 +29,8 @@ import {
   type LibraryType,
   NO_FILTER,
   RIGHTS_NAMES,
+  soundItems,
+  type TargetedItem,
   typesOf,
   usesLine
 } from "./library-panel-values.ts"
@@ -34,7 +40,7 @@ import { nameOf, useShortVideos } from "./short-videos.tsx"
 import { selectedShot, ShotDetail } from "./shots/shots-step.tsx"
 import type { EditorState } from "./use-editor-state.ts"
 
-type Item = LibraryItem & { readonly open: (() => void) | null }
+type Item = LibraryItem & { readonly open: (() => void) | null; readonly playing?: boolean }
 
 // This short's own things: its videos (what it takes from each), its frames (shots, sections or a ranking's
 // moments), its real lines, its song and its voice. A frame opens its step at that shot, section or entry.
@@ -218,14 +224,18 @@ function libraryItems(e: EditorState, videos: ReadonlyArray<{ readonly source: {
 // One tile of the grid: its picture (a frame, or a waveform mark for sound) with a small count, its video's colour dot
 // and name, and the line under it. A tile that leads somewhere is a button.
 function Tile({ item }: { readonly item: Item }) {
-  const sound = item.type === "Music" || item.type === "Voice"
+  const sound = item.type === "Music" || item.type === "Voice" || item.type === "Voices" || item.type === "Sounds" || item.type === "References"
   const body = (
     <>
       <span className="relative block aspect-[16/10] overflow-hidden rounded-[9px] bg-ctl-active">
         {item.picture !== null
           ? <img src={item.picture} alt="" className="size-full object-cover" loading="lazy" />
           : sound
-          ? <span className="grid size-full place-items-center text-fg-3">{item.type === "Music" ? <Music className="size-5" /> : <AudioLines className="size-5" />}</span>
+          ? (
+            <span className={cn("grid size-full place-items-center text-fg-3", item.playing === true && "text-lemon-fg")}>
+              {item.playing === true ? <Pause className="size-5" /> : item.type === "Music" ? <Music className="size-5" /> : item.type === "References" ? <Film className="size-5" /> : <AudioLines className="size-5" />}
+            </span>
+          )
           : <Skeleton className="size-full rounded-none" />}
         {item.badge === null ? null : (
           <span className="absolute right-1.5 bottom-1.5 inline-flex h-5 items-center rounded-[6px] bg-black/60 px-1.5 text-[11px] text-white tabular-nums">{item.badge}</span>
@@ -269,50 +279,28 @@ function FilterChip<V extends string>({ label, value, options, onChange }: {
   )
 }
 
-// Shared ElevenLabs voices to listen to (their samples are free); adding one is Library › Voices'.
-function ExploreList() {
-  const navigate = useNavigate()
-  const query = { search: null, language: "en", useCase: "narrative_story" as const, gender: null, age: null, sort: "trending" as const, page: 0 }
-  const result = useAtomValue(exploreVoicesAtom(JSON.stringify(query)))
-  const sample = useRef<HTMLAudioElement | null>(null)
+// ElevenLabs' shared voices for narration, the page Explore shows.
+const EXPLORE_QUERY = JSON.stringify({ search: null, language: "en", useCase: "narrative_story", gender: null, age: null, sort: "trending", page: 0 })
+
+// One sample or sound playing at a time: `play(url)` toggles it.
+function usePlayer() {
+  const audio = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState<string | null>(null)
-  useEffect(() => () => sample.current?.pause(), [])
-  const data = Option.getOrNull(AsyncResult.value(result))
-  const play = (id: string, url: string) => {
-    sample.current?.pause()
-    if (playing === id) return setPlaying(null)
+  useEffect(() => () => audio.current?.pause(), [])
+  const play = (url: string) => () => {
+    audio.current?.pause()
+    if (playing === url) return setPlaying(null)
     const el = new Audio(url)
     el.onended = () => setPlaying(null)
-    sample.current = el
-    setPlaying(id)
+    audio.current = el
+    setPlaying(url)
     void el.play().catch(() => setPlaying(null))
   }
-  return (
-    <>
-      <span className="text-xs text-fg-2">Shared voices for narration on ElevenLabs. Samples are free; add one from Library › Voices.</span>
-      {data === null ? (
-        AsyncResult.isFailure(result)
-          ? <span className="text-sm text-fg-2">Couldn’t reach ElevenLabs’ voice library. Check your key in Settings › Accounts.</span>
-          : <div className="grid gap-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-11" />)}</div>
-      ) : (
-        <div className="grid gap-px">
-          {data.voices.slice(0, 12).map((v) => (
-            <div key={v.voiceId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-ctl px-2 py-1.5 hover:bg-ctl">
-              <span className="grid min-w-0">
-                <span className="truncate text-sm">{v.name}</span>
-                <span className="truncate text-xs text-fg-2">{v.description ?? [v.accent, v.gender, v.age].filter((x) => x !== null).join(" · ")}</span>
-              </span>
-              <IconButton label={playing === v.voiceId ? "Stop" : `Play ${v.name}'s sample`} disabled={v.previewUrl === null} onClick={() => v.previewUrl !== null && play(v.voiceId, v.previewUrl)}>
-                {playing === v.voiceId ? <Pause /> : <Play />}
-              </IconButton>
-            </div>
-          ))}
-        </div>
-      )}
-      <Button className="justify-self-start" onClick={() => void navigate({ to: "/library/voices" })}><Mic />Open Library › Voices</Button>
-    </>
-  )
+  return { playing, play }
 }
+
+// A kept reference opens on its own site (the app's browser, or the system's in the desktop app).
+const openLink = (url: string) => () => void window.open(url, "_blank", "noopener")
 
 // The Library panel: this short's videos, frames, real lines, song and voice; your whole library; and voices to
 // explore. Type chips, a search and filters (+ Video, + Used, + Rights) narrow the grid. On the Shots step, a frame
@@ -323,6 +311,12 @@ export function LibraryPanel({ e }: { readonly e: EditorState }) {
   const overview = Option.getOrNull(AsyncResult.value(useAtomValue(overviewAtom)))
   const [filter, setFilter] = useState<Omit<LibraryFilter, "type">>(NO_FILTER)
   const [adding, setAdding] = useState(false)
+  const sounds = Option.getOrElse(AsyncResult.value(useAtomValue(soundEffectsAtom)), (): ReadonlyArray<SoundEffect> => [])
+  const references = Option.getOrElse(AsyncResult.value(useAtomValue(referencesAtom)), (): ReadonlyArray<ReferenceVideo> => [])
+  const exploreResult = useAtomValue(exploreVoicesAtom(EXPLORE_QUERY))
+  const explore = Option.getOrNull(AsyncResult.value(exploreResult))
+  const exploreFailed = explore === null && AsyncResult.isFailure(exploreResult)
+  const { playing, play } = usePlayer()
   if (e.shotDetail && e.ws.shotPlan !== null) {
     return (
       <Panel title={`Shot ${selectedShot(e) + 1}`} back={{ label: "Library", onClick: () => e.setShotDetail(false) }}>
@@ -332,8 +326,38 @@ export function LibraryPanel({ e }: { readonly e: EditorState }) {
   }
   const toVideo = (id: string) => void navigate({ to: "/videos/$sourceId", params: { sourceId: id } })
   const thumbOf = (id: string) => overview?.videos.find((v) => v.source.id === id)?.thumb ?? null
-  const all = e.libraryTab === "short" ? shortItems(e, names, thumbOf, toVideo) : e.libraryTab === "library" ? libraryItems(e, overview?.videos ?? [], e.voices, toVideo) : []
-  const types = typesOf(all)
+  const soundUrl = (path: string) => homeFileUrl(serverUrl, `sounds/${path}`)
+  // what a Your library or Explore tile does: plays its sample or sound (one at a time), opens the song picker, or opens
+  // a kept reference's page
+  const act = (item: TargetedItem): Item => ({
+    ...item,
+    playing: item.target._tag === "Play" && playing === item.target.url,
+    open: item.target._tag === "Play"
+      ? play(item.target.url)
+      : item.target._tag === "Song"
+      ? () => {
+        e.setPanel("music")
+        e.setPickingSong(true)
+      }
+      : item.target._tag === "Link"
+      ? openLink(item.target.url)
+      : null
+  })
+  const all: ReadonlyArray<Item> = e.libraryTab === "short"
+    ? shortItems(e, names, thumbOf, toVideo)
+    : e.libraryTab === "library"
+    ? [...libraryItems(e, overview?.videos ?? [], e.voices, toVideo), ...soundItems(sounds, false, soundUrl).map(act)]
+    : exploreItems({
+      voices: explore?.voices.slice(0, 12) ?? [],
+      tracks: e.tracks,
+      sounds,
+      references,
+      songId: e.ws.project.musicTrackId,
+      songs: e.ws.project.format === "narrated",
+      soundUrl
+    }).map(act)
+  const loading = e.libraryTab === "explore" && explore === null && !exploreFailed
+  const types = typesOf(all, e.libraryTab === "short" ? ["Frames"] : [])
   const type: LibraryType = types.includes(e.libraryType) ? e.libraryType : "All"
   const shown = filterItems(all, { ...filter, type })
   const videoOptions = e.ws.videos.map((_, i) => ({ value: String(i), label: <span className="flex items-center gap-1.5"><VideoDot index={i} />{nameOf(names, i)}</span> }))
@@ -341,9 +365,24 @@ export function LibraryPanel({ e }: { readonly e: EditorState }) {
     <Panel
       title="Library"
       action={
-        <Button disabled={e.ws.project.sourceIds.length >= MAX_SHORT_SOURCES} title="Add a video to this short: from your library, a link or a file" onClick={() => setAdding(true)}>
-          <Plus />Video
-        </Button>
+        <>
+          <IconButton label="Add a video to this short: from your library, a link or a file" disabled={e.ws.project.sourceIds.length >= MAX_SHORT_SOURCES} onClick={() => setAdding(true)}>
+            <Upload />
+          </IconButton>
+          <Menu label="Create" align="end" triggerClassName="h-7 gap-1 px-2.5 font-medium text-fg shadow-[inset_0_0_0_1px_var(--line-2)]" trigger={<>Create<Plus /></>}>
+            <MenuItem onClick={() => e.setGenerator({ kind: "voice", from: "library" })}><Mic />Voice</MenuItem>
+            <MenuItem onClick={() => e.setGenerator({ kind: "sound", from: "library" })}><AudioLines />Sound effect</MenuItem>
+            <MenuItem
+              disabled={e.ws.thumbnail === null}
+              onClick={() => {
+                e.setThumbView("generate")
+                e.setPanel("thumbnail")
+              }}
+            >
+              <ImageIcon />Thumbnail
+            </MenuItem>
+          </Menu>
+        </>
       }
       under={
         <Segmented<LibraryTab>
@@ -356,7 +395,7 @@ export function LibraryPanel({ e }: { readonly e: EditorState }) {
       }
     >
       <PanelBody>
-        {e.libraryTab === "explore" ? <ExploreList /> : (
+        {(
           <>
             <div role="tablist" aria-label="Kind" className="flex flex-wrap gap-1">
               {types.map((t) => (
@@ -395,10 +434,13 @@ export function LibraryPanel({ e }: { readonly e: EditorState }) {
                 onChange={(rights) => setFilter({ ...filter, rights })}
               />
             </div>
-            {shown.length === 0 ? (
-              <span className="py-6 text-center text-sm text-fg-2">
-                {type === "Frames" && e.libraryTab === "short" ? "No frames yet. They're picked once the run gets there." : "Nothing matches."}
-              </span>
+            {e.libraryTab === "explore" && exploreFailed ? <span className="text-xs text-fg-2">Couldn’t reach ElevenLabs’ shared voices. Check your key in Settings › Accounts.</span> : null}
+            {loading ? (
+              <div className="grid grid-cols-2 gap-x-2 gap-y-2.5">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="aspect-[16/10]" />)}</div>
+            ) : shown.length === 0 ? (
+              type === "Frames" && e.libraryTab === "short"
+                ? <EmptyState icon={<ImageIcon />} title="No frames picked yet" sentence={e.ws.project.format === "narrated" ? "The shots agent picks them after the voice is approved." : "They’re picked once the run gets there."} />
+                : <EmptyState icon={<Search />} title="Nothing matches" sentence="Try another word, or clear the filters." />
             ) : (
               <div className="grid grid-cols-2 gap-x-2 gap-y-2.5">
                 {shown.map((item) => <Tile key={item.key} item={item} />)}
