@@ -32,8 +32,9 @@ const Migrated = Layer.effectDiscard(Effect.gen(function*() {
 }))
 
 // A library's database at `filename` (node:sqlite, WAL), migrated, with foreign keys on. Evals use it to record
-// their spend in your library while they run in a scratch one.
-export const databaseAt = (filename: string) => Migrated.pipe(Layer.provideMerge(SqliteClient.layer({ filename })))
+// their spend in your library while they run in a scratch one. `Layer.fresh`: one process can open two libraries,
+// and a shared (memoized) migration layer would migrate only the first one built.
+export const databaseAt = (filename: string) => Layer.fresh(Migrated).pipe(Layer.provideMerge(SqliteClient.layer({ filename })))
 
 // SQLite at ~/.viral/viral.db.
 export const DatabaseLive = Layer.unwrap(Effect.gen(function*() {
