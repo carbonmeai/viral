@@ -244,13 +244,20 @@ apps/server/src/
                        The providers live in packages/provider-* (below); AgentSession builds the system prompt
                        from the skill pack and routes each task. The route is task.route (evals), else
                        resolveAgentRoute (contracts/settings.ts, shared with the web): the step's own choice, then
-                       the default (agents.default); shots, sections and thumbnail run only on VISION_PROVIDERS
-                       (the Claude CLI for now) and fall back to it. Every cost is stamped with its provider and
-                       billing (billed | subscription: the Claude CLI is a plan's value unless ANTHROPIC_API_KEY is
-                       set; Codex is always subscription, tokens only) on stage_runs
+                       the default (agents.default); shots, sections, moments and thumbnail run only on
+                       VISION_PROVIDERS (the Claude CLI for now) and fall back to it. Providers: claude-cli, codex,
+                       opencode, and one AI SDK provider per model key (anthropic, openai, google, openrouter,
+                       ai-gateway), each with its vendor's model ids and its key read per run (never put in process.env;
+                       *_API_URL moves a vendor for tests). Every cost is stamped with its provider and billing (billed |
+                       subscription: the Claude CLI is a plan's value unless ANTHROPIC_API_KEY is set; Codex is always
+                       subscription, tokens only; key providers always billed) and its cost_basis (reported | estimate |
+                       unknown) on stage_runs. key-models.ts (KeyModelLists, ListKeyModels): each key's tool-capable
+                       models from the vendor's own list (the key checks' free calls), kept a day
   eval/                the eval harness (`bun run cli eval`): runs ads, story, script and metadata on a fixed fixture
                        (~/.viral/fixtures/candy/eval, made by `eval export`) with no gates, through the production
-                       tasks and checks, on any models, in a scratch library; records cost, time, first-try pass and
+                       tasks and checks, on any models (claude-cli[:m], codex[:m], opencode:p/m, anthropic:<id>,
+                       openai:<id>, google:<id>, openrouter:<v/m>, gateway:<v/m>), in a scratch library; records cost
+                       (a run with no known price counts toward --budget at the cautious guess), time, first-try pass and
                        fix rounds, stops priced runs at the budget and plan runs at --plan-runs per CLI, and writes
                        report.json/report.md + a side-by-side eval.html
                        (--include puts earlier evals' runs on the same page). Each run's result and spend is also
@@ -262,9 +269,13 @@ apps/server/src/
                        reference); eval.html shows each run's 3 proposals side by side, its videos as a colour dot and
                        short name (V labels in the text are put as names too)
   settings/            app preferences as JSON under keys; app-settings.ts is the typed view: agents.default and
-                       stage.<name>.provider/.model (Settings › Agents), transcription.provider; keys.<name>.check holds
-                       each key's last Test result (never the key)
-  usage/               Settings › Usage: spend by day, provider (billed vs plan), model, short, step, and evals; ElevenLabs
+                       stage.<name>.provider/.model (Settings › Agents: a provider menu in two groups, signed-in apps
+                       and your API keys, one without a key greyed out; a key provider's model menu shows the curated
+                       MODEL_CATALOG with descriptions, badges Recommended / Sees images / Fast / Cheapest and a cost (an
+                       average eval run, else the price per million tokens), then "More from your key" and "Other
+                       model…"), transcription.provider; keys.<name>.check holds each key's last Test result (never the key)
+  usage/               Settings › Usage: spend by day, provider (billed vs plan), model, short, step, and evals (a cost
+                       estimated from tokens shows as ~$, a model with no price as "price unknown", never $0); ElevenLabs
                        in characters (voice takes + "Try a line" previews, recorded in voice_previews) by day, model and
                        short, and the plan's characters used/left and reset date (GetElevenLabsPlan: GET /v1/user/subscription,
                        read-only, cached a minute; needs the key's User › Read permission). A cost estimate shows only when
@@ -393,8 +404,14 @@ packages/contracts/    wire schemas + RpcGroups, one file per domain
 packages/provider-core/ AgentTask/AgentRun/AgentError and toolEndpoint: the per-run MCP server (127.0.0.1, random
                        bearer token) serving a task's output and helper tools to Codex and OpenCode
 packages/provider-claude-cli/ the Claude CLI via the Agent SDK (in-process tools, stop after the output tool)
-packages/provider-ai-gateway/ AI SDK + Vercel AI Gateway (ai/@ai-sdk/gateway pinned; history in
-                       ~/.viral/agent-sessions/ for resume; BYOK market cost; Anthropic cache markers)
+packages/provider-ai-sdk/ the AI SDK providers on your own keys: Anthropic, OpenAI, Google, OpenRouter and the Vercel
+                       AI Gateway, one shared generateText loop (tools, brief images, history in ~/.viral/agent-sessions/
+                       under a per-vendor session prefix for resume) with per-vendor bits in ai-sdk-vendors.ts (factory,
+                       Anthropic cache markers, cost). ai and @ai-sdk/* pinned exactly to one provider-utils; cost is
+                       reported by the gateway (BYOK market cost) and OpenRouter (usage.cost), else tokens × contracts'
+                       PRICES (model-catalog.ts) marked "estimate"; an unknown model's cost is null ("price unknown",
+                       never $0). Tests: fake vendor servers + mock models; ai-sdk-provider.live.ts per key, skipped
+                       without one
 packages/provider-codex/ our own `codex app-server` JSON-RPC client: one app-server per run in a scratch folder,
                        read-only sandbox, approvals never, shell/apps/plugins/skills off, the user's MCP servers
                        switched off by name; model + effort from the account's catalog; thread/resume; turn
@@ -463,7 +480,7 @@ bun run cli tools install # download the missing tools (also happens on the app'
 bun run package:desktop # build the UI and Viral.app (apps/desktop/release/mac-arm64, unsigned)
 bun run cli           # dev client; prints every command
 bun run test          # node --test over apps and packages (8 files at a time; renders with x264 ultrafast)
-bun run cli eval all --models claude-cli,codex,gateway:openai/gpt-6-luna --runs 2 --budget 3 --plan-runs 8
+bun run cli eval all --models claude-cli,codex,gateway:openai/gpt-6-luna,anthropic:claude-haiku-5-5 --runs 2 --budget 3 --plan-runs 8
                       # agent-stage eval vs the CLI baseline → ~/.viral/evals/<date>-<stages>/eval.html
                       # (spend recorded in your library; --include <earlier eval dirs> combines the pages)
 bun run cli eval set-story --models claude-cli,codex,gateway:anthropic/claude-haiku-5.5 --runs 1 --budget 1.5 --plan-runs 4
