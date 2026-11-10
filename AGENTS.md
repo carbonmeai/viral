@@ -230,7 +230,10 @@ apps/server/src/
                        full-bleed narrated by Marcus, Fast hype with Adam, Story recap (Viral recap with band 1280,
                        captions 0.78, softJoins and voiceLevel −10 LUFS / 1.7). Two opt-ins, absent = as before:
                        `softJoins` (assemble writes soft_joins + insert_pad 0.25) and `voiceLevel` (the voice stage
-                       loudnorms the take, assemble writes voice_gain). Edits (UpdatePreset) and renames
+                       loudnorms the take, assemble writes voice_gain). `commentQuestion` ("End with a comment question",
+                       on in the built-ins of new libraries; a library's existing styles stay off until switched on in the
+                       Style editor): the script ends with a Cta beat / the cut-down plan carries a `question`, and the
+                       render ends on the end card (render/end_card.py). Edits (UpdatePreset) and renames
                        (RenamePreset) go through preset-rules.ts first; a bad one is PresetInvalid with plain problems
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;
                        each is a full song or an already edited clip (kind; SetMusicTrackKind). AddMusicFolder adds
@@ -271,11 +274,19 @@ apps/server/src/
                        plus the payoff as one 10–25 s take; real lines at the end less than 3 s apart merge into it).
                        A Narration beat can be `skipped`: voiced in the take, jumped over in the short because the real
                        line just before it says it (placeReals gives that insert a resumeWord; the creator toggles it
-                       at the gate without a new take). Several videos: the set proposal's angle and beats (video-sets/short-story.ts;
+                       at the gate without a new take). The closing question is its own beat type, `Cta` ({question},
+                       always last, written only when the style's commentQuestion is on, else refused): outside the word
+                       and real-line budgets and every other check (checkScript runs them on the beats without it). The
+                       narrator says closingLine(question) (+ "Tell us in the comments, and subscribe for more.") last in
+                       the take; shots see the take only up to it (shot-rules storyTake); assemble writes narration_end
+                       just before it and, with the switch on, the `cta` end card. Metadata/thumbnail briefs leave it out.
+                       Several videos: the set proposal's angle and beats (video-sets/short-story.ts;
                        else each video's own story beats), every video's transcript, real lines checked per video
   voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
                        silence trimmed, atempo to the preset's words/sec (+ loudnorm to the style's voiceLevel),
-                       local-Whisper word timings, voice gate.
+                       local-Whisper word timings, voice gate. A take's `characters` are ElevenLabs' bill (its
+                       character-cost header; on Viral's account every model bills 0.4 a character of text), its
+                       `textCharacters` the text's length.
                        The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice.
                        Library › Voices: Explore ElevenLabs' shared library (ExploreVoices; Narration first), add one
                        (AddLibraryVoice; a full plan's voice slots fail as code "limit"), RemoveVoice (never premade).
@@ -287,6 +298,8 @@ apps/server/src/
                        speech by story beat, hook first (`contact_sheet`, `preview_sections`); the server snaps
                        them to whole sentences (stretch ≤4 s back / 8 s on, else move inward), then whole words, checks length/order/overlaps/excluded ranges, and draws a
                        storyboard with a frame per section. A cut-down run is sections → assemble → render → metadata.
+                       With the style's commentQuestion the plan also needs `question` (the end card's; Decision 6: the
+                       card alone, 3 s, silent, no narrator).
                        A short from several videos: the agent sees every video (V1, V2… labels, whole transcripts or
                        outlines + `search_transcript`/`read_transcript`), answers with each section's `video` (V number;
                        stored as the 0-based `source`), and each section is snapped and checked in its own video; each
@@ -392,7 +405,12 @@ apps/server/src/
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
                        headline, chunk/quote captions, labels, credit; and the skill's 10 Nov joins as opt-in keys:
                        an insert's `resume_word`, `insert_pad`, `soft_joins` (fades: clips 0.06/0.15 s, narration
-                       pieces 0.04/0.12 s); without them the original code path runs). render-narrated.py plays each clip from its
+                       pieces 0.04/0.12 s); without them the original code path runs). Both renderers take an opt-in `cta`
+                       (end_card.py, the skill's comment-question card: the question in yellow Arial Black 58 px from
+                       14.2% down, a red #E62117 SUBSCRIBE pill 536×120 at 81.25%, over a held frame of the clean cut
+                       0.2 s before the end; tpad hold + 0.35 s xfade/acrossfade, then loudnorm again; narrated: the
+                       voiceover's vo_start–vo_end under it after a 0.35 s lead + 0.6 s air, words in the srt; cut-down:
+                       `seconds`, silent). render-end-card.test.ts renders both. render-narrated.py plays each clip from its
                        own video (`source` index into [source, ...sources]) and checks it against that video's ranges;
                        render-narrated-videos.test.ts renders two generated videos and checks colour and pitch.
                        render-ranking.py is the skill's final ranking style (title with a red accent, the numbered list
@@ -496,9 +514,13 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        they'll be shown; a ranking's titles), style-panel.tsx (SetProjectPreset, then a re-render
                        from assemble once the steps before the render are approved). The Script panel holds the
                        lines (edit a line at the gate; CheckScriptEdit first so a bad one never fails the run) and
-                       the rules and headline; its player previews the selected line 9:16 (script-preview.tsx).
+                       the rules and headline; its player previews the selected line 9:16 (script-preview.tsx). The
+                       closing question (Cta) is the last row, editable at the gate, previewed as its end card.
                        editor-values.ts lays the short out on its timeline the way the renderer plays it (layoutTimeline,
-                       each narration line with its voiceover seconds).
+                       each narration line with its voiceover seconds; the closing line cut out of the narration and,
+                       with the style's commentQuestion, `closing.card`: the end card after the outro on V1's lane and
+                       its line on the voice's; a cut-down's card after its last section, 3 s). The Style editor's
+                       Ending group has "End with a comment question".
                        shots/: the Shots step (preview in the style's framing or the storyboard in the player; the
                        selected shot in Library › Shot n: a frame picker over ListFramesAround stills, framing/crop/speed); its
                        changes collect into one edit, checked with CheckShotsEdit before it answers the gate.
