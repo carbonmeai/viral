@@ -66,11 +66,11 @@ function EdgeNudge({ label, at, disabled, onNudge }: {
   readonly onNudge: (delta: number) => void
 }) {
   const step = (delta: number, text: string) => (
-    <Button size="sm" variant="ghost" disabled={disabled} title={`Move the ${label.toLowerCase()} ${delta < 0 ? "earlier" : "later"} to the next word`} onClick={() => onNudge(delta)}>{text}</Button>
+    <Button size="sm" variant="ghost" className="px-1.5" disabled={disabled} title={`Move the ${label.toLowerCase()} ${delta < 0 ? "earlier" : "later"} to the next word`} onClick={() => onNudge(delta)}>{text}</Button>
   )
   return (
-    <div className="flex items-center gap-1">
-      <span className="w-10 text-xs text-fg-2">{label}</span>
+    <div className="flex min-w-0 items-center gap-1">
+      <span className="w-9 shrink-0 text-xs text-fg-2">{label}</span>
       {step(-1, "−1s")}
       {step(-0.1, "−0.1")}
       <span className="mx-auto font-mono text-sm tabular-nums">{clock(at)}</span>
@@ -126,7 +126,7 @@ export function SectionsInspector(props: SectionsInspectorProps) {
 
   return (
     <>
-      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-auto p-4">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-5 overflow-auto p-4">
         {tab === "hook" ? (
           <HookTab {...props} />
         ) : tab === "add" ? (
