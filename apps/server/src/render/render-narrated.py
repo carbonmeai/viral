@@ -14,8 +14,8 @@ resolve against the plan file's folder. A short from several videos lists V2… 
 (absent = 0 = `source`, V1), and `exclude_by_source` ({"1": [[a, b]]}) holds their excluded ranges. A video read
 from a 480p scan plays from its 1080p pieces (`pieces_by_source`, source_pieces.py) wherever they cover a clip.
 
-Ported from the viral-shorts skill's render_narrated.py. The rendering is unchanged; only reporting
-changed: stdout carries one JSON object per line for the server to decode:
+Ported from the viral-shorts skill's render_narrated.py. Its 10 Nov joins are opt-in plan keys here (`resume_word`
+on an insert, `insert_pad`, `soft_joins`), so a plan without them renders exactly as before. Reporting changed: stdout carries one JSON object per line for the server to decode:
   {"type": "progress", "step": "shots", "done": 3, "total": 31}
   {"type": "log", "message": "..."}
   {"type": "error", "code": "excluded-range", "message": "..."}   (then exit 1)
@@ -136,14 +136,28 @@ class Layout:
         )
 
 
-def cut(src: str, start: float, dur: float, lay: Layout, out: Path, shot: dict, with_audio: bool) -> None:
+# soft joins (the skill's values): a real clip's own audio fades in and out so it never pops against the narrator, and
+# each narration piece between clips fades a little at both ends
+CLIP_FADES = (0.06, 0.15)
+NARRATION_FADES = (0.04, 0.12)
+
+
+def fade_filter(dur: float, fades: tuple[float, float]) -> str:
+    fi, fo = fades
+    fo = min(fo, dur / 4)
+    return f"afade=t=in:d={fi},afade=t=out:st={max(0.0, dur - fo):.3f}:d={fo:.3f}"
+
+
+def cut(src: str, start: float, dur: float, lay: Layout, out: Path, shot: dict, with_audio: bool,
+        fades: tuple[float, float] | None = None) -> None:
     speed = float(shot.get("speed", 1.0))
     vf = lay.filter(float(shot.get("crop_x", 0.5)), float(shot.get("crop_y", 0.5)), float(shot.get("zoom", 1.0)), speed,
                     bool(shot.get("fit", False)))
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{dur * speed + 0.1:.3f}", "-i", src,
            "-filter_complex", vf, "-map", "[v]", "-t", f"{dur:.3f}"]
     if with_audio:
-        cmd += ["-map", "0:a", "-af", "aresample=48000", "-c:a", "aac", "-b:a", "192k", "-ac", "2"]
+        af = "aresample=48000" if fades is None else f"aresample=48000,{fade_filter(dur, fades)}"
+        cmd += ["-map", "0:a", "-af", af, "-c:a", "aac", "-b:a", "192k", "-ac", "2"]
     else:
         cmd += ["-an"]
     run(cmd + ["-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-r", str(FPS), str(out)])
@@ -378,9 +392,10 @@ def main() -> None:
     # a scanned video's clips play from its 1080p pieces when the plan has them (pieces_by_source)
     pieces = Pieces(plan, base)
 
-    def cut_from(v: int, start: float, dur: float, out: Path, clip: dict, with_audio: bool) -> None:
+    def cut_from(v: int, start: float, dur: float, out: Path, clip: dict, with_audio: bool,
+                 fades: tuple[float, float] | None = None) -> None:
         path, at = pieces.locate(v, paths[v], start, dur * float(clip.get("speed", 1.0)))
-        cut(path, at, dur, lay, out, clip, with_audio)
+        cut(path, at, dur, lay, out, clip, with_audio, fades)
     lay = Layout(plan)
     slug = plan.get("slug", plan_path.stem)
     out = Path(args.out).resolve() if args.out else base / "shorts" / f"{slug}.mp4"
@@ -425,9 +440,48 @@ def main() -> None:
         inserts.append({**ins, "at": round(w["e"], 3), "dur": float(ins["end"]) - float(ins["start"])})
     inserts.sort(key=lambda i: i["at"])
 
-    def shifted(t: float) -> float:
+    def plain_shift(t: float) -> float:
         """Voiceover time -> output time: add every insert that plays before t."""
         return t + sum(i["dur"] for i in inserts if i["at"] < t)
+
+    # opt-in joins (all absent = the original timing above, byte for byte): `insert_pad` lets the narrator breathe
+    # after the word before a clip, `resume_word` picks the narration up later (skipping words the clip says anyway),
+    # and `soft_joins` fades every join. The narration then plays as pieces [a, b) with the clips between them.
+    soft = bool(plan.get("soft_joins", False))
+    pad = float(plan.get("insert_pad", 0) or 0)
+    with_joins = bool(inserts) and (soft or pad > 0 or any(i.get("resume_word") is not None for i in inserts))
+    narr_pieces: list[tuple[float, float]] = []   # voiceover [a, b) of each piece, in playing order
+    piece_out: list[float] = []                   # where each piece starts in the output
+    if with_joins:
+        for k, ins in enumerate(inserts):
+            i = int(ins["after_word"])
+            nxt = vo_words[i + 1]["s"] if i + 1 < len(vo_words) else narr_end
+            ins["cut"] = round(min(ins["at"] + pad, (ins["at"] + nxt) / 2), 3) if pad > 0 else ins["at"]
+            ins["resume"] = ins["cut"]
+            if ins.get("resume_word") is not None:
+                r = int(ins["resume_word"])
+                if not 0 <= r < len(vo_words):
+                    fail("anchor-mismatch", f"insert {k}: resume word {r} isn't in the voiceover")
+                rw = vo_words[r]
+                if ins.get("resume_word_text") and re.sub(r"\W", "", ins["resume_word_text"].lower()) != re.sub(r"\W", "", rw["w"].lower()):
+                    fail("anchor-mismatch", f"insert {k}: resume word {r} is {rw['w']!r}, plan expects {ins['resume_word_text']!r}")
+                ins["resume"] = max(ins["cut"], round(rw["s"] - 0.08, 3))
+        a, t_out = 0.0, 0.0
+        for ins in inserts:
+            b = max(a, ins["cut"])
+            narr_pieces.append((a, b))
+            piece_out.append(t_out)
+            t_out += b - a + ins["dur"]
+            a = max(a, ins["resume"])
+        narr_pieces.append((a, narr_end))
+        piece_out.append(t_out)
+
+    def shifted(t: float) -> float:
+        """Voiceover time -> output time, through the narration piece it plays in (plain timing without the joins)."""
+        if not with_joins:
+            return plain_shift(t)
+        k = max([j for j, (a, _) in enumerate(narr_pieces) if a <= t] or [0])
+        return piece_out[k] + t - narr_pieces[k][0]
 
     for item in plan.get("annotations", []):
         item["at"] = shifted(item["at"])
@@ -465,7 +519,35 @@ def main() -> None:
     segs = [narr]
     caption_words = [w for w in vo_words if w["s"] < narr_end]
     real_clips = []  # (output start, output end, text) of real-voice clips, for quote-box captions
-    if inserts:
+    clip_fades = CLIP_FADES if soft else None
+    if with_joins:
+        segs, caption_words = [], []
+        for k, (a, b) in enumerate(narr_pieces):
+            if b - a > 0.02:
+                piece = tmp / f"narr_{k:02d}.mp4"
+                af = ["-af", fade_filter(b - a, NARRATION_FADES)] if soft else []
+                run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(narr), "-ss", f"{a:.3f}", "-to", f"{b:.3f}", *af,
+                     "-c:v", "libx264", "-preset", X264_PRESET, "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(piece)])
+                segs.append(piece)
+                caption_words += [{"w": w["w"], "s": piece_out[k] + w["s"] - a, "e": piece_out[k] + w["e"] - a}
+                                  for w in vo_words if a <= w["s"] < b and w["s"] < narr_end]
+            if k == len(inserts):
+                break
+            ins = inserts[k]
+            progress("outro", k, len(inserts))
+            s0, e0 = float(ins["start"]), float(ins["end"])
+            v = video_of(ins, f"insert {k}")
+            check(f"insert {k}", s0, e0, v)
+            clip = tmp / f"insert_{k:02d}.mp4"
+            cut_from(v, s0, e0 - s0, clip, ins, with_audio=True, fades=clip_fades)
+            segs.append(clip)
+            t0 = piece_out[k] + b - a
+            said = [w for w in src_words(v) if w["s"] >= s0 - 0.01 and w["e"] <= e0 + 0.01]
+            if ins.get("captions", True):
+                caption_words += [{"w": w["w"], "s": t0 + w["s"] - s0, "e": t0 + w["e"] - s0, "real": True} for w in said]
+                real_clips.append((t0, t0 + ins["dur"], " ".join(w["w"] for w in said)))
+        caption_words.sort(key=lambda w: w["s"])
+    elif inserts:
         caption_words = [{"w": w["w"], "s": shifted(w["s"]), "e": shifted(w["e"])} for w in caption_words]
         segs, prev = [], 0.0
         for k, ins in enumerate(inserts):
@@ -502,7 +584,7 @@ def main() -> None:
         v = video_of(o, f"outro {j}")
         check(f"outro {j}", s, e, v)
         p = tmp / f"outro_{j}.mp4"
-        cut_from(v, s, e - s, p, o, with_audio=True)
+        cut_from(v, s, e - s, p, o, with_audio=True, fades=clip_fades)
         segs.append(p)
         if o.get("captions", True):
             said = [w for w in src_words(v) if w["s"] >= s - 0.01 and w["e"] <= e + 0.01]

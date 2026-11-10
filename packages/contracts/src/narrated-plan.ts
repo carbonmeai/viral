@@ -39,13 +39,18 @@ export const NarratedShot = Schema.Struct({
 export type NarratedShot = typeof NarratedShot.Type
 
 // A real-voice clip played *during* the narration: the voiceover pauses after word `after_word`, the clip
-// plays with its own audio, then the voiceover resumes. Everything later shifts by the clip's length.
+// plays with its own audio, then the voiceover resumes (at `resume_word` when set). Everything later shifts by the
+// clip's length.
 export const NarratedInsert = Schema.Struct({
   start: Seconds,
   end: Seconds,
   ...ClipSource,
   after_word: Schema.Int,
   after_word_text: Schema.optionalKey(Schema.String),
+  // the narration picks up from this voiceover word instead (from 0.08 s before it), skipping the words between, which
+  // the clip says anyway; absent = it resumes where it paused
+  resume_word: Schema.optionalKey(Schema.Int),
+  resume_word_text: Schema.optionalKey(Schema.String),
   ...Framing,
   captions: Schema.optionalKey(Schema.Boolean),
   note: Schema.optionalKey(Schema.String)
@@ -194,6 +199,12 @@ export const NarratedPlan = Schema.Struct({
   duck_ratio: Schema.optionalKey(Schema.Finite),
   duck_threshold: Schema.optionalKey(Schema.Finite),
   voice_gain: Schema.optionalKey(Schema.Finite),
+  // short fades where real clips and narration pieces meet (clips in 0.06 s / out 0.15 s, narration 0.04 / 0.12), so
+  // raw audio never pops in or out against the narrator; absent = hard cuts, the render exactly as before
+  soft_joins: Schema.optionalKey(Schema.Boolean),
+  // a breath after an insert's word before the clip (seconds, at most half way to the next word); absent = the
+  // clip starts as the word ends
+  insert_pad: Schema.optionalKey(Seconds),
   lufs: Schema.optionalKey(Schema.Finite)
 })
 export type NarratedPlan = typeof NarratedPlan.Type
