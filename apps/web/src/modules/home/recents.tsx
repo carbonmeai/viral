@@ -4,12 +4,13 @@ import { useNavigate } from "@tanstack/react-router"
 import { cn } from "@viral/ui/cn"
 import { Button } from "@viral/ui/primitives/button"
 import { Dialog } from "@viral/ui/primitives/dialog"
+import { EmptyState } from "@viral/ui/primitives/empty-state"
 import { Menu, MenuChoices, MenuItem, MenuNote, MenuSeparator } from "@viral/ui/primitives/menu"
 import { Segmented } from "@viral/ui/primitives/segmented"
 import { Status } from "@viral/ui/primitives/status"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Film, LayoutGrid, List, Plus, Search, X } from "lucide-react"
+import { Film, Inbox, LayoutGrid, List, Plus, Search, X } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { ago } from "../../lib/format.ts"
 import { stepOfStage } from "../shorts/editor-values.ts"
@@ -75,18 +76,6 @@ function GridPicture({ row }: { readonly row: RecentRow }) {
     : <img src={src} alt="" className="absolute inset-0 size-full object-cover" loading="lazy" />
 }
 
-// Icon, one sentence and at most one button.
-function Empty({ icon, title, line, action }: { readonly icon: ReactNode; readonly title: string; readonly line: string; readonly action?: ReactNode }) {
-  return (
-    <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      <span className="mb-1 grid size-11 place-items-center rounded-[12px] bg-item text-fg-1 shadow-[0_0_0_1px_var(--line)] [&_svg]:size-[18px]">{icon}</span>
-      <b className="text-[14px] font-semibold">{title}</b>
-      <p className="m-0 max-w-[300px] text-sm text-fg-2">{line}</p>
-      {action === undefined ? null : <div className="mt-1.5">{action}</div>}
-    </div>
-  )
-}
-
 const KIND_WORD = { short: "short", set: "video set", video: "video" } as const
 
 // Home's recents: your shorts, video sets and single videos, newest first, with All / Shorts / Video sets, a status
@@ -115,17 +104,13 @@ export function Recents({ rows, status, onStatus }: {
   }
 
   const statusLabel = STATUS_FILTERS.find((f) => f.value === status)?.label
+  const waitingEmpty = status === "waiting" && query.trim() === "" && tab === "all"
   const body = rows.length === 0
-    ? <Empty icon={<Film />} title="Nothing made yet" line="Type an idea, paste a link or drop a video above. Your shorts and video sets show up here." />
+    ? <EmptyState icon={<Film />} title="Nothing made yet" sentence="Type an idea, paste a link or drop a video above. Your shorts and video sets show up here." />
     : shown.length === 0
-    ? (
-      <Empty
-        icon={<Search />}
-        title="Nothing matches"
-        line={status === "waiting" && query.trim() === "" ? "Nothing is waiting for you. Shorts stop here when a step needs your OK." : "Try another word, or clear the search."}
-        action={<Button size="md" onClick={() => (setQuery(""), onStatus(null), setTab("all"))}>Clear</Button>}
-      />
-    )
+    ? waitingEmpty
+      ? <EmptyState icon={<Inbox />} title="Nothing is waiting" sentence="Shorts stop here when a step needs your OK." />
+      : <EmptyState icon={<Search />} title="Nothing matches" sentence="Try another word, or clear the search." action={{ label: "Clear", onClick: () => (setQuery(""), onStatus(null), setTab("all")) }} />
     : view === "list"
     ? (
       <div className="flex flex-col">

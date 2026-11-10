@@ -1,13 +1,14 @@
+import { useNavigate } from "@tanstack/react-router"
+import { EmptyState } from "@viral/ui/primitives/empty-state"
 import type { MusicBed, MusicTrack, MusicTrackId, StageRun, TranscriptWord } from "@viral/contracts"
 import { cn } from "@viral/ui/cn"
 import { Button, IconButton } from "@viral/ui/primitives/button"
-import { Pause, Play, Shuffle } from "lucide-react"
+import { Music, Pause, Play, Shuffle } from "lucide-react"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { Detail, useDetailed } from "../../system/detail.tsx"
 import { clockOf } from "../editor-values.ts"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import { StepDetails } from "../step-details.tsx"
-import { AddSong } from "./music-stage.tsx"
 import { fittable, partName, rightsName, songSpans } from "./music-values.ts"
 import { MusicWaveform } from "./music-waveform.tsx"
 
@@ -59,6 +60,7 @@ export function MusicInspector({
 }) {
   const detailed = useDetailed()
   const [voiceOnly, setVoiceOnly] = useState(false)
+  const navigate = useNavigate()
   if (openTab === "arrange" && detailed && arrange !== null) return <>{arrange}</>
   return (
     <>
@@ -74,11 +76,12 @@ export function MusicInspector({
               onPick={(id) => onApply(id, undefined)}
             />
           ) : track === null ? (
-            <InspectorBlock title="Song">
-              <span className="text-sm">Voice only</span>
-              <span className="text-xs text-fg-2">This short plays without music.</span>
-              <div><AddSong hasSongs={tracks.length > 0} onPick={() => onPicking(true)} /></div>
-            </InspectorBlock>
+            <EmptyState
+              icon={<Music />}
+              title="Voice only"
+              sentence="This short has no song, by choice. Add one any time."
+              action={{ label: "Add a song", onClick: () => tracks.length > 0 ? onPicking(true) : void navigate({ to: "/library/music" }) }}
+            />
           ) : (
             <>
               <InspectorBlock title="Song" action={<Button onClick={() => onPicking(true)}><Shuffle />Change song</Button>}>

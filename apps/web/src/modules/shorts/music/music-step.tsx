@@ -1,3 +1,4 @@
+import { EmptyState } from "@viral/ui/primitives/empty-state"
 import { serverUrl } from "../../../config/server-url.ts"
 import { homeFileUrl } from "../../../lib/media-url.ts"
 import { Segmented } from "@viral/ui/primitives/segmented"
@@ -59,11 +60,7 @@ export function MusicStepPanel({ e }: { readonly e: EditorState }) {
   if (ws.project.format === "ranking") {
     return (
       <Panel title="Music">
-        <div className="grid justify-items-center gap-2 px-6 pt-8 text-center">
-          <span className="grid size-11 place-items-center rounded-[12px] bg-item shadow-[0_0_0_1px_var(--line)]"><Music className="size-4 text-fg-2" /></span>
-          <span className="font-medium">No music in rankings</span>
-          <span className="text-sm text-fg-2">Each entry plays its own sound, so the clips stay recognisable.</span>
-        </div>
+        <EmptyState icon={<Music />} title="No music in rankings" sentence="Each entry plays its own sound, so the clips stay recognisable." />
       </Panel>
     )
   }

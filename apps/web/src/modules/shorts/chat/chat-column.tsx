@@ -1,3 +1,4 @@
+import { EmptyState } from "@viral/ui/primitives/empty-state"
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import type { ChatEntry, ChatIntentAction } from "@viral/contracts"
 import { cn } from "@viral/ui/cn"
@@ -104,11 +105,7 @@ export function ChatColumn({ e, onAsk }: { readonly e: EditorState; readonly onA
             <Skeleton className="h-16 w-full rounded-[12px]" />
           </SkeletonRegion>
         ) : thread.items.length === 0 && working === null ? (
-          <div className="my-auto grid justify-items-center gap-2 px-4 text-center">
-            <span className="grid size-10 place-items-center rounded-[10px] bg-ctl text-fg-2"><MessageSquare className="size-5" /></span>
-            <span className="font-medium">Direct the agent</span>
-            <span className="text-sm text-fg-2">Say what you want changed. The agent knows this short, its videos and your library.</span>
-          </div>
+          <EmptyState className="my-auto" icon={<MessageSquare />} title="Direct the agent" sentence="Say what you want changed. The agent knows this short, its videos and your library." />
         ) : null}
         {thread.items.map((entry) => (
           <ChatItemView
