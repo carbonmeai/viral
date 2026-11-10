@@ -104,11 +104,12 @@ export const CliModels = Schema.Struct({
 export type CliModels = typeof CliModels.Type
 
 // The Claude CLI's model choices; null is your CLI's own default (or the stage's, e.g. Haiku for ads).
-export const CLI_MODELS: ReadonlyArray<{ readonly id: string | null; readonly label: string }> = [
-  { id: null, label: "CLI default" },
-  { id: "opus", label: "Opus" },
-  { id: "sonnet", label: "Sonnet" },
-  { id: "haiku", label: "Haiku" }
+// Each has a line on what it's good for, for the model picker (all of them see images and run on your plan).
+export const CLI_MODELS: ReadonlyArray<{ readonly id: string | null; readonly label: string; readonly description: string }> = [
+  { id: null, label: "CLI default", description: "Each step's own model: Haiku for research, ads and metadata, your CLI's default for the rest" },
+  { id: "opus", label: "Opus", description: "Strongest Claude for story and script, slower" },
+  { id: "sonnet", label: "Sonnet", description: "Strong writing at a fair price; a good default" },
+  { id: "haiku", label: "Haiku", description: "Fast and cheap, good for ads, research and titles" }
 ]
 
 // A model a key can use, from the vendor's own list (ListKeyModels). `vision`: whether the vendor says it takes

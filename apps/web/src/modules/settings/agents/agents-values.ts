@@ -141,7 +141,9 @@ export const priceLine = (price: TokenPrice) => `${perMillion(price.input)} / ${
 export interface ModelOption {
   readonly value: string
   readonly label: string
+  // what it's good for (the id, for a model from your key's list)
   readonly description: string | undefined
+  readonly badges: ReadonlyArray<Badge>
   readonly note: string | undefined
   readonly group: string | undefined
   // greyed out: the step looks at images and this model doesn't take them
@@ -154,7 +156,7 @@ export const isVisionStage = (stage: AgentStage | null) => stage !== null && VIS
 // Why a model is greyed out for an image step, in the menu.
 export const NO_IMAGES = "Doesn’t take images"
 
-export type Badge = "Sees images" | "Fast" | "Cheapest" | "Recommended"
+export type Badge = "Sees images" | "Fast" | "Cheapest" | "Recommended" | "On your plan"
 
 // The badges a catalog model wears for a step (null: the default for every step).
 export const badgesFor = (provider: AgentProvider, id: string, stage: AgentStage | null): ReadonlyArray<Badge> => {
@@ -196,7 +198,8 @@ export const keyModelOptions = (
     return {
       value: m.id,
       label: m.label,
-      description: [m.description, ...badges].join(" · "),
+      description: m.description,
+      badges,
       ...greyed(m.id, null, e === undefined ? priceLine(m.price) : evalCost(e)),
       group: "Suggested"
     }
@@ -208,14 +211,15 @@ export const keyModelOptions = (
     return {
       value: m.id,
       label: m.label === m.id ? m.id : m.label,
-      description: m.label === m.id ? (sees ? "Sees images" : undefined) : [m.id, ...(sees ? ["Sees images"] : [])].join(" · "),
+      description: m.label === m.id ? undefined : m.id,
+      badges: sees ? ["Sees images"] : [],
       ...greyed(m.id, m.vision, e === undefined ? undefined : evalCost(e)),
       group: "More from your key"
     }
   })
   const listed = new Set([...known, ...more.map((m) => m.value)])
   const chosen = current !== null && !listed.has(current)
-    ? [{ value: current, label: current, description: undefined, note: undefined, group: "More from your key" }]
+    ? [{ value: current, label: current, description: undefined, badges: [], note: undefined, group: "More from your key" }]
     : []
   return [...curated, ...more, ...chosen]
 }
@@ -227,4 +231,92 @@ export const BILLED_TO: Partial<Record<AgentProvider, string>> = {
   google: "Billed to your Google account",
   openrouter: "Billed by OpenRouter",
   "ai-gateway": "Billed by Vercel's AI Gateway"
+}
+
+// The Provider picker (Settings › Agents, and a generator's Model row): your plans first (the Claude CLI, Codex), then
+// pay per run (your API keys), then what runs on this Mac (OpenCode). Each says who pays and what it can do; one that
+// isn't set up is greyed out with where to set it up, and on an image step so are the apps that can't look at images in
+// Viral. The chosen one always stays pickable, so the page tells the truth. Detailed mode adds how its default did in
+// your evals.
+export interface ProviderChoice {
+  readonly value: AgentProvider
+  readonly label: string
+  readonly description: string
+  readonly badges: ReadonlyArray<Badge>
+  readonly note: string | undefined
+  readonly detail: string | undefined
+  readonly disabled: boolean
+  readonly group: "Your plans" | "Pay per run" | "On this Mac"
+  readonly mark: string
+}
+
+const PROVIDER_LINES: Record<AgentProvider, string> = {
+  "claude-cli": "Your Claude plan, no API bill. Looks at images, so it can run Shots, Sections and Thumbnail.",
+  codex: "Your ChatGPT plan, no API bill. Text steps only.",
+  opencode: "The models you set up in OpenCode on this Mac. Text steps only.",
+  anthropic: "Claude models on your Anthropic key, billed per run.",
+  openai: "GPT models on your OpenAI key, billed per run.",
+  google: "Gemini models on your Google key, billed per run.",
+  openrouter: "Hundreds of models on one OpenRouter key, billed per run.",
+  "ai-gateway": "Many vendors' models through Vercel's AI Gateway, billed per run."
+}
+const MARKS: Record<AgentProvider, string> = {
+  "claude-cli": "CC", codex: "CX", opencode: "OC", anthropic: "A", openai: "O", google: "G", openrouter: "OR", "ai-gateway": "AG"
+}
+const GROUP_OF = (p: AgentProvider): ProviderChoice["group"] =>
+  p === "claude-cli" || p === "codex" ? "Your plans" : p === "opencode" ? "On this Mac" : "Pay per run"
+const PICKER_ORDER: ReadonlyArray<AgentProvider> = ["claude-cli", "codex", "anthropic", "openai", "google", "openrouter", "ai-gateway", "opencode"]
+
+export const providerChoices = (
+  ready: Readonly<Record<AgentProvider, boolean>>,
+  chosen: AgentProvider | null,
+  vision: boolean,
+  evals: ReadonlyArray<ModelEval> = [],
+  detailed = false
+): ReadonlyArray<ProviderChoice> =>
+  PICKER_ORDER.map((p) => {
+    const blind = vision && (p === "codex" || p === "opencode")
+    const why = p === chosen ? undefined : blind ? "Can’t look at images in Viral" : ready[p] ? undefined : isKeyProvider(p) ? "Add a key in Accounts" : "Set up in Accounts"
+    const badges: Array<Badge> = []
+    if (p === "claude-cli") badges.push("Recommended")
+    if (p === "claude-cli" || p === "codex") badges.push("On your plan")
+    return {
+      value: p,
+      label: providerName(p),
+      description: PROVIDER_LINES[p],
+      badges,
+      note: why,
+      detail: detailed ? evalLine(evals, { provider: p, model: null }) ?? undefined : undefined,
+      disabled: why !== undefined,
+      group: GROUP_OF(p),
+      mark: MARKS[p]
+    }
+  })
+
+// The Claude CLI's and Codex's models in the picker: each runs on your plan; the CLI's say what they're good for.
+export const cliModelChoices = (provider: "claude-cli" | "codex", catalog: ReadonlyArray<CliModels>, evals: ReadonlyArray<ModelEval> = [], detailed = false): ReadonlyArray<ModelOption & { readonly detail: string | undefined }> => {
+  const detail = (model: string | null) => detailed ? evalLine(evals, { provider, model }) ?? undefined : undefined
+  if (provider === "claude-cli") {
+    return CLI_MODELS.map((m) => ({
+      value: m.id ?? "default",
+      label: m.label,
+      description: m.description,
+      badges: ["On your plan", ...(m.id === null ? [] : ["Sees images" as const])],
+      note: undefined,
+      group: "Your Claude plan",
+      detail: detail(m.id)
+    }))
+  }
+  return [
+    { value: "default", label: "Codex default", description: "The model your ChatGPT plan's Codex picks", badges: ["On your plan"], note: undefined, group: "Your ChatGPT plan", detail: detail(null) },
+    ...(catalog.find((c) => c.provider === "codex")?.models ?? []).map((m) => ({
+      value: m.id,
+      label: m.label,
+      description: m.id === m.label ? undefined : m.id,
+      badges: ["On your plan" as const],
+      note: undefined,
+      group: "Your ChatGPT plan",
+      detail: detail(m.id)
+    }))
+  ]
 }

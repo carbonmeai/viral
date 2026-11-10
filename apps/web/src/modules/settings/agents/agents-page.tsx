@@ -7,7 +7,6 @@ import {
   type AgentStage,
   type AppSettings,
   catalogFor,
-  CLI_MODELS,
   type CliModels,
   isKeyProvider,
   type KeyModels,
@@ -15,30 +14,32 @@ import {
   type ModelEval,
   seesImages
 } from "@viral/contracts"
-import type { SelectOption } from "@viral/ui/primitives/select"
+import { cn } from "@viral/ui/cn"
+import { Picker, type PickerOption } from "@viral/ui/primitives/picker"
 import { Button } from "@viral/ui/primitives/button"
 import { Input } from "@viral/ui/primitives/input"
 import { Row, RowTitle } from "@viral/ui/primitives/row"
-import { Select } from "@viral/ui/primitives/select"
 import { SettingRow, SettingsGroup } from "@viral/ui/primitives/setting-row"
 import { Option } from "effect"
 import { AsyncResult } from "effect/reactivity"
+import { RotateCcw } from "lucide-react"
 import { useState } from "react"
 import { modeAtom } from "../../system/preferences.ts"
 import { accountsAtom, appSettingsAtom, cliModelsAtom, keyModelsAtom, modelEvalsAtom, setDefaultAgent, setStageAgent } from "../settings-api.ts"
 import { Loaded, SettingsPage, SettingsSkeleton } from "../settings-page.tsx"
 import {
   ACCOUNT_OF,
-  API_KEYS,
   BILLED_TO,
+  cliModelChoices,
   evalLabel,
   evalLine,
   isVisionStage,
   keyModelOptions,
   modelLabel,
+  type ModelOption,
+  providerChoices,
   PROVIDERS,
-  providerName,
-  SIGNED_IN
+  providerName
 } from "./agents-values.ts"
 
 // Each agent step, and what it does.
@@ -98,6 +99,7 @@ export function AgentsPage() {
                   key={s.stage}
                   {...s}
                   own={value.stageAgents[s.stage]}
+                  defaultRoute={value.defaultAgent}
                   route={value.routes[s.stage]}
                   seen={value.visionModels}
                   ready={ready}
@@ -139,7 +141,7 @@ function DefaultGroup({ settings, ready, catalog, evals, detailed }: {
           ? "Who runs every step that hasn’t got its own choice."
           : <>Who runs every step. Apps and keys that aren’t set up yet are added in <Link to="/settings/accounts" className="underline">Accounts</Link>.</>}
       >
-        <ProviderSelect label="Default provider" value={current.provider} ready={ready} onChange={(provider) => set({ provider, model: firstModel(provider, catalog, null) })} />
+        <ProviderPicker<AgentProvider> label="Default provider" value={current.provider} ready={ready} evals={evals} onChange={(provider) => set({ provider, model: firstModel(provider, catalog, null) })} />
       </SettingRow>
       <SettingRow
         label="Model"
@@ -169,13 +171,13 @@ function DefaultGroup({ settings, ready, catalog, evals, detailed }: {
   )
 }
 
-type StageProvider = "default" | AgentProvider
 
-function StageRow({ stage, label, sub, own, route, seen, ready, catalog, evals }: {
+function StageRow({ stage, label, sub, own, defaultRoute, route, seen, ready, catalog, evals }: {
   readonly stage: AgentStage
   readonly label: string
   readonly sub: string
   readonly own: AgentChoice | null
+  readonly defaultRoute: AgentChoice
   readonly route: AgentRoute
   readonly seen: ReadonlyArray<string>
   readonly ready: Ready
@@ -209,55 +211,60 @@ function StageRow({ stage, label, sub, own, route, seen, ready, catalog, evals }
           onChange={(model) => set({ provider: own.provider, model })}
         />
       )}
-      <Select<StageProvider>
+      <ProviderPicker
         label={`${label} provider`}
         value={own === null ? "default" : own.provider}
+        ready={ready}
+        vision={isVisionStage(stage)}
+        evals={evals}
+        useDefault={`${providerName(defaultRoute.provider)} · ${modelLabel(defaultRoute.provider, defaultRoute.model, catalog)}, as set in “Default for all steps”.`}
         onChange={(next) => {
           if (next === "default") return set(null)
           set({ provider: next, model: firstModel(next, catalog, stage) })
         }}
-        options={[
-          { value: "default", label: "Use default" },
-          // on an image step, the apps that can't look at images in Viral (Codex, OpenCode) are greyed out with why
-          ...providerOptions(ready, own?.provider ?? null, isVisionStage(stage))
-        ]}
       />
     </SettingRow>
   )
 }
 
-// The Provider menu: signed-in apps, then your API keys. One that isn't set up is greyed out with where to set it
-// up; on an image step, so are Codex and OpenCode, which can't look at images in Viral (a key provider's models that
-// can are picked in its Model menu). While chosen an option stays pickable, so the page tells the truth.
-const providerOptions = (ready: Ready, chosen: AgentProvider | null, vision = false): ReadonlyArray<SelectOption<AgentProvider>> => {
-  const blind = (p: AgentProvider) => vision && (p === "codex" || p === "opencode")
-  const option = (group: string) => (p: AgentProvider): SelectOption<AgentProvider> => ({
-    value: p,
-    label: providerName(p),
-    group,
-    ...(p === chosen
-      ? {}
-      : blind(p)
-      ? { disabled: true, note: "Can’t look at images in Viral" }
-      : ready[p]
-      ? {}
-      : { disabled: true, note: isKeyProvider(p) ? "Add a key in Accounts" : "Set up in Accounts" })
-  })
-  return [...SIGNED_IN.map(option("Signed-in apps")), ...API_KEYS.map(option("Your API keys"))]
-}
-
-function ProviderSelect({ label, value, ready, onChange }: {
+// The Provider picker: your plans, then pay per run, then this Mac, each saying who pays and what it can do (greyed
+// out with where to set it up when it isn't; on an image step, Codex and OpenCode too). A step's picker starts with
+// "Use default".
+export function ProviderPicker<V extends AgentProvider | "default">({ label, value, ready, vision = false, evals = [], useDefault, onChange, className, display }: {
   readonly label: string
-  readonly value: AgentProvider
+  // what the button says, when not just the provider's name (a generator's Model row names the model too)
+  readonly display?: string
+  readonly value: V
   readonly ready: Ready
-  readonly onChange: (provider: AgentProvider) => void
+  readonly vision?: boolean
+  readonly evals?: ReadonlyArray<ModelEval>
+  // the line under "Use default" (what the default runs on); left out, there's no such choice
+  readonly useDefault?: string
+  readonly onChange: (provider: V) => void
+  readonly className?: string
 }) {
-  return <Select<AgentProvider> label={label} className="min-w-[170px]" value={value} onChange={onChange} options={providerOptions(ready, value)} />
+  const detailed = useAtomValue(modeAtom) === "detailed"
+  const chosen = value === "default" ? null : value as AgentProvider
+  const options: Array<PickerOption<V>> = [
+    ...(useDefault === undefined ? [] : [{ value: "default" as V, label: "Use default", description: useDefault, mark: <RotateCcw />, keywords: "default" }]),
+    ...providerChoices(ready, chosen, vision, evals, detailed).map((c): PickerOption<V> => ({
+      value: c.value as V,
+      label: c.label,
+      description: c.description,
+      badges: c.badges,
+      ...(c.note === undefined ? {} : { note: c.note }),
+      ...(c.detail === undefined ? {} : { detail: c.detail }),
+      disabled: c.disabled,
+      group: c.group,
+      mark: c.mark
+    }))
+  ]
+  return <Picker<V> label={label} className={cn("min-w-[170px]", className)} value={value} onChange={onChange} options={options} placeholder="Search providers…" {...(display === undefined ? {} : { display })} />
 }
 
 // The models offered for a provider: the Claude CLI's aliases, what Codex and OpenCode offer on your account, or a
 // key provider's curated models and then the rest of your key's own list. "default" stands for the provider's own
-// default.
+// default. Each says what it's good for, with badges and what a run costs (Detailed adds how it did in your evals).
 const knownModels = (
   provider: AgentProvider,
   stage: AgentStage | null,
@@ -265,29 +272,34 @@ const knownModels = (
   live: KeyModels | undefined,
   evals: ReadonlyArray<ModelEval>,
   value: string | null,
-  seen: ReadonlyArray<string> = []
-): ReadonlyArray<SelectOption<string>> => {
-  const account = (name: "codex" | "opencode") => catalog.find((c) => c.provider === name)?.models.map((m) => ({ value: m.id, label: m.label })) ?? []
+  seen: ReadonlyArray<string>,
+  detailed: boolean
+): ReadonlyArray<PickerOption<string>> => {
+  const toOption = (m: ModelOption & { readonly detail?: string | undefined }): PickerOption<string> => ({
+    value: m.value,
+    label: m.label,
+    badges: m.badges,
+    keywords: m.value,
+    ...(m.disabled === true ? { disabled: true } : {}),
+    ...(m.description === undefined ? {} : { description: m.description }),
+    ...(m.note === undefined ? {} : { note: m.note }),
+    ...(m.group === undefined ? {} : { group: m.group }),
+    ...(m.detail === undefined ? {} : { detail: m.detail })
+  })
   switch (provider) {
     case "claude-cli":
-      return CLI_MODELS.map((m) => ({ value: m.id ?? "default", label: m.label }))
     case "codex":
-      return [{ value: "default", label: "Codex default" }, ...account("codex")]
+      return cliModelChoices(provider, catalog, evals, detailed).map(toOption)
     case "opencode":
-      return account("opencode")
+      return (catalog.find((c) => c.provider === "opencode")?.models ?? []).map((m) => ({ value: m.id, label: m.label, keywords: m.id, group: "Set up in OpenCode" }))
     case "anthropic":
     case "openai":
     case "google":
     case "openrouter":
     case "ai-gateway":
-      return keyModelOptions(provider, stage, live, evals, value, seen).map((m) => ({
-        value: m.value,
-        label: m.label,
-        ...(m.disabled === true ? { disabled: true } : {}),
-        ...(m.description === undefined ? {} : { description: m.description }),
-        ...(m.note === undefined ? {} : { note: m.note }),
-        ...(m.group === undefined ? {} : { group: m.group })
-      }))
+      return keyModelOptions(provider, stage, live, evals, value, seen).map((m) =>
+        toOption({ ...m, detail: detailed ? evalLine(evals, { provider, model: m.value }) ?? undefined : undefined })
+      )
   }
 }
 
@@ -302,9 +314,10 @@ function ModelPicker({ label, provider, stage, value, seen, catalog, evals, onCh
   readonly evals: ReadonlyArray<ModelEval>
   readonly onChange: (model: string | null) => void
 }) {
+  const detailed = useAtomValue(modeAtom) === "detailed"
   return isKeyProvider(provider)
     ? <KeyModelPicker label={label} provider={provider} stage={stage} value={value} seen={seen} catalog={catalog} evals={evals} onChange={onChange} />
-    : <ModelChooser label={label} provider={provider} value={value} known={knownModels(provider, stage, catalog, undefined, evals, value)} onChange={onChange} />
+    : <ModelChooser label={label} provider={provider} value={value} known={knownModels(provider, stage, catalog, undefined, evals, value, seen, detailed)} onChange={onChange} />
 }
 
 function KeyModelPicker({ label, provider, stage, value, seen, catalog, evals, onChange }: {
@@ -319,14 +332,15 @@ function KeyModelPicker({ label, provider, stage, value, seen, catalog, evals, o
 }) {
   // the vendor's own list from your key, read only while this provider is shown
   const live = Option.getOrUndefined(AsyncResult.value(useAtomValue(keyModelsAtom(provider))))
-  return <ModelChooser label={label} provider={provider} value={value} known={knownModels(provider, stage, catalog, live, evals, value, seen)} onChange={onChange} />
+  const detailed = useAtomValue(modeAtom) === "detailed"
+  return <ModelChooser label={label} provider={provider} value={value} known={knownModels(provider, stage, catalog, live, evals, value, seen, detailed)} onChange={onChange} />
 }
 
 function ModelChooser({ label, provider, value, known, onChange }: {
   readonly label: string
   readonly provider: AgentProvider
   readonly value: string | null
-  readonly known: ReadonlyArray<SelectOption<string>>
+  readonly known: ReadonlyArray<PickerOption<string>>
   readonly onChange: (model: string | null) => void
 }) {
   const hasDefault = provider === "claude-cli" || provider === "codex"
@@ -350,16 +364,18 @@ function ModelChooser({ label, provider, value, known, onChange }: {
           <Button disabled={!hasDefault && custom.trim() === ""} onClick={() => save(custom)}>Save</Button>
         </>
       )}
-      <Select<string>
+      <Picker<string>
         label={label}
         className="min-w-[170px]"
         value={custom !== null ? "custom" : selected}
+        display={custom !== null ? "Other model…" : known.find((k) => k.value === selected)?.label ?? (selected === "" ? "Choose a model" : selected)}
         onChange={(next) => {
           if (next === "custom") return setCustom(value ?? "")
           setCustom(null)
           onChange(next === "default" ? null : next)
         }}
-        options={[...known, { value: "custom", label: "Other model…" }]}
+        placeholder="Search models…"
+        options={[...known, { value: "custom", label: "Other model…", description: "Type any model id", keywords: "custom id type" }]}
       />
     </>
   )

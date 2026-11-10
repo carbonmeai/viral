@@ -1,7 +1,7 @@
 import type { ModelEval } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { badgesFor, evalKey, evalLabel, evalLine, keyModelOptions, modelLabel } from "./agents-values.ts"
+import { badgesFor, cliModelChoices, evalKey, evalLabel, evalLine, keyModelOptions, modelLabel, providerChoices } from "./agents-values.ts"
 
 const luna: ModelEval = {
   model: "openai/gpt-6-luna",
@@ -79,7 +79,9 @@ test("the model picker: curated models first with badges and cost, then the rest
     ["claude-opus-5-5", "Suggested"],
     ["claude-fable-5-2", "More from your key"]
   ])
-  assert.equal(options[0]!.description, "Fast and cheap, good for ads, research and titles · Recommended · Sees images · Fast · Cheapest")
+  assert.equal(options[0]!.description, "Fast and cheap, good for ads, research and titles")
+  assert.deepEqual(options[0]!.badges, ["Recommended", "Sees images", "Fast", "Cheapest"])
+  assert.deepEqual([options[3]!.description, options[3]!.badges], ["claude-fable-5-2", ["Sees images"]], "a model from your key's list: its id and what it can do")
   assert.equal(options[0]!.note, "$0.0021 a run (estimate)", "an evaluated model shows what a run cost")
   assert.equal(options[1]!.note, "$2 / $10 per M", "otherwise its price per million tokens")
   assert.doesNotMatch(JSON.stringify(options), /Trending/)
@@ -106,4 +108,38 @@ test("on an image step, models that don't take images are greyed out with why; o
   assert.deepEqual({ disabled: of("deepseek/deepseek-v4").disabled, note: of("deepseek/deepseek-v4").note }, { disabled: true, note: "Doesn’t take images" })
   assert.equal(keyModelOptions("openrouter", "thumbnail", live, [], "deepseek/deepseek-v4").find((o) => o.value === "deepseek/deepseek-v4")!.disabled, undefined, "the chosen one stays pickable")
   assert.ok(keyModelOptions("openrouter", "script", live, [], null).every((o) => o.disabled === undefined), "text steps take any model")
+})
+
+test("the provider picker: your plans, then pay per run, then this Mac; set up or not, and what sees images", () => {
+  const ready = { "claude-cli": true, codex: true, opencode: false, anthropic: true, openai: false, google: false, openrouter: false, "ai-gateway": true } as const
+  const choices = providerChoices(ready, "ai-gateway", false, [luna], true)
+  assert.deepEqual(choices.map((c) => [c.value, c.group]), [
+    ["claude-cli", "Your plans"],
+    ["codex", "Your plans"],
+    ["anthropic", "Pay per run"],
+    ["openai", "Pay per run"],
+    ["google", "Pay per run"],
+    ["openrouter", "Pay per run"],
+    ["ai-gateway", "Pay per run"],
+    ["opencode", "On this Mac"]
+  ])
+  const cli = choices[0]!
+  assert.deepEqual(cli.badges, ["Recommended", "On your plan"])
+  assert.match(cli.description, /no API bill.*Shots, Sections and Thumbnail/)
+  assert.deepEqual([choices[3]!.disabled, choices[3]!.note], [true, "Add a key in Accounts"])
+  assert.deepEqual([choices[7]!.disabled, choices[7]!.note], [true, "Set up in Accounts"])
+  assert.equal(choices[6]!.disabled, false, "the chosen one")
+  assert.doesNotMatch(JSON.stringify(choices), /Trending/)
+  // on an image step the apps that can't look at images in Viral are greyed out
+  const vision = providerChoices(ready, null, true)
+  assert.deepEqual([vision[1]!.disabled, vision[1]!.note], [true, "Can’t look at images in Viral"])
+})
+
+test("the Claude CLI's models say what they're good for and run on your plan", () => {
+  const models = cliModelChoices("claude-cli", [])
+  assert.deepEqual(models.map((m) => m.value), ["default", "opus", "sonnet", "haiku"])
+  assert.ok(models.every((m) => m.badges.includes("On your plan")))
+  assert.match(models[3]!.description ?? "", /ads, research and titles/)
+  const codex = cliModelChoices("codex", [{ provider: "codex", models: [{ id: "gpt-6-luna", label: "GPT-6 Luna" }] }])
+  assert.deepEqual(codex.map((m) => m.value), ["default", "gpt-6-luna"])
 })
