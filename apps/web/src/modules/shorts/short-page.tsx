@@ -8,10 +8,10 @@ import { TitleBar } from "../layout/title-bar.tsx"
 import { emptyProgress, type RunProgress } from "../videos/run-progress.ts"
 import { runProgressAtom } from "../videos/videos-api.ts"
 import { CaptionsPanel } from "./captions-panel.tsx"
+import { ChatColumn } from "./chat/chat-column.tsx"
 import { EditorFrame } from "./editor-frame.tsx"
 import { EditorPlayer } from "./editor-player.tsx"
 import { EditorRail } from "./editor-rail.tsx"
-import { EditorSide } from "./editor-side.tsx"
 import { EditorSkeleton } from "./editor-skeleton.tsx"
 import { EditorTimeline } from "./editor-timeline.tsx"
 import { EditorTopBar } from "./editor-top-bar.tsx"
@@ -130,7 +130,7 @@ function Editor(props: {
             <stage.Stage e={e} />
           </EditorPlayer>
         }
-        side={<EditorSide e={e} onAsk={ask} />}
+        side={<ChatColumn e={e} onAsk={ask} />}
         sideOpen={sideOpen}
         timeline={<EditorTimeline e={e} />}
       />
