@@ -201,7 +201,9 @@ apps/server/src/
                        "I made it" videos get none), the same in the drawn credit, the post text and <slug>.md. A short's optional
                        brief (what it should achieve; CreateProject/CreateProjectFromProposal, SetProjectBrief) goes
                        first in the script, shots, sections, thumbnail and metadata prompts (creator-brief.ts)
-  presets/             style profiles; one default, seeded on first start. Edits (UpdatePreset) and renames
+  presets/             style profiles; one default, seeded on first start. Built-ins (added by name when missing, never
+                       overwritten, so a change reaches new libraries only): Viral recap (the default) and Headline
+                       full-bleed narrated by Marcus, Fast hype with Adam. Edits (UpdatePreset) and renames
                        (RenamePreset) go through preset-rules.ts first; a bad one is PresetInvalid with plain problems
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;
                        each is a full song or an already edited clip (kind; SetMusicTrackKind). AddMusicFolder adds
@@ -277,7 +279,10 @@ apps/server/src/
                        names its video; storyboard tiles carry their own video and a V label.
                        Frames are always kept one image per file (contact sheets: frames/frame_NNNNN.jpg;
                        shot plans: frames/shot-NN.jpg…) and stitched from those, so clients can offer any frame
-  agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it
+  agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it. Ported from the
+                       creator's own viral-shorts skills (story-arc: format by kind of video, whole sentences, the
+                       closing comment question). approach-story-recap and approach-narrated-ranking are written ahead
+                       of their approaches: loaded, but no stage uses them yet
   agent-session/       runs every agent stage: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
                        per-stage model, cost + session recording, resume; AgentSession.replay for tests.
