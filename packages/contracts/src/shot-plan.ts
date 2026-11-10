@@ -74,7 +74,14 @@ export const RealClip = Schema.Struct({
   // which of the short's videos it's from (V1 = 0); leave it out when the short has one video
   source: Schema.optionalKey(SourceIndex)
 })
-export const ShotInsert = Schema.Struct({ ...RealClip.fields, afterWord: Schema.Int, afterWordText: Schema.String })
+export const ShotInsert = Schema.Struct({
+  ...RealClip.fields,
+  afterWord: Schema.Int,
+  afterWordText: Schema.String,
+  // where the narration picks up after the clip when the script skips the line after it (absent = the next word)
+  resumeWord: Schema.optionalKey(Schema.Int),
+  resumeWordText: Schema.optionalKey(Schema.String)
+})
 export type ShotInsert = typeof ShotInsert.Type
 
 // Each shot and real clip keeps its own frame (a jpg next to the plan, e.g. "frames/shot-01.jpg"), so a client

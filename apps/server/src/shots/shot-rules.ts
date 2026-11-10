@@ -45,7 +45,8 @@ export const narrationEnds = (script: Script, words: ReadonlyArray<TranscriptWor
 }
 
 // The script's real lines on the voiceover: a line after the last narration is an outro clip; any other
-// plays as an insert after the last voiceover word of the narration before it.
+// plays as an insert after the last voiceover word of the narration before it. When the line after an insert is
+// skipped (the clip says it), the narration resumes at the first word after that line.
 export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>): Pick<ShotDraft, "inserts" | "outro"> => {
   const ends = narrationEnds(script, words)
   const lastNarration = script.beats.findLastIndex((b) => b._tag === "Narration")
@@ -63,10 +64,20 @@ export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>)
       return
     }
     const afterWord = ends[narrated]!
-    inserts.push({ ...clip, afterWord, afterWordText: words[afterWord]?.w ?? "" })
+    const next = script.beats[i + 1]
+    const resumeWord = next?._tag === "Narration" && next.skipped === true ? ends[narrated + 1]! + 1 : null
+    inserts.push({
+      ...clip,
+      afterWord,
+      afterWordText: words[afterWord]?.w ?? "",
+      ...(resumeWord === null || resumeWord >= words.length ? {} : { resumeWord, resumeWordText: words[resumeWord]!.w })
+    })
   })
   return { inserts, outro }
 }
+
+// The voiceover word the narration picks up from after an insert.
+export const resumeOf = (insert: Pick<ShotInsert, "afterWord" | "resumeWord">) => insert.resumeWord ?? insert.afterWord + 1
 
 // What the agent sent as a ShotProposal: each shot's V number becomes its position (V2 → source 1; V1 left out).
 // A V number the short doesn't have is kept as a position, for checkShots to name.
@@ -106,7 +117,10 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
     const next = proposal.shots[k + 1]
     if (next !== undefined && next.word <= shot.word) problems.push(`${name}: the next shot must start on a later word`)
     const from = shot.word === 0 ? 0 : words[shot.word]!.s
-    const to = next !== undefined && valid(next.word) ? words[next.word]!.s : ctx.voiceoverSeconds
+    const until = next !== undefined && valid(next.word) ? words[next.word]!.s : ctx.voiceoverSeconds
+    // a shot runs until the narration pauses for a clip that skips the line after it, not through the skipped words
+    const pause = ctx.inserts.find((x) => x.resumeWord !== undefined && x.afterWord >= shot.word && words[x.afterWord] !== undefined && words[x.afterWord]!.e < until)
+    const to = pause === undefined ? until : words[pause.afterWord]!.e
     const length = to - from
     if (length > MAX_SHOT_SECONDS) {
       problems.push(`${name} lasts ${fmt(length)}s; cut to a new shot within ${MAX_SHOT_SECONDS}s`)
@@ -117,7 +131,8 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
     const video = clipSource(ctx.sources, shot.source, name)
     if (video.problem !== null) return problems.push(video.problem)
     const { seconds, excluded } = video.source
-    const srcEnd = shot.src + Math.max(0, length) * speed
+    // the footage is cut for the whole stretch of voiceover, skipped words included
+    const srcEnd = shot.src + Math.max(0, until - from) * speed
     if (shot.src < 0 || srcEnd > seconds) {
       problems.push(`${name} plays ${fmt(shot.src)}–${fmt(srcEnd)}s, outside the video (0–${fmt(seconds)}s)`)
     }
@@ -127,8 +142,14 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
     }
   })
 
+  for (const shot of proposal.shots) {
+    const over = ctx.inserts.find((x) => x.resumeWord !== undefined && shot.word > x.afterWord && shot.word < x.resumeWord)
+    if (over !== undefined) {
+      problems.push(`shot on word ${shot.word} "${wordAt(shot.word)}" is in narration the short skips after "${over.quote}"; start it on word ${over.resumeWord} or later`)
+    }
+  }
   for (const insert of ctx.inserts) {
-    const resume = insert.afterWord + 1
+    const resume = resumeOf(insert)
     if (resume < words.length && !starts.has(resume)) {
       problems.push(`start a new shot on word ${resume} "${wordAt(resume)}", where the narration resumes after "${insert.quote}"`)
     }

@@ -15,6 +15,8 @@ const HIGHLIGHT_COLORS: Record<Exclude<HighlightColor, "accent">, string> = {
 
 // How long a marker stays on screen.
 const MARKER_SECONDS = 1.4
+// With soft joins, a breath after an insert's word before the clip (the skill's 0.25 s).
+const INSERT_PAD = 0.25
 // The music bed's build: whole bars looped before the drop, then the groove after it.
 const BUILD_BARS = 8
 const GROOVE_BARS = 4
@@ -140,11 +142,15 @@ export const assembleNarrated = (input: NarratedInput): NarratedPlan => {
       ...from(clip.source),
       after_word: clip.afterWord,
       after_word_text: clip.afterWordText,
+      ...(clip.resumeWord === undefined ? {} : { resume_word: clip.resumeWord, resume_word_text: clip.resumeWordText ?? words[clip.resumeWord]?.w ?? "" }),
       note: clip.quote
     })),
     outro: shots.outro.map((clip) => ({ start: clip.start, end: clip.end, ...from(clip.source), note: clip.quote })),
     ...(annotations.length === 0 ? {} : { annotations }),
     ...music,
+    // the style's opt-ins, written only when on so a plan without them renders exactly as before
+    ...(preset.softJoins === true ? { soft_joins: true, insert_pad: INSERT_PAD } : {}),
+    ...(preset.voiceLevel === undefined ? {} : { voice_gain: preset.voiceLevel.gain }),
     lufs: preset.loudnessLufs
   }
 }

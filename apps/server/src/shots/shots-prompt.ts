@@ -14,7 +14,8 @@ of the voiceover, following the narrated-shots skill below.
 2. Overview sheets show a frame every 5 seconds. Before you pick a shot's source second, call \`contact_sheet\` with
    a short range around the moment (up to 60s) for a frame every second, and Read the sheet it returns.
 3. Anchor every shot to the voiceover word it starts on. The real lines are already placed: the narration pauses
-   after the word shown, plays the clip, and resumes on the next word, where a new shot must start.
+   after the word shown, plays the clip, and resumes on the word shown (a skipped line in between isn't played), where a
+   new shot must start.
 4. Add one or two markers (a circle or arrow on the hero object, or a short label) when they help.
 5. Pick 5–10 key words of the narration for the captions to colour (the tastes, the hero object, the twist), each
    with a colour that fits its meaning: spicy red, cold cyan, sour green, sweet pink, savory orange. Use "accent"
@@ -68,11 +69,16 @@ export const buildShotsBrief = (brief: ShotsBrief) => {
   const several = videos !== null
   const lines: Array<string> = []
   let from = 0
+  // narration the short skips (the real line before it says it): voiced, but never on screen
+  const skipped = (i: number) => brief.inserts.some((x) => x.resumeWord !== undefined && i > x.afterWord && i < x.resumeWord)
   brief.narrationEnds.forEach((end, b) => {
     const words = brief.words.slice(from, end + 1).map((w, i) => `${from + i}:${w.w}@${w.s.toFixed(2)}`).join(" ")
-    lines.push(`Narration ${b + 1} (words ${from}–${end}): ${words}`)
+    lines.push(skipped(from)
+      ? `Narration ${b + 1} (words ${from}–${end}), SKIPPED (the real line says it; no shots here): ${words}`
+      : `Narration ${b + 1} (words ${from}–${end}): ${words}`)
     for (const insert of brief.inserts.filter((i) => i.afterWord === end)) {
-      lines.push(`  → REAL after word ${end} "${insert.afterWordText}": "${insert.quote}" (${videoOf(several, insert.source)}${fmt(insert.start)}–${fmt(insert.end)}s); the narration resumes on word ${end + 1}`)
+      const resume = insert.resumeWord ?? end + 1
+      lines.push(`  → REAL after word ${end} "${insert.afterWordText}": "${insert.quote}" (${videoOf(several, insert.source)}${fmt(insert.start)}–${fmt(insert.end)}s); the narration resumes on word ${resume}`)
     }
     from = end + 1
   })

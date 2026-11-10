@@ -107,3 +107,23 @@ test("a single-video plan has no sources or per-video ranges", () => {
   assert.equal("sources" in plan, false)
   assert.equal("exclude_by_source" in plan, false)
 })
+
+test("a style without the opt-ins writes none of their keys; Story recap adds soft joins, a breath and the voice level", () => {
+  const plain = assembleNarrated(input(recap))
+  for (const key of ["soft_joins", "insert_pad", "voice_gain"]) assert.equal(key in plain, false, `${key} absent`)
+  const storyRecap = BUILT_IN_PRESETS.find((p) => p.name === "Story recap")!.config
+  const plan = assembleNarrated(input(storyRecap))
+  Schema.decodeSync(NarratedPlan)(plan, { onExcessProperty: "error" })
+  assert.equal(plan.soft_joins, true)
+  assert.equal(plan.insert_pad, 0.25)
+  assert.equal(plan.voice_gain, 1.7)
+  assert.equal(plan.main_height, 1280)
+  assert.equal(plan.caption_y, 0.78)
+})
+
+test("an insert whose next line is skipped resumes on the word after it", () => {
+  const skipping: ShotPlan = { ...shots, inserts: [{ ...shots.inserts[0]!, resumeWord: 6, resumeWordText: "friend" }] }
+  const plan = assembleNarrated({ ...input(recap), shots: skipping })
+  Schema.decodeSync(NarratedPlan)(plan, { onExcessProperty: "error" })
+  assert.deepEqual(plan.inserts, [{ start: 1144, end: 1146, after_word: 3, after_word_text: "it.", resume_word: 6, resume_word_text: "friend", note: "pain" }])
+})

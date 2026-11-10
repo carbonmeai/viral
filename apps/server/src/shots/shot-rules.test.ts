@@ -86,3 +86,31 @@ test("each shot plays from its own video, and a real line keeps its video", () =
   const reals = placeReals({ headline: null, beats: [{ _tag: "Narration", text: "This guy." }, { _tag: "Real", quote: "x", start: 1, end: 2, source: 1 }] }, words)
   assert.deepEqual(reals.outro, [{ start: 1, end: 2, quote: "x", source: 1 }])
 })
+
+// "This guy tasted the spicy cold mix." → REAL "It hurts so much." → (skipped) "He said it hurt." "So he tried again."
+const skipHeard = ["This", "guy", "tasted", "the", "spicy", "cold", "mix.", "He", "said", "it", "hurt.", "So", "he", "tried", "again."]
+const skipWords = skipHeard.map((w, i) => ({ w, s: i, e: i + 0.8 }))
+const skipping: Script = {
+  headline: null,
+  beats: [
+    { _tag: "Narration", text: "This guy tasted the spicy-cold mix." },
+    { _tag: "Real", quote: "It hurts so much.", start: 1144, end: 1146 },
+    { _tag: "Narration", text: "He said it hurt.", skipped: true },
+    { _tag: "Narration", text: "So he tried again." }
+  ]
+}
+
+test("an insert before a skipped line resumes on the first word after it", () => {
+  const { inserts } = placeReals(skipping, skipWords)
+  assert.deepEqual(inserts, [{ quote: "It hurts so much.", start: 1144, end: 1146, afterWord: 6, afterWordText: "mix.", resumeWord: 11, resumeWordText: "So" }])
+})
+
+test("shots start where the narration resumes, never in the skipped words, and run only until the pause", () => {
+  const skipCtx = { words: skipWords, voiceoverSeconds: 15, sources: [{ seconds: 2300, excluded: [] }], inserts: placeReals(skipping, skipWords).inserts }
+  const shotsAt = (at: ReadonlyArray<number>): ShotProposal => ({ shots: at.map((word, i) => ({ word, src: 100 + i * 10, note: "n" })), markers: [] })
+  // word 4 to 11 is 7 s of voiceover, but the shot only plays until the pause after "mix." (6.8 s → 2.8 s on screen)
+  assert.deepEqual(checkShots(shotsAt([0, 2, 4, 11, 13]), skipCtx).problems, [])
+  const text = checkShots(shotsAt([0, 2, 4, 8, 13]), skipCtx).problems.join("\n")
+  assert.match(text, /shot on word 8 "said" is in narration the short skips after "It hurts so much."; start it on word 11 or later/)
+  assert.match(text, /start a new shot on word 11 "So", where the narration resumes/)
+})
