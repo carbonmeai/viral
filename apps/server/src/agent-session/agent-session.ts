@@ -14,7 +14,7 @@ import { makeCodexProvider } from "@viral/provider-codex"
 import { makeOpencodeProvider } from "@viral/provider-opencode"
 import { replayRun } from "@viral/provider-testing"
 import type { LanguageModel } from "ai"
-import type { AgentCost, AgentError, AgentHooks, AgentRoute, AgentRun, AgentTask } from "./agent-task.ts"
+import { type AgentCost, AgentError, type AgentHooks, type AgentRoute, type AgentRun, type AgentTask } from "./agent-task.ts"
 import { modelImageReader } from "./model-images.ts"
 import { MODEL_KEY_CHECKS } from "./model-key-checks.ts"
 
@@ -109,6 +109,15 @@ export class AgentSession extends Context.Service<AgentSession, {
 
       const run = Effect.fn("AgentSession.run")(function*<S extends Schema.Top>(task: AgentTask<S>, hooks: AgentHooks) {
         const route = task.route ?? (yield* routeFor(task))
+        // a conversation lives with the provider that had it: a step moved to another one starts afresh (runChecked
+        // catches this and sends the brief, the last version and your note). A model change on the same provider
+        // continues the conversation on the new model: each provider passes this run's model on resume.
+        if (task.resumeSession && task.resumeProvider && task.resumeProvider !== route.provider) {
+          return yield* new AgentError({
+            code: "session",
+            message: `this step now runs on ${route.provider}; its last conversation was on ${task.resumeProvider}`
+          })
+        }
         // A CLI runs on your sign-in or on a key (its setup in Settings › Accounts), resolved for this run only: a
         // CLI on a key bills per use; on a Claude plan, its reported cost is the plan's value; Codex on your
         // ChatGPT plan counts against it. The key providers always bill.

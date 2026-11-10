@@ -9,7 +9,7 @@ export interface Checked<A> {
 }
 
 // What runChecked runs: an agent task whose first message is the brief.
-export type CheckedTask<S extends Schema.Top> = Omit<AgentTask<S>, "message" | "resumeSession"> & { readonly brief: string }
+export type CheckedTask<S extends Schema.Top> = Omit<AgentTask<S>, "message" | "resumeSession" | "resumeProvider"> & { readonly brief: string }
 
 // How many times the agent may fix a result the server rejected before the stage fails.
 const FIX_ATTEMPTS = 2
@@ -46,7 +46,11 @@ export const runChecked = Effect.fn("runChecked")(function*<S extends Schema.Top
   check: (proposed: S["Type"]) => Effect.Effect<Checked<A>>
 ) {
   let session = ctx.resumeSession
-  const fresh = ctx.note === null ? task.brief : `${task.brief}\n\nNote from the reviewer on the last version: ${ctx.note}`
+  // a revision that can't continue its conversation (a step moved to another provider, an expired session) starts
+  // afresh with the version your note is about and the note
+  const fresh = ctx.note === null
+    ? task.brief
+    : `${task.brief}${ctx.previous ? `\n\nYour last version, as the app stored it:\n${ctx.previous}` : ""}\n\nNote from the reviewer on the last version: ${ctx.note}`
   // a short's agents speak to you in its chat; a video's or a set's stages have no chat yet
   const tells = ctx.owner._tag === "Project" && (TELL_CREATOR_ON === "all" || ctx.note !== null)
   // a resumed conversation predates the tool, so the revision asks for it by name
@@ -62,9 +66,10 @@ export const runChecked = Effect.fn("runChecked")(function*<S extends Schema.Top
 
   for (let attempt = 0;; attempt++) {
     const resuming = attempt === 0 && session !== null && ctx.resumeSession !== null
-    const proposed = yield* agent.run({ ...task, tools, message, resumeSession: session }, hooks).pipe(
+    const resumeProvider = session === ctx.resumeSession ? ctx.resumeProvider ?? null : null
+    const proposed = yield* agent.run({ ...task, tools, message, resumeSession: session, resumeProvider }, hooks).pipe(
       // an old conversation that can't be picked up any more (an expired session, a Codex thread or saved history
-      // that's gone) starts afresh with the brief and your note
+      // that's gone, a step now on another provider) starts afresh with the brief, the last version and your note
       Effect.catchIf(
         (error) => resuming && error._tag === "AgentError" && (error.code === "session" || error.code === "ended"),
         () => {

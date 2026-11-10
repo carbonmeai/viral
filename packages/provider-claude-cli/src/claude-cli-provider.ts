@@ -18,6 +18,37 @@ const isInside = (dir: string, file: string, path: Path.Path) => {
 export const claudeEnv = (base: Readonly<Record<string, string | undefined>>, extra: Readonly<Record<string, string>>) =>
   Object.keys(extra).length === 0 ? undefined : { ...base, ...extra }
 
+// What a session's results have reported so far, per model. The CLI restores a session's totals on resume, so a
+// resumed run's result reports the whole conversation (every model it ever ran on, every dollar), not this run.
+export interface SessionTotals {
+  readonly costUsd: number
+  readonly models: Readonly<Record<string, { readonly costUsd: number; readonly outputTokens: number }>>
+}
+
+export interface RunResult {
+  // the result message's cumulative figures (modelUsage, total_cost_usd)
+  readonly totals: SessionTotals
+  // output tokens per model of this run's own assistant messages
+  readonly runModels: Readonly<Record<string, number>>
+}
+
+// This run's model and cost: the model that wrote most of this run's replies, and the session's totals minus what
+// they were before this run. When the earlier totals aren't known (a session resumed after a restart), the model's
+// cost is split by its output tokens; a fresh session's totals are this run's.
+export const runCost = (result: RunResult, resumed: boolean, before: SessionTotals | undefined, fallbackModel: string | null) => {
+  const ranked = Object.entries(result.runModels).sort(([, a], [, b]) => b - a)
+  const byTotals = Object.entries(result.totals.models).sort(([, a], [, b]) => b.outputTokens - a.outputTokens)
+  const model = ranked[0]?.[0] ?? (resumed ? fallbackModel : byTotals[0]?.[0]) ?? fallbackModel
+  const round = (usd: number) => Math.round(usd * 1e8) / 1e8
+  if (!resumed) return { model, costUsd: result.totals.costUsd }
+  if (before !== undefined) return { model, costUsd: round(Math.max(0, result.totals.costUsd - before.costUsd)) }
+  const costUsd = Object.entries(result.totals.models).reduce((sum, [name, total]) => {
+    const mine = result.runModels[name] ?? 0
+    return total.outputTokens > 0 ? sum + total.costUsd * Math.min(1, mine / total.outputTokens) : sum
+  }, 0)
+  return { model, costUsd: round(costUsd) }
+}
+
 export interface ClaudeCliOptions {
   // the claude executable (a fake in tests); found on the PATH otherwise
   readonly claudePath?: string
@@ -30,6 +61,9 @@ export const makeClaudeCliProviderWith = Effect.fn("makeClaudeCliProvider")(func
     Effect.map(Str.trim),
     Effect.orDie
   ))
+
+  // each session's totals as last reported, so a resumed run records only its own cost
+  const sessionTotals = new Map<string, SessionTotals>()
 
   const run: AgentRun = Effect.fn("ClaudeCli.run")(function*<S extends Schema.Top>(
     task: AgentTask<S>,
@@ -101,11 +135,14 @@ export const makeClaudeCliProviderWith = Effect.fn("makeClaudeCliProvider")(func
       ({ abortController }) => Effect.sync(() => abortController.abort())
     )
 
+    // this run's assistant messages (one per content block, sharing the message's id and usage): output per model
+    const replies = new Map<string, { readonly model: string; readonly outputTokens: number }>()
     const onMessage = (message: SDKMessage): Effect.Effect<void, AgentError> => {
       switch (message.type) {
         case "system":
           return message.subtype === "init" ? hooks.recordSession(message.session_id) : Effect.void
         case "assistant":
+          replies.set(message.message.id, { model: message.message.model, outputTokens: message.message.usage?.output_tokens ?? 0 })
           return Effect.forEach(message.message.content, (block) =>
             block.type === "text"
               ? hooks.progress(null, block.text)
@@ -113,14 +150,27 @@ export const makeClaudeCliProviderWith = Effect.fn("makeClaudeCliProvider")(func
               ? hooks.progress(null, `→ ${block.name.replace(/^mcp__viral__/, "")}`)
               : Effect.void, { discard: true })
         case "result": {
-          const usage = Object.values(message.modelUsage)
+          const totals: SessionTotals = {
+            costUsd: message.total_cost_usd,
+            models: Object.fromEntries(Object.entries(message.modelUsage).map(([name, u]) => [name, { costUsd: u.costUSD, outputTokens: u.outputTokens }]))
+          }
+          const runModels: Record<string, number> = {}
+          for (const reply of replies.values()) runModels[reply.model] = (runModels[reply.model] ?? 0) + reply.outputTokens
           // the CLI also makes small calls on a cheaper model; the stage's model is the one that wrote the most
-          const main = Object.entries(message.modelUsage).sort(([, a], [, b]) => b.outputTokens - a.outputTokens)[0]
+          const resumed = Boolean(task.resumeSession)
+          const own = runCost(
+            { totals, runModels },
+            resumed,
+            resumed ? sessionTotals.get(task.resumeSession!) : undefined,
+            model
+          )
+          sessionTotals.set(message.session_id, totals)
+          const usage = message.usage
           const cost = hooks.recordCost({
-            model: main?.[0] ?? model,
-            inputTokens: usage.reduce((n, u) => n + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, 0),
-            outputTokens: usage.reduce((n, u) => n + u.outputTokens, 0),
-            costUsd: message.total_cost_usd
+            model: own.model,
+            inputTokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+            outputTokens: usage.output_tokens,
+            costUsd: own.costUsd
           })
           // ending after the tool call (e.g. on the turn limit) is fine; ending without it is reported below
           return message.subtype === "success" || Option.isSome(submitted)

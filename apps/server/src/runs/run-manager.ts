@@ -15,7 +15,7 @@ import {
 } from "@viral/contracts"
 import { Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, PubSub, Ref, Result, Stream } from "effect"
 import { Artifacts } from "../artifacts/artifacts.ts"
-import { RunStore } from "./run-store.ts"
+import { RunStore, type SessionRef } from "./run-store.ts"
 import { findStage, type Prerequisite, type StageContext, type StageDefinition, StageFailure, StageRegistry } from "./stages.ts"
 
 // One update of one run, with whose run it is, as every follower of the runs sees it.
@@ -104,7 +104,7 @@ export class RunManager extends Context.Service<RunManager, {
         stage: StageDefinition,
         forced: boolean,
         current: Ref.Ref<StageRun | null>,
-        sessions: Map<StageName, string>,
+        sessions: Map<StageName, SessionRef>,
         sentBack: { readonly note: string } | null
       ) => Effect.Effect<Option.Option<SentBack>, StageFailure> = Effect.fn("RunManager.runStage")(function*(
         run: Run,
@@ -112,7 +112,7 @@ export class RunManager extends Context.Service<RunManager, {
         forced: boolean,
         current: Ref.Ref<StageRun | null>,
         // agent sessions of this run's stages, so a stage sent back continues its conversation
-        sessions: Map<StageName, string>,
+        sessions: Map<StageName, SessionRef>,
         // set when a later stage sent its rejection back here
         sentBack: { readonly note: string } | null
       ) {
@@ -129,23 +129,30 @@ export class RunManager extends Context.Service<RunManager, {
           // An artifact made but never approved (its run was interrupted at the gate): ask again, don't redo it.
           let produce = forced || stage.gate === null || Option.isNone(latest)
           let note: string | null = sentBack?.note ?? null
-          let session: string | null = sentBack === null ? null : sessions.get(stage.name) ?? null
+          let session: SessionRef | null = sentBack === null ? null : sessions.get(stage.name) ?? null
 
           for (let attempt = earlier + 1;; attempt++) {
             const stageRun = yield* store.createStageRun(run.id, stage.name, attempt, "running")
             yield* Ref.set(current, stageRun)
             yield* publish(run.id, { _tag: "StageStarted", stageRun })
+            // a revision sees the version your note is about, in case its conversation can't be continued
+            const previous = note === null ? null : Option.match(yield* artifacts.latest(run.owner, stage.artifact), {
+              onNone: () => null,
+              onSome: (a) => a.data === null ? null : JSON.stringify(a.data)
+            })
             const ctx: StageContext = {
               owner: run.owner,
               runId: run.id,
               stageRunId: stageRun.id,
               attempt,
               note,
-              resumeSession: session,
+              resumeSession: session?.id ?? null,
+              resumeProvider: session?.provider ?? null,
+              previous,
               recordSession: (id) =>
                 Effect.sync(() => {
-                  session = id
-                  sessions.set(stage.name, id)
+                  session = { id, provider: null }
+                  sessions.set(stage.name, session)
                 }).pipe(Effect.andThen(store.recordSession(stageRun.id, id))),
               recordReply: (text) => store.recordReply(stageRun.id, text),
               progress: (pct, message) =>
@@ -154,7 +161,14 @@ export class RunManager extends Context.Service<RunManager, {
                   owner: run.owner,
                   update: { _tag: "Progress", stage: stage.name, pct, message: message ?? null }
                 }).pipe(Effect.asVoid),
-              recordCost: (cost) => store.recordCost(stageRun.id, cost)
+              recordCost: (cost) =>
+                Effect.sync(() => {
+                  // the session's provider is known once its cost comes in
+                  if (session !== null && cost.provider != null && sessions.get(stage.name) === session) {
+                    session = { ...session, provider: cost.provider }
+                    sessions.set(stage.name, session)
+                  }
+                }).pipe(Effect.andThen(store.recordCost(stageRun.id, cost)))
             }
 
             if (produce) yield* stage.run(ctx)
@@ -295,7 +309,7 @@ export class RunManager extends Context.Service<RunManager, {
           const forcedTo = options.forceThrough === undefined
             ? stages.length
             : Option.getOrElse(findStage(stages, options.forceThrough), () => stages.length)
-          const sessions = new Map<StageName, string>()
+          const sessions = new Map<StageName, SessionRef>()
           const sentBack: { current: { readonly index: number; readonly note: string } | null } = { current: null }
           // a redo with your note: the `from` stage gets it as if sent back to it, continuing its last conversation
           if (options.note !== undefined && run.fromStage !== null && forcedFrom < stages.length) {

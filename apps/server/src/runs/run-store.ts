@@ -133,6 +133,12 @@ export interface LatestArtifact {
   readonly stageRunStatus: StageRunStatus | null
 }
 
+// An agent conversation to continue, and the provider that holds it (null when no cost was recorded for it).
+export interface SessionRef {
+  readonly id: string
+  readonly provider: string | null
+}
+
 export interface StageCost {
   readonly model?: string | null
   // who ran it, and whether the cost is real money or a CLI plan's value
@@ -173,8 +179,9 @@ export class RunStore extends Context.Service<RunStore, {
   // the agent's own words for that attempt (its tell_creator call)
   recordReply(id: StageRunId, reply: string): Effect.Effect<void>
   replyOf(id: StageRunId): Effect.Effect<string | null>
-  // the agent session of an owner's latest attempt at a stage, so a redo with your note continues that conversation
-  latestSession(owner: RunOwner, stage: StageName): Effect.Effect<string | null>
+  // the agent session of an owner's latest attempt at a stage, so a redo with your note continues that conversation,
+  // with the provider that ran it (a session can't be continued on another provider)
+  latestSession(owner: RunOwner, stage: StageName): Effect.Effect<SessionRef | null>
   getStageRun(id: StageRunId): Effect.Effect<Option.Option<StageRun>>
   listStageRuns(runId: RunId): Effect.Effect<ReadonlyArray<StageRun>>
   latestArtifact(owner: RunOwner, kind: ArtifactKind): Effect.Effect<Option.Option<LatestArtifact>>
@@ -327,11 +334,14 @@ export class RunStore extends Context.Service<RunStore, {
         )
 
       const latestSession = (owner: RunOwner, stage: StageName) =>
-        sql<{ readonly agent_session_id: string }>`
-          SELECT s.agent_session_id FROM stage_runs s JOIN runs r ON r.id = s.run_id
+        sql<{ readonly agent_session_id: string; readonly provider: string | null }>`
+          SELECT s.agent_session_id, s.provider FROM stage_runs s JOIN runs r ON r.id = s.run_id
           WHERE r.${sql(ownerColumn(owner))} = ${owner.id} AND s.stage = ${stage} AND s.agent_session_id IS NOT NULL
           ORDER BY s.started_at DESC LIMIT 1
-        `.pipe(Effect.map((rows) => rows[0]?.agent_session_id ?? null), Effect.orDie)
+        `.pipe(
+          Effect.map((rows): SessionRef | null => rows[0] === undefined ? null : { id: rows[0].agent_session_id, provider: rows[0].provider }),
+          Effect.orDie
+        )
 
       const getStageRun = (id: StageRunId) =>
         SqlSchema.findOneOption({

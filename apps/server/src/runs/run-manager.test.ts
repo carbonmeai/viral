@@ -23,6 +23,8 @@ after(() => rmSync(home, { recursive: true, force: true }))
 const calls = { source: 0, transcribe: [] as Array<string | null> }
 // the session each transcribe attempt was asked to resume
 const sessions: Array<string | null> = []
+// the provider of that session and the version the note was about, per attempt
+const resumed: Array<{ readonly provider: string | null; readonly previous: string | null }> = []
 // the third, review stage is only in the runs of the test that needs it
 const withReview = { on: false }
 // a video set's run: what it needs first, and its one stage
@@ -53,7 +55,9 @@ const fakeStages = Layer.effect(StageRegistry, Effect.gen(function*() {
       gate: "Approve the transcript?",
       run: (ctx) =>
         Effect.sync(() => void calls.transcribe.push(ctx.note)).pipe(
+          Effect.andThen(Effect.sync(() => void resumed.push({ provider: ctx.resumeProvider ?? null, previous: ctx.previous ?? null }))),
           Effect.andThen(Effect.suspend(() => ctx.recordSession(`session-${calls.transcribe.length}`))),
+          Effect.andThen(ctx.recordCost({ model: "haiku", provider: "claude-cli", costUsd: 0 })),
           Effect.andThen(Effect.sync(() => void sessions.push(ctx.resumeSession))),
           Effect.andThen(ctx.progress(50, "halfway")),
           Effect.andThen(produce(ctx, "transcript", { text: ctx.note === null ? "first" : `redone: ${ctx.note}` }))
@@ -186,6 +190,10 @@ test("reject re-runs the stage with your note; edit records your version", async
   const second = await until(rt, run.id, (u) => raised(u) && u._tag === "Event" && u.event._tag === "RequestRaised" && u.event.request.id !== first.id)
   assert.deepEqual(calls.transcribe, [null, "too long"])
   assert.deepEqual(sessions.slice(-2), [null, "session-1"], "the re-run continues the rejected attempt's session")
+  assert.deepEqual(resumed.slice(-2), [
+    { provider: null, previous: null },
+    { provider: "claude-cli", previous: JSON.stringify({ text: "first" }) }
+  ], "with the provider that holds it and the version the note is about")
   assert.deepEqual((await latestTranscript(rt, owner)).data, { text: "redone: too long" })
 
   await respond(rt, requestOf(second).id, { _tag: "Edit", artifact: { text: "my own words" } })
@@ -271,6 +279,7 @@ test("a redo from an approved stage with a note gives the stage the note and its
   await until(rt, redo.id, finished)
   assert.equal(calls.transcribe.at(-1), "shorter, please")
   assert.equal(sessions.at(-1), lastSession, "the redo picks up the stage's last agent session")
+  assert.equal(resumed.at(-1)!.provider, "claude-cli", "and knows who holds it")
   assert.deepEqual((await latestTranscript(rt, owner)).data, { text: "redone: shorter, please" })
   await rt.dispose()
 })

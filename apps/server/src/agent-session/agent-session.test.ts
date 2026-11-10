@@ -17,6 +17,9 @@ import { AppSettingsStore } from "../settings/app-settings.ts"
 import { Settings } from "../settings/settings.ts"
 import { AgentSession, type AgentTask, toolShape } from "./agent-session.ts"
 import type { AgentCost, AgentRun } from "./agent-task.ts"
+import type { ProjectId, RunId, StageRunId } from "@viral/contracts"
+import type { StageContext } from "../runs/stages.ts"
+import { runChecked } from "./run-checked.ts"
 
 const Answer = Schema.Struct({ answer: Schema.Int, why: Schema.optionalKey(Schema.String) })
 
@@ -210,4 +213,68 @@ test("your own variables reach the CLI, a secret one read from the Keychain", as
   }))
   assert.deepEqual(seen[0]!.cli?.env, { ANTHROPIC_AUTH_TOKEN: "test-router-token-0009", ANTHROPIC_BASE_URL: "https://router.example/api" })
   assert.equal((costs[0] as { billing: string }).billing, "billed")
+})
+
+// A conversation lives with the provider that had it. A step moved to another provider starts afresh with the brief,
+// the version your note is about and the note; a model change on the same provider continues the conversation, on the
+// new model.
+const resumingCli = (seen: Array<{ readonly model: string | null; readonly resume: string | null; readonly message: string }>): AgentRun =>
+  ((runTask, runHooks, model) =>
+    Effect.gen(function*() {
+      seen.push({ model, resume: runTask.resumeSession ?? null, message: runTask.message })
+      yield* runHooks.recordCost({ model, inputTokens: 10, outputTokens: 1, costUsd: 0 })
+      return { answer: 42 }
+    })) as AgentRun
+
+const resumeSession = async (stageAgent: { readonly provider: "codex" | "claude-cli"; readonly model: string }, resumeProvider: string) => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "viral-agent-session-resume-")))
+  const seen: Array<{ readonly model: string | null; readonly resume: string | null; readonly message: string }> = []
+  const run = resumingCli(seen)
+  const config = ConfigProvider.layer(ConfigProvider.fromUnknown({ VIRAL_HOME: join(dir, "home") }))
+  const layer = Layer.effect(AgentSession, AgentSession.make({ cliRuns: { "claude-cli": run, codex: run, opencode: run } })).pipe(
+    Layer.provideMerge(sessionDeps(dir)),
+    Layer.provideMerge(config)
+  )
+  const rt = ManagedRuntime.make(layer)
+  const ctx: StageContext = {
+    owner: { _tag: "Project", id: "p1" as ProjectId },
+    runId: "r1" as RunId,
+    stageRunId: "s1" as StageRunId,
+    attempt: 2,
+    note: "shorter title",
+    resumeSession: "old-session",
+    resumeProvider,
+    previous: JSON.stringify({ answer: 41 }),
+    recordSession: () => Effect.void,
+    recordReply: () => Effect.void,
+    progress: () => Effect.void,
+    recordCost: () => Effect.void
+  }
+  try {
+    const exit = await rt.runPromiseExit(Effect.gen(function*() {
+      yield* (yield* AppSettingsStore).setStageAgent("metadata", stageAgent)
+      const agent = yield* AgentSession
+      return yield* runChecked(agent, ctx, { ...task, stage: "metadata", brief: "BRIEF" }, (value) => Effect.succeed({ value, problems: [] }))
+    }))
+    return { exit, seen }
+  } finally {
+    await rt.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+test("a revision on a step moved to another provider starts afresh with the brief, its last version and the note", async () => {
+  const { exit, seen } = await resumeSession({ provider: "codex", model: "gpt-6-luna" }, "claude-cli")
+  assert.equal(exit._tag, "Success")
+  assert.equal(seen.length, 1, "the old session never reaches the new provider")
+  assert.equal(seen[0]!.resume, null)
+  assert.equal(seen[0]!.model, "gpt-6-luna")
+  assert.match(seen[0]!.message, /^BRIEF\n\nYour last version, as the app stored it:\n\{"answer":41\}\n\nNote from the reviewer on the last version: shorter title$/)
+})
+
+test("a revision on the same provider with another model continues the conversation on the step's model", async () => {
+  const { exit, seen } = await resumeSession({ provider: "claude-cli", model: "haiku" }, "claude-cli")
+  assert.equal(exit._tag, "Success")
+  assert.deepEqual(seen.map((s) => [s.resume, s.model]), [["old-session", "haiku"]])
+  assert.match(seen[0]!.message, /^Revise it: shorter title/)
 })

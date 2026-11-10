@@ -77,6 +77,8 @@ export interface AgentTask<S extends Schema.Top, Skill extends string = string> 
   readonly maxTurns?: number
   // continue an earlier conversation (a rejected attempt) instead of starting fresh
   readonly resumeSession?: string | null
+  // the provider that holds that conversation, when known: a run routed elsewhere can't continue it
+  readonly resumeProvider?: string | null
   // run on this provider and model regardless of the stage's settings (evals)
   readonly route?: AgentRoute
 }

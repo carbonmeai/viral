@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
 import type { AgentHooks, AgentTask, CliEnvironment } from "@viral/provider-core"
-import { claudeEnv, makeClaudeCliProviderWith } from "./claude-cli-provider.ts"
+import { claudeEnv, makeClaudeCliProviderWith, runCost, type SessionTotals } from "./claude-cli-provider.ts"
 
 // A stand-in `claude` that writes the variables a key setup touches to $FAKE_CLAUDE_LOG (test values only, "unset"
 // when absent) and exits, so the test sees the child process's real environment.
@@ -81,4 +81,36 @@ test("on your sign-in the process just inherits: no config folder or token of Vi
 test("a run's variables go over the server's, which are kept", () => {
   assert.equal(claudeEnv({ PATH: "/bin" }, {}), undefined)
   assert.deepEqual(claudeEnv({ PATH: "/bin", ANTHROPIC_API_KEY: "x" }, { ANTHROPIC_API_KEY: "" }), { PATH: "/bin", ANTHROPIC_API_KEY: "" })
+})
+
+// The CLI restores a session's totals on resume: a run resumed on Haiku after Opus reports both models and both runs'
+// dollars (seen with claude 2.1.280). The run records only its own.
+const OPUS_THEN_HAIKU: SessionTotals = {
+  costUsd: 0.42,
+  models: { "claude-opus-4-5": { costUsd: 0.4, outputTokens: 4000 }, "claude-haiku-4-5": { costUsd: 0.02, outputTokens: 1000 } }
+}
+
+test("a fresh session's result is the run's own", () => {
+  const fresh: SessionTotals = { costUsd: 0.4, models: { "claude-opus-4-5": { costUsd: 0.4, outputTokens: 4000 } } }
+  assert.deepEqual(runCost({ totals: fresh, runModels: { "claude-opus-4-5": 4000 } }, false, undefined, null), {
+    model: "claude-opus-4-5",
+    costUsd: 0.4
+  })
+})
+
+test("a resumed run on another model records that model and only the dollars it added", () => {
+  const before: SessionTotals = { costUsd: 0.4, models: { "claude-opus-4-5": { costUsd: 0.4, outputTokens: 4000 } } }
+  assert.deepEqual(runCost({ totals: OPUS_THEN_HAIKU, runModels: { "claude-haiku-4-5": 1000 } }, true, before, "haiku"), {
+    model: "claude-haiku-4-5",
+    costUsd: 0.02
+  })
+})
+
+test("resumed after a restart (earlier totals unknown): each model's cost is split by this run's share of its output", () => {
+  assert.deepEqual(runCost({ totals: OPUS_THEN_HAIKU, runModels: { "claude-haiku-4-5": 1000 } }, true, undefined, "haiku"), {
+    model: "claude-haiku-4-5",
+    costUsd: 0.02
+  })
+  // a run that wrote nothing still names the model it was asked to run on
+  assert.equal(runCost({ totals: OPUS_THEN_HAIKU, runModels: {} }, true, undefined, "haiku").model, "haiku")
 })

@@ -19,6 +19,10 @@ export interface StageContext {
   readonly note: string | null
   // the previous attempt's agent session, so a rejected agent stage continues its conversation with your note
   readonly resumeSession: string | null
+  // the provider that holds that session (null = unknown): on another provider the stage starts afresh
+  readonly resumeProvider?: string | null
+  // your note's version as stored (its JSON), so a stage that can't continue its conversation still sees what it made
+  readonly previous?: string | null
   recordSession(sessionId: string): Effect.Effect<void>
   // the agent's own words to you about this attempt (its tell_creator call), shown in the short's chat
   recordReply(text: string): Effect.Effect<void>
