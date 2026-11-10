@@ -1,68 +1,84 @@
 ---
 name: thumbnails
-description: How to make a short's thumbnail. The bold layout by default (a colour gradient, the hero and an extreme reaction face cut out with outlines, curiosity words, an arrow or emoji), picked from real frames of the video and true to what the short delivers. Use when choosing a short's thumbnail layout, frames, crops, colours and words.
+description: How to make a short's thumbnail. By default an image model composes it from REAL frames you pick (a real on-screen graphic, 1–3 huge outlined words, the hero made dramatic with an escalation row, two or three real reactions side by side), then you check the options' faces against the real frames. Without an image key, the basic drawn thumbnail (bold or classic). Use when picking a thumbnail's frames, words and bands, or checking generated options.
 ---
 
 # Thumbnails for shorts
 
-The thumbnail is read in a fraction of a second at phone size, next to a dozen others. It has three parts: huge
-text at the top, the hero object big in the middle, and a reaction face.
+The thumbnail is read in a fraction of a second at phone size, next to a dozen others. The creator's approved look is
+a hyper-saturated MrBeast / Nick DiGiovanni picture with nothing empty in it, composed by an image model from real
+frames of the video. Code-drawn layouts (blurred frame, Impact text, a red circle, a tilted inset) and faces cut out
+and pasted on a backdrop were rejected as "rubbish" and "too plain".
 
-## Bold (the default) or classic
+## The four bands (top to bottom, nothing empty)
 
-- **Bold** stops the scroll: a saturated colour gradient instead of footage, the hero and the face lifted out of
-  their frames with thick white outlines, the face big and overlapping the hero, and a red arrow or one emoji.
-  Use it whenever the video has a strong reaction face.
-- **Classic** (a blurred frame behind framed insets, the face tilted in the lower right) is for a video with no
-  face worth showing.
-- **Pick the gradient** to contrast with the hero and to suit the mood: red for pain or danger, yellow or orange for
-  fun and disgust, blue or purple for mystery, green for gross. Avoid the hero's own colour.
-- **Arrow or emoji:** the arrow points at the hero, the thing to look at. One emoji can carry the emotion instead
-  (🤢 disgust, 😱 shock, 🔥 heat). Not both unless the space is empty.
+1. **A real graphic from the video** across the top: the score bar, the scale, a scoreboard, a level card, a price
+   tag. Find it on the contact sheets; describe it exactly (`"SCOVILLE SCALE" bar graphic`). Leave it out (null) only
+   when the video has none; then the words go on top.
+2. **1–3 words of huge white text with a thick black outline**: the stake, not a sentence ("LEVEL 10", "TOP 1",
+   "$10,000", "DAY 100", "7 TASTES"). They never spoil the ending and never claim what the short doesn't show.
+3. **The hero object, huge and dramatised** (cracked open, glowing, on fire, molten), plus a supporting row under it
+   that shows escalation ("8 peppers from a green bell pepper to a flaming red reaper"). The hero is the thing the
+   short is about at its most striking: the finished candy, not the pot.
+4. **Two or three real reactions of the person, big, side by side**, as contrasting as the video allows (calm and
+   then in pain; before and after), plus a prop between them when there's an obvious one (a milk jug).
 
-## The hero object
+The background is one line: its colours and texture, saturated and on theme ("fiery red-orange with flames and
+embers", "rainbow explosion with splashes").
 
-- **The thing the short is about,** at its most striking: the finished candy, not the pot it was made in.
-- **Recognisable at phone size.** Crop wide enough to show its whole shape, and tight enough that it fills the
-  slot. A hand holding it is fine; the room around it isn't.
-- **Pick the sharpest, best-lit frame,** and avoid motion blur and frames mid-cut. Check it at full size in a
-  detail contact sheet.
-- **The circle goes on the hero itself,** sized to ring it, not on empty space.
+## Picking the frames (only real frames, ever)
 
-## The face
+- **Reactions:** the 2–3 most extreme real expressions. Find the moments of most pain or surprise on the overview
+  sheets, then step through them with `contact_sheet` at 0.25–0.5s; the peak often lasts under a second. Eyes squeezed,
+  mouth open, sweating, hand on the forehead. A neutral or talking face is worse than a second reaction of the same
+  peak. Two frames from the same second are one reaction.
+- **The hero:** its sharpest, best-lit real frame, recognisable at a glance; no motion blur, not mid-cut.
+- **The graphic:** a clean frame where it is fully on screen.
+- **Never an AI face, and never an AI-made image as a reference:** the model copies it into the thumbnail (a rejected
+  attempt had an earlier AI face copied into the right slot). Frames come from the video, nothing else.
+- Check every frame with `preview_frames` (free) and Read them before you generate.
 
-- **The most extreme real reaction in the video,** at its peak: eyes squeezed shut, mouth open, tongue out,
-  doubled over. Scan the story's reaction beats and step through them a second at a time; the peak often lasts
-  under a second. A neutral or talking face is worse than none.
-- **Crop to the head and shoulders,** with nothing else attached (a gas bottle behind a shoulder comes along with
-  the cut-out). In bold the face fills about half the thumbnail's height, so it must stay sharp that big.
-- **Body language counts** when the face is hidden: someone doubled over reads instantly.
-- **The person must match the short.** Show the creator for the creator's reaction, the friend for the friend's.
+## Describing the person
 
-## The words
+Describe how they look so the model keeps them (face shape, hair, beard, glasses, clothes, a chain), never by name.
+If they are a real public figure, put the name in `celebrity`: image models block real celebrities ("This generation
+may violate our Terms of Service"), so nothing is sent and the creator is asked. When the creator's note says to try
+anyway, leave it null.
 
-- **A curiosity tease, not a statement:** a question or a consequence the viewer has to tap to resolve
-  ("IT BROKE HIM", "WORST CANDY EVER?", "7 TASTES AT ONCE?!"), 2–5 words on one or two lines. Statements
-  ("7 TASTES / 1 CANDY") suit classic.
-- **A line fits the canvas, not a letter count.** Bold draws each line as big as it fits across the thumbnail, so a
-  line of about 16 characters ("ANIMAL COMEBACKS") still reads; much longer, or a run of wide letters (W, M), and the
-  check asks you to shorten it or split it over the two lines. Keep the subject whole rather than cutting a word to
-  fit ("ANIMAL COMEBACKS", not "COMEBACK"). Classic keeps a line to 12 characters.
-- **Yellow then white** for the two lines; red for the word that carries the threat or the question ("EVER?").
-- **They restate the open loop,** not the title word for word, and never spoil the ending.
-- **No clickbait the short doesn't deliver.** Every claim in the words and every frame must be in the video.
+## Checking the options
 
-## The background (classic)
+`generate_thumbnails` makes three options from the same frames and prompt. Read each next to the real reaction
+frames and score its faces 0–10: 10 = the same face photographically, 5 = similar but redrawn or exaggerated, 0 =
+someone else. Also check the words are spelled right, sit fully above the hero with nothing overlapping the letters,
+and the graphic is clean. Recommend the option where **every** face matches; when none is good enough, recommend
+null and say why in your notes, so the creator asks for another round.
 
-- **A busy, colourful frame** from the same moment as the hero (it's blurred and darkened), so the colours
-  match; never a frame from an ad or the end screen.
+## Adapting to the short
+
+- **Experiment / challenge** (spicy, candy): the stage's graphic, the stake ("LEVEL 10"), the object dramatised, the
+  person's calm and peak reactions.
+- **Ranking:** #1's real before and after side by side as the bottom band, "TOP 1" (or "TOP 5") as the words.
+- **Cut-down / podcast:** the speaker's two most extreme real expressions plus one big quote word.
 
 ## Shorts from several videos
 
-- **Look at every video.** Each one's overview contact sheets are listed under its own V label. The best hero
-  and the strongest face may be in different videos; the thumbnail can mix them.
-- **Every layer names its video** (`video`: its V number; leave it out for V1) and uses that video's own seconds
-  and frame. `contact_sheet` and `preview_thumbnail` take the same `video`.
-- **Each video's excluded ranges are its own.** Keep each moment clear of the ranges listed for its video.
-- **The face should belong to the story the short tells.** A reaction from a video the short barely uses misleads
-  the viewer; prefer the video whose moment the hero shows, unless another reaction is clearly stronger and fits.
+Every frame names its video (`video`: its V number; leave it out for V1) and uses that video's own seconds; each
+video's excluded ranges are its own. The reactions are one person's; prefer the video whose moment the hero shows.
+
+## Basic thumbnail (no image key)
+
+Without an image key Viral draws the thumbnail itself; the gate says so. You pick crops and words for a fixed layout:
+
+- **Bold** (default, needs a strong reaction face): a saturated gradient, the hero and the face cut out with thick
+  outlines, the face big and overlapping the hero, a red arrow to the hero or one emoji (🤢 disgust, 😱 shock, 🔥 heat).
+  Pick the gradient to contrast with the hero and suit the mood (red for pain, yellow/orange for fun and disgust,
+  blue/purple for mystery, green for gross).
+- **Classic** (no face worth showing): a busy, colourful blurred frame from the hero's moment behind a framed hero
+  with a circle on it, and a tilted face inset.
+- **The face:** the most extreme real reaction at its peak, cropped to head and shoulders with nothing else attached
+  (the cut-out keeps what's attached); it must stay sharp at half the thumbnail's height.
+- **The hero crop:** its whole shape, tight enough to fill the slot; the circle goes on the hero itself.
+- **The words:** a curiosity tease, 2–5 words on one or two lines ("IT BROKE HIM", "WORST CANDY EVER?"); yellow then
+  white, red for the threat word. Bold sizes each line to fit (about 16 characters, e.g. "ANIMAL COMEBACKS"); classic
+  keeps a line to 12 characters.
+- `preview_thumbnail` draws a draft; Read it at phone size, fix, then propose.
