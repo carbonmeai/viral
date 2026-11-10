@@ -148,6 +148,22 @@ apps/server/src/
                        *_API_URL variables move a service for tests (testing/fake-key-services.ts). KeyAccounts: SetSecret
                        checks first (refused → not saved; unreachable → saved with a warning; refused while the env var
                        is set), TestSecret re-checks; the last result is kept in settings (keys.<name>.check).
+                       Secrets.readStored/writeStored/removeStored: other secrets by account name, no env var in front
+                       (a CLI's secret variables, cli.<cli>.env.<NAME>)
+  cli-setup/           how each signed-in CLI runs (Settings › Accounts › Signed-in apps): on your sign-in, or on a
+                       preset that reuses a saved model key (claude-openrouter: ANTHROPIC_BASE_URL + AUTH_TOKEN + empty
+                       ANTHROPIC_API_KEY in its own CLAUDE_CONFIG_DIR ~/.viral/cli/claude-openrouter; claude-anthropic:
+                       ANTHROPIC_API_KEY; codex-openai: Codex in CODEX_HOME ~/.viral/cli/codex-openai, signed in over
+                       stdin with `account/login/start` apiKey, forced_login_method="api" and
+                       cli_auth_credentials_store="ephemeral" so the key is never in argv, env or on disk;
+                       opencode-keys: your Anthropic/OpenAI/Google/OpenRouter keys handed to OpenCode, off by default),
+                       plus your own variables (settings cli.<cli>.preset / cli.<cli>.env; a secret's value in the
+                       Keychain, shown as its last 4). envNameProblem (contracts/cli-setup.ts) refuses PATH, HOME,
+                       NODE_OPTIONS, ELECTRON_RUN_AS_NODE, CODEX_HOME, DYLD_*, LD_*, VIRAL_*, OPENCODE_*…. CliSetups.resolve
+                       builds one run's CliEnvironment (provider-core), handed only to that run's process; it also
+                       decides billing: the Claude CLI is billed when its effective ANTHROPIC_API_KEY/AUTH_TOKEN is set
+                       (a router's cost is an "estimate"), Codex on a key is billed and priced from PRICES
+                       (GetCliSetups, SetCliPreset, SetCliEnvVar, RemoveCliEnvVar)
                        provider-core's redactSecrets hides keys in service and SDK error text
   tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/
                        Viral/tools; VIRAL_TOOLS_DIR overrides), then the PATH. Not bundled in the app: missing ones
@@ -248,9 +264,10 @@ apps/server/src/
                        VISION_PROVIDERS (the Claude CLI for now) and fall back to it. Providers: claude-cli, codex,
                        opencode, and one AI SDK provider per model key (anthropic, openai, google, openrouter,
                        ai-gateway), each with its vendor's model ids and its key read per run (never put in process.env;
-                       *_API_URL moves a vendor for tests). Every cost is stamped with its provider and billing (billed |
-                       subscription: the Claude CLI is a plan's value unless ANTHROPIC_API_KEY is set; Codex is always
-                       subscription, tokens only; key providers always billed) and its cost_basis (reported | estimate |
+                       *_API_URL moves a vendor for tests). A CLI run gets its CliEnvironment from cli-setup (the 5th
+                       AgentRun argument). Every cost is stamped with its provider and billing (billed | subscription:
+                       a CLI is billed on a key (cli-setup decides), else the Claude CLI is a plan's value and Codex
+                       counts against ChatGPT, tokens only; OpenCode and the key providers always billed) and its cost_basis (reported | estimate |
                        unknown) on stage_runs. key-models.ts (KeyModelLists, ListKeyModels): each key's tool-capable
                        models from the vendor's own list (the key checks' free calls), kept a day
   eval/                the eval harness (`bun run cli eval`): runs ads, story, script and metadata on a fixed fixture
@@ -403,7 +420,9 @@ apps/desktop/          the Electron shell: starts the server (node in dev; Elect
 packages/contracts/    wire schemas + RpcGroups, one file per domain
 packages/provider-core/ AgentTask/AgentRun/AgentError and toolEndpoint: the per-run MCP server (127.0.0.1, random
                        bearer token) serving a task's output and helper tools to Codex and OpenCode
-packages/provider-claude-cli/ the Claude CLI via the Agent SDK (in-process tools, stop after the output tool)
+packages/provider-claude-cli/ the Claude CLI via the Agent SDK (in-process tools, stop after the output tool); a run's
+                       CliEnvironment goes to `query({ env })` over the server's own env. Tests: a fake `claude` that
+                       reports its environment
 packages/provider-ai-sdk/ the AI SDK providers on your own keys: Anthropic, OpenAI, Google, OpenRouter and the Vercel
                        AI Gateway, one shared generateText loop (tools, brief images, history in ~/.viral/agent-sessions/
                        under a per-vendor session prefix for resume) with per-vendor bits in ai-sdk-vendors.ts (factory,
@@ -415,7 +434,9 @@ packages/provider-ai-sdk/ the AI SDK providers on your own keys: Anthropic, Open
 packages/provider-codex/ our own `codex app-server` JSON-RPC client: one app-server per run in a scratch folder,
                        read-only sandbox, approvals never, shell/apps/plugins/skills off, the user's MCP servers
                        switched off by name; model + effort from the account's catalog; thread/resume; turn
-                       interrupted once the output tool accepts. codexStatus for Settings. Tests use a fake app-server
+                       interrupted once the output tool accepts. startCodex: a run's variables on the spawn, and on an
+                       API key its own CODEX_HOME + login over stdin (API_KEY_ARGS). codexStatus for Settings (asked the
+                       way a run starts). Tests use a fake app-server
 packages/provider-opencode/ OpenCode 2 only: `opencode serve` per run (free port, password) configured by
                        OPENCODE_CONFIG_CONTENT (Viral agent; permission rules deny everything but viral_* tools); our
                        own client for its /api (no v2 SDK: sessions, prompt, SSE events, interrupt once the step that
