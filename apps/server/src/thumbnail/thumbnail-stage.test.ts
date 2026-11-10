@@ -124,8 +124,8 @@ test("the thumbnail stage fixes a rejected draft, takes an edit, and publishes t
 
 test("the preview tool reports problems first, then draws the draft", async () => {
   const preview = asked[0]!.tools![1]!
-  assert.match(await Effect.runPromise(preview.run({ ...good, lines: [{ text: "one", color: "yellow" }] })), /the text is 1 words/)
-  const drawn = await Effect.runPromise(preview.run(good))
+  assert.match(await Effect.runPromise(Effect.map(preview.run({ ...good, lines: [{ text: "one", color: "yellow" }] }), (a) => a.text)), /the text is 1 words/)
+  const drawn = await Effect.runPromise(Effect.map(preview.run(good), (a) => a.text))
   const file = /The draft: (\S+\.jpg)/.exec(drawn)?.[1]
   assert.ok(file !== undefined && existsSync(file), drawn)
 })

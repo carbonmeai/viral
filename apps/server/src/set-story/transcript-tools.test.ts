@@ -31,7 +31,7 @@ test("read gives one video's lines in a window", () => {
 
 test("the tools answer bad requests in words the agent can act on", async () => {
   const [search, read] = transcriptTools(videos)
-  const answer = (tool: typeof search, input: unknown) => Effect.runPromise(tool!.run(input))
+  const answer = (tool: typeof search, input: unknown) => Effect.runPromise(Effect.map(tool!.run(input), (a) => a.text))
   assert.equal(search!.name, "search_transcript")
   assert.equal(read!.name, "read_transcript")
   assert.match(await answer(search, { query: "banana" }), /nothing matches "banana"/)

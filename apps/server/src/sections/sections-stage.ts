@@ -10,7 +10,7 @@ import {
   StoryMap
 } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
-import { agentTool, AgentSession } from "../agent-session/agent-session.ts"
+import { agentTool, AgentSession, toolAnswer } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { approachSkill } from "../agent-skills/skill-pack.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -152,11 +152,11 @@ export class SectionsStage extends Context.Service<SectionsStage, {
             const frames = checked.value.sections.map((s, k) =>
               `- section ${k + 1} (${s.beat}, ${videoTag(videos, s.source)}${s.start.toFixed(1)}–${s.end.toFixed(1)}s, "${firstWords(s.text, 8)}"): ${path.join(dir, frameFile(k))}`
             )
-            return [
+            return toolAnswer([
               `The plan passes the checks and runs ${total.toFixed(1)}s. Storyboard (every section in playing order): ${path.join(dir, storyboard)}`,
               `Each section's first frame:\n${frames.join("\n")}`,
               "Read the storyboard. Fix any section whose framing or moment is wrong, then call propose_sections."
-            ].join("\n\n")
+            ].join("\n\n"), [path.join(dir, storyboard)])
           }, Effect.catch((error) => Effect.succeed(`couldn't draw the preview: ${error.message}`)))
         })
       }

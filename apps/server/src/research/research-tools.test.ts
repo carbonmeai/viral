@@ -35,7 +35,7 @@ const withTools = <A>(f: (tools: ReturnType<typeof researchTools>, catalog: Retu
     return yield* f(researchTools(youtube, catalog, (m) => Effect.sync(() => void progress.push(m))), catalog, progress)
   }).pipe(Effect.provide(YouTube.layerWith({ command: FAKE_YT_DLP, spacing: Duration.zero, fetchThumbnail: () => Effect.succeed(false) }))))
 
-const call = (tools: ReturnType<typeof researchTools>, name: string, input: unknown) => tools.find((t) => t.name === name)!.run(input)
+const call = (tools: ReturnType<typeof researchTools>, name: string, input: unknown) => tools.find((t) => t.name === name)!.run(input).pipe(Effect.map((a) => a.text))
 
 test("search_youtube runs one flat search and lists each result; a junk search is just results", async () => {
   const { text, junk, catalog, progress } = await withTools((tools, catalog, progress) =>

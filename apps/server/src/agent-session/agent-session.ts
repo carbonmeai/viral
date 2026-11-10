@@ -15,6 +15,7 @@ import { makeOpencodeProvider } from "@viral/provider-opencode"
 import { replayRun } from "@viral/provider-testing"
 import type { LanguageModel } from "ai"
 import type { AgentCost, AgentError, AgentHooks, AgentRoute, AgentRun, AgentTask } from "./agent-task.ts"
+import { modelImageReader } from "./model-images.ts"
 import { MODEL_KEY_CHECKS } from "./model-key-checks.ts"
 
 export {
@@ -25,6 +26,8 @@ export {
   type AgentTask,
   type AgentTool,
   agentTool,
+  type ToolAnswer,
+  toolAnswer,
   toolJsonSchema,
   toolShape
 } from "./agent-task.ts"
@@ -66,6 +69,8 @@ export class AgentSession extends Context.Service<AgentSession, {
       // One AI SDK provider per model key (packages/provider-ai-sdk), each with its vendor's model ids. The key is read
       // per run and passed only to that call; it never goes into process.env. A vendor's address moves only when its
       // *_API_URL override is set (tests point it at a fake server), the same override its key check uses.
+      // images go to model APIs downscaled (big contact sheets as JPEGs), cached next to the conversations
+      const readImage = yield* modelImageReader(path.join(home.root, "agent-sessions", "images"))
       const keyProvider = Effect.fn("AgentSession.keyProvider")(function*(provider: KeyProvider) {
         const key = PROVIDER_KEY[provider]
         const override = yield* Config.option(Config.String(MODEL_KEY_CHECKS[key].override)).pipe(Effect.orDie)
@@ -74,6 +79,7 @@ export class AgentSession extends Context.Service<AgentSession, {
           provider,
           apiKey: secrets.get(key),
           sessionsDir: path.join(home.root, "agent-sessions"),
+          readImage,
           ...(Option.isSome(override) && provider !== "ai-gateway" ? { baseUrl: override.value.replace(/\/+$/, "") } : {}),
           ...(keyModel === undefined ? {} : { languageModel: (modelId: string, apiKey: string) => keyModel(provider, modelId, apiKey) })
         })

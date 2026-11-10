@@ -15,7 +15,7 @@ import {
   type ThumbnailProposal
 } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
-import { agentTool, AgentSession } from "../agent-session/agent-session.ts"
+import { agentTool, AgentSession, toolAnswer } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ContactSheets, ContactSheetSet } from "../contact-sheet/contact-sheets.ts"
@@ -153,10 +153,10 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
             const out = path.join(root, `attempt-${attempt}-${++drawn}.jpg`)
             const config = configFor(checked.value, videos, ranking)
             yield* draw(config, out, () => Effect.void)
-            return [
+            return toolAnswer([
               `It passes the checks. The draft: ${out}`,
               "Read it. At phone size, is the hero recognisable and the face's emotion clear? Fix what isn't, preview again, then call propose_thumbnail."
-            ].join("\n\n")
+            ].join("\n\n"), [out])
           }, Effect.catch((error) => Effect.succeed(`couldn't draw the preview: ${error.message}`)))
         })
       }

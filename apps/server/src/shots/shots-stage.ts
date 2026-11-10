@@ -13,7 +13,7 @@ import {
   Voiceover
 } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
-import { agentTool, AgentSession } from "../agent-session/agent-session.ts"
+import { agentTool, AgentSession, toolAnswer } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
 import { ContactSheets, ContactSheetSet } from "../contact-sheet/contact-sheets.ts"
@@ -189,11 +189,11 @@ export class ShotsStage extends Context.Service<ShotsStage, {
               const frames = plan.shots.map((shot, k) =>
                 `- shot ${k + 1} (word ${shot.word} "${shot.wordText}", ${videos.length > 1 ? `V${(shot.source ?? 0) + 1} ` : ""}${shot.src.toFixed(1)}s, ${shot.note}): ${path.join(dir, frameFile("shot", k))}`
               )
-              return [
+              return toolAnswer([
                 `The plan passes the checks. Storyboard (every shot in playing order, real clips framed red): ${path.join(dir, storyboard)}`,
                 `Each shot's first frame:\n${frames.join("\n")}`,
                 "Read the storyboard (and any frame you're unsure of). Fix every shot whose frame doesn't show its words, then call propose_shots."
-              ].join("\n\n")
+              ].join("\n\n"), [path.join(dir, storyboard)])
             }, Effect.catch((error) => Effect.succeed(`couldn't draw the preview: ${error.message}`)))
         })
       }

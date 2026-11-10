@@ -6,6 +6,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { type KeyProvider, priceOf, tokenCostUsd } from "@viral/contracts"
 import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai"
 import { Option, Schema } from "effect"
+import type { ToolImagePlacement } from "./ai-sdk-images.ts"
 
 // What a run cost: reported by the service, estimated from its tokens at Viral's prices, or unknown (no price).
 export interface RunCost {
@@ -28,6 +29,8 @@ export interface Vendor {
   model(modelId: string, apiKey: string, baseUrl: string | undefined): LanguageModel
   // the providerOptions that mark a cacheable prefix on this model, or undefined when it caches on its own
   cache(modelId: string): CacheOptions | undefined
+  // where a helper tool's images go: inside its result, or in a user message after it
+  readonly toolImages: ToolImagePlacement
   cost(modelId: string, steps: ReadonlyArray<{ readonly providerMetadata: ProviderMetadata | undefined }>, usage: LanguageModelUsage): RunCost
 }
 
@@ -93,7 +96,9 @@ export const VENDORS: Record<KeyProvider, Vendor> = {
     keyHint: "add your AI Gateway key (AI_GATEWAY_API_KEY, or Settings › Accounts)",
     modelExample: "anthropic/claude-haiku-5.5",
     sessionPrefix: "gateway:",
-    model: (modelId, apiKey) => createGateway({ apiKey })(modelId),
+    // the gateway carries a tool result's images to the vendor (it encodes them in @ai-sdk/gateway 4.0.78)
+    toolImages: "in-result",
+    model: (modelId, apiKey, baseUrl) => createGateway({ apiKey, ...(baseUrl === undefined ? {} : { baseURL: `${baseUrl}/v3/ai` }) })(modelId),
     cache: (modelId) => isAnthropicModel(modelId) ? { anthropic: EPHEMERAL } : undefined,
     cost: (_modelId, steps) =>
       reported(steps, decodeGatewayCost, (m) => Math.max(Number(m.gateway.cost) || 0, Number(m.gateway.marketCost ?? 0) || 0))
@@ -104,6 +109,8 @@ export const VENDORS: Record<KeyProvider, Vendor> = {
     keyHint: "add your Anthropic key (ANTHROPIC_API_KEY, or Settings › Accounts)",
     modelExample: "claude-haiku-5-5",
     sessionPrefix: "anthropic:",
+    // image blocks inside tool_result
+    toolImages: "in-result",
     model: (modelId, apiKey, baseUrl) => createAnthropic({ apiKey, ...(baseUrl === undefined ? {} : { baseURL: `${baseUrl}/v1` }) })(modelId),
     cache: () => ({ anthropic: EPHEMERAL }),
     cost: (modelId, _steps, usage) => estimate("anthropic", modelId, usage)
@@ -114,6 +121,8 @@ export const VENDORS: Record<KeyProvider, Vendor> = {
     keyHint: "add your OpenAI key (OPENAI_API_KEY, or Settings › Accounts)",
     modelExample: "gpt-6-luna",
     sessionPrefix: "openai:",
+    // input_image items in a Responses function_call_output
+    toolImages: "in-result",
     model: (modelId, apiKey, baseUrl) => createOpenAI({ apiKey, ...(baseUrl === undefined ? {} : { baseURL: `${baseUrl}/v1` }) })(modelId),
     cache: () => undefined,
     cost: (modelId, _steps, usage) => estimate("openai", modelId, usage)
@@ -124,6 +133,8 @@ export const VENDORS: Record<KeyProvider, Vendor> = {
     keyHint: "add your Google Gemini key (GOOGLE_GENERATIVE_AI_API_KEY or GEMINI_API_KEY, or Settings › Accounts)",
     modelExample: "gemini-3.8-flash",
     sessionPrefix: "google:",
+    // inlineData in the functionResponse (Gemini 3), or next to it
+    toolImages: "in-result",
     model: (modelId, apiKey, baseUrl) =>
       createGoogleGenerativeAI({ apiKey, ...(baseUrl === undefined ? {} : { baseURL: `${baseUrl}/v1beta` }) })(modelId),
     cache: () => undefined,
@@ -135,6 +146,8 @@ export const VENDORS: Record<KeyProvider, Vendor> = {
     keyHint: "add your OpenRouter key (OPENROUTER_API_KEY, or Settings › Accounts)",
     modelExample: "anthropic/claude-haiku-5.5",
     sessionPrefix: "openrouter:",
+    // its chat completions put images in the tool message, which not every upstream model reads; a user message always works
+    toolImages: "user-message",
     // usage accounting on, so every answer carries its cost
     model: (modelId, apiKey, baseUrl) =>
       createOpenRouter({ apiKey, ...(baseUrl === undefined ? {} : { baseURL: `${baseUrl}/api/v1` }) })(modelId, { usage: { include: true } }),

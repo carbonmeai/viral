@@ -1,6 +1,6 @@
 import { VideoNumber } from "@viral/contracts"
 import { Effect, Path, Schema } from "effect"
-import { agentTool } from "../agent-session/agent-session.ts"
+import { agentTool, toolAnswer } from "../agent-session/agent-session.ts"
 import type { ContactSheets } from "./contact-sheets.ts"
 
 // A detail sheet covers at most this many seconds, a frame each second.
@@ -48,7 +48,10 @@ export const detailSheetTool = (
       }
       const dir = index === 0 ? path.join(root, `${from}-${to}`) : path.join(root, `v${index + 1}`, `${from}-${to}`)
       const set = yield* contactSheets.make(target.video, dir, { every: 1, cols: 6, rows: 5, start: from, end: to }, () => Effect.void)
-      return set.sheets.map((s) => `${path.join(dir, s.file)}  (${label}${s.start.toFixed(0)}–${s.end.toFixed(0)}s)`).join("\n")
+      return toolAnswer(
+        set.sheets.map((s) => `${path.join(dir, s.file)}  (${label}${s.start.toFixed(0)}–${s.end.toFixed(0)}s)`).join("\n"),
+        set.sheets.map((s) => path.join(dir, s.file))
+      )
     }, Effect.catch((error) => Effect.succeed(`couldn't make that sheet: ${error.message}`)))
   })
 }

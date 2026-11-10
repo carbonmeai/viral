@@ -221,15 +221,15 @@ test("a cut-down short from two videos: sections name their video, are checked a
   assert.equal(rendered.sections[2]!.source, 1)
 
   const [detail, preview] = seen[0]!.tools!
-  assert.match(await Effect.runPromise(detail!.run({ start: 10, end: 20, video: 2 })), /\/v2\/10-20\/.*\(V2 10–\d+s\)/, "V2's detail sheet")
-  const drawn = await Effect.runPromise(preview!.run({
+  assert.match(await Effect.runPromise(Effect.map(detail!.run({ start: 10, end: 20, video: 2 }), (a) => a.text)), /\/v2\/10-20\/.*\(V2 10–\d+s\)/, "V2's detail sheet")
+  const drawn = await Effect.runPromise(Effect.map(preview!.run({
     hookText: null,
     sections: [
       { beat: "hook", start: 50, end: 53, note: "a" },
       { beat: "rising_action", start: 5, end: 15, note: "b" },
       { beat: "payoff", start: 10, end: 18, video: 2, note: "c" }
     ]
-  }))
+  }), (a) => a.text))
   assert.match(drawn, /section 3 \(payoff, V2 9\.9.*–18\.0s/)
   await rt.dispose()
 })

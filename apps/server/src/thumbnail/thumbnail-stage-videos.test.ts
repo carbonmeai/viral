@@ -133,10 +133,10 @@ test("the thumbnail agent sees every video, a layer from V2 is checked in V2 and
 
   // the tools take a V number
   const [sheet, preview] = asked[0]!.tools!
-  const sheets = await Effect.runPromise(sheet!.run({ start: 10, end: 14, video: 2 }))
+  const sheets = await Effect.runPromise(Effect.map(sheet!.run({ start: 10, end: 14, video: 2 }), (a) => a.text))
   assert.match(sheets, /\/v2\/10-14\/.*\(V2 10–1\ds\)/)
-  assert.match(await Effect.runPromise(preview!.run({ ...good, face: { ...good.face, video: 3 } })), /the face: V3 isn't one of this short's videos \(V1–V2\)/)
-  const drawn = await Effect.runPromise(preview!.run(good))
+  assert.match(await Effect.runPromise(Effect.map(preview!.run({ ...good, face: { ...good.face, video: 3 } }), (a) => a.text)), /the face: V3 isn't one of this short's videos \(V1–V2\)/)
+  const drawn = await Effect.runPromise(Effect.map(preview!.run(good), (a) => a.text))
   const file = /The draft: (\S+\.jpg)/.exec(drawn)?.[1]
   assert.ok(file !== undefined && existsSync(file), drawn)
   await rt.dispose()

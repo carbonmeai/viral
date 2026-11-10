@@ -11,6 +11,8 @@ export {
   type AgentRun,
   type AgentTool,
   agentTool,
+  type ToolAnswer,
+  toolAnswer,
   toolJsonSchema,
   toolShape
 } from "@viral/provider-core"

@@ -53,7 +53,7 @@ export const makeClaudeCliProviderWith = Effect.fn("makeClaudeCliProvider")(func
         }),
         ...helpers.map((helper) =>
           tool(helper.name, helper.description, toolShape(helper.schema), async (args) => ({
-            content: [{ type: "text", text: await Effect.runPromiseWith(services)(helper.run(args)) }]
+            content: [{ type: "text", text: (await Effect.runPromiseWith(services)(helper.run(args))).text }]
           }))
         )
       ]

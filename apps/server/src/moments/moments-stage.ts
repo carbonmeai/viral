@@ -10,7 +10,7 @@ import {
   Shortlist
 } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
-import { agentTool, AgentSession } from "../agent-session/agent-session.ts"
+import { agentTool, AgentSession, toolAnswer } from "../agent-session/agent-session.ts"
 import { runChecked } from "../agent-session/run-checked.ts"
 import { approachSkill } from "../agent-skills/skill-pack.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
@@ -181,12 +181,12 @@ export class MomentsStage extends Context.Service<MomentsStage, {
                 `- ${name(entry.rank, k)} "${shot.text.slice(0, 60)}": first ${path.join(dir, drawn.shots[e]![k]!.first)}, last ${path.join(dir, drawn.shots[e]![k]!.last)}`
               )
             )
-            return [
+            return toolAnswer([
               `The ranking runs ${fmt(draft.durationS)}s once snapped (within ${fmt(c.maxSeconds)}s). Storyboard (every shot's first and last frame, in playing order ${draft.order.join(", ")}): ${path.join(dir, drawn.storyboard)}`,
               problems.length === 0 ? "" : `Look at these:\n${problems.map((p) => `- ${p}`).join("\n")}`,
               `Each shot as snapped, with its words and frames:\n${lines.join("\n")}`,
               "Read the storyboard. Fix any shot whose ends show the wrong animal or state, then call propose_moments."
-            ].filter((part) => part !== "").join("\n\n")
+            ].filter((part) => part !== "").join("\n\n"), [path.join(dir, drawn.storyboard)])
           })
         })
       }

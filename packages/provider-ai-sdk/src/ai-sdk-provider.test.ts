@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
-import { type AgentError, type AgentHooks, type AgentRun, type AgentTask, agentTool } from "@viral/provider-core"
+import { type AgentError, type AgentHooks, type AgentRun, type AgentTask, agentTool, toolAnswer } from "@viral/provider-core"
 import { makeAiSdkProvider } from "./ai-sdk-provider.ts"
 
 type CallOptions = Parameters<MockLanguageModelV4["doGenerate"]>[0]
@@ -117,7 +117,7 @@ test("a gateway run sends the brief with its images, stops at the output tool, a
   const user = prompt[1]!
   assert.ok(user.role === "user")
   assert.deepEqual(user.content.map((p: { readonly type: string }) => p.type), ["text", "text", "file"])
-  assert.equal(calls[0]!.tools?.map((t: { readonly name: string }) => t.name).sort().join(","), "look_closer,propose_answer")
+  assert.equal(calls[0]!.tools?.map((t: { readonly name: string }) => t.name).sort().join(","), "look_closer,propose_answer,view_image", "view_image is offered when the step has folders to look at")
 })
 
 test("a resumed run continues the stored conversation with the note", async () => {
@@ -127,7 +127,7 @@ test("a resumed run continues the stored conversation with the note", async () =
   const session = r.sessions[0]!
   const stored = JSON.parse(readFileSync(join(home, "agent-sessions", `${session.slice("gateway:".length)}.json`), "utf8"))
   assert.equal(stored.at(-1).role, "tool", "the output call is answered, so the history can continue")
-  assert.ok(JSON.stringify(stored).includes("sheet_000.png") && !JSON.stringify(stored).includes("\"image\":{"), "images are stored as files")
+  assert.ok(JSON.stringify(stored).includes("sheet_000.png") && !JSON.stringify(stored).includes("\"data\":{"), "images are stored as files")
 
   const second = scripted([reply([call("c9", "propose_answer", { answer: 42 })], "0.001")])
   const again = recorded()
@@ -187,4 +187,41 @@ test("a model that never gets the format right fails with invalid-output", async
     layers
   ))
   assert.match(JSON.stringify(exit), /invalid-output/)
+})
+
+test("a helper's images go back as image content, view_image shows only the step's own files, and both survive a resume", async () => {
+  const sheet = join(sheets, "sheet_000.png")
+  const draw = agentTool({
+    name: "preview",
+    description: "Draw a preview.",
+    schema: Schema.Struct({}),
+    run: () => Effect.succeed(toolAnswer(`The draft: ${sheet}`, [sheet]))
+  })
+  const { calls, model } = scripted([
+    reply([call("c1", "preview", {})], "0.001"),
+    reply([call("c2", "view_image", { file: "/etc/passwd.png" })], "0.001"),
+    reply([call("c3", "view_image", { file: sheet })], "0.001"),
+    reply([call("c4", "propose_answer", { answer: 42 })], "0.001")
+  ])
+  const r = recorded()
+  const answer = await run(model, "test-key", (go) => go({ ...taskFor(), tools: [draw] }, r.hooks, "openai/gpt-6-luna", SYSTEM))
+  assert.deepEqual(answer, { answer: 42 })
+
+  const toolResults = (prompt: CallOptions["prompt"]) =>
+    prompt.flatMap((m) => m.role === "tool" ? m.content.filter((p) => p.type === "tool-result") : [])
+  const afterPreview = toolResults(calls[1]!.prompt)
+  assert.equal(afterPreview[0]!.output.type, "content")
+  assert.match(JSON.stringify(afterPreview[0]!.output), /"type":"file","mediaType":"image\/png","filename":"[^"]*sheet_000\.png"/)
+  assert.match(JSON.stringify(toolResults(calls[2]!.prompt)[1]!.output), /isn't one of this step's files/)
+  assert.equal(toolResults(calls[3]!.prompt)[2]!.output.type, "content", "view_image returned the image")
+  assert.match(String(calls[0]!.prompt[0]!.content), /call view_image/, "the system prompt says how to see images")
+
+  // the stored conversation names the files; a resume reads them back into image content
+  const session = r.sessions[0]!.slice("gateway:".length)
+  const stored = readFileSync(join(home, "agent-sessions", `${session}.json`), "utf8")
+  assert.match(stored, /"type":"file","file":"[^"]*sheet_000\.png"/)
+  assert.doesNotMatch(stored, /"data":\{/, "no image bytes are stored")
+  const again = scripted([reply([call("c9", "propose_answer", { answer: 42 })], "0.001")])
+  await run(again.model, "test-key", (go) => go({ ...taskFor(), message: "Again.", resumeSession: r.sessions[0]! }, recorded().hooks, "openai/gpt-6-luna", SYSTEM))
+  assert.match(JSON.stringify(toolResults(again.calls[0]!.prompt)[0]!.output), /"type":"file"/)
 })

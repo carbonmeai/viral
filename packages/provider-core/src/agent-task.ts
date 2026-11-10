@@ -10,27 +10,39 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   message: Schema.String
 }) {}
 
-// A helper tool a stage offers besides its output tool (e.g. a detail contact sheet). Its result is text
-// for the agent; a bad input comes back as text too, so the agent can correct it.
+// What a helper tool answers: text for the agent, plus the image files it drew that the agent should look at
+// (a detail sheet, a preview). A CLI reads the files named in the text itself; the AI SDK providers attach `images`
+// to the tool's result, since a model API can't open a file.
+export interface ToolAnswer {
+  readonly text: string
+  readonly images: ReadonlyArray<string>
+}
+
+export const toolAnswer = (text: string, images: ReadonlyArray<string> = []): ToolAnswer => ({ text, images })
+
+// A helper tool a stage offers besides its output tool (e.g. a detail contact sheet). Its result is text for the
+// agent, with any images it drew; a bad input comes back as text too, so the agent can correct it.
 export interface AgentTool {
   readonly name: string
   readonly description: string
   readonly schema: Schema.Top
-  run(input: unknown): Effect.Effect<string>
+  run(input: unknown): Effect.Effect<ToolAnswer>
 }
 
 export const agentTool = <A, I>(spec: {
   readonly name: string
   readonly description: string
   readonly schema: Schema.Codec<A, I>
-  readonly run: (input: A) => Effect.Effect<string>
+  // plain text, or text with the images to show
+  readonly run: (input: A) => Effect.Effect<string | ToolAnswer>
 }): AgentTool => ({
   name: spec.name,
   description: spec.description,
   schema: spec.schema,
   run: (input) =>
     Schema.decodeUnknownEffect(spec.schema)(input).pipe(
-      Effect.matchEffect({ onFailure: (error) => Effect.succeed(`invalid input: ${error.message}`), onSuccess: spec.run })
+      Effect.matchEffect({ onFailure: (error) => Effect.succeed(`invalid input: ${error.message}`), onSuccess: spec.run }),
+      Effect.map((answer) => typeof answer === "string" ? toolAnswer(answer) : answer)
     )
 })
 

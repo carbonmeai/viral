@@ -147,20 +147,20 @@ test("the shots stage places the real lines, fixes a rejected plan, and draws a 
 
 test("the detail sheet tool refuses ranges that are too long", async () => {
   const tool = asked[0]!.tools![0]!
-  const answer = await Effect.runPromise(tool.run({ start: 0, end: 500 }))
+  const answer = await Effect.runPromise(Effect.map(tool.run({ start: 0, end: 500 }), (a) => a.text))
   assert.match(answer, /ask for a range of 1–60s/)
-  assert.match(await Effect.runPromise(tool.run({ start: "x" })), /invalid input/)
+  assert.match(await Effect.runPromise(Effect.map(tool.run({ start: "x" }), (a) => a.text)), /invalid input/)
 })
 
 test("the preview tool returns a plan's problems, or draws its frames for the agent to check", async () => {
   const preview = asked[0]!.tools!.find((t) => t.name === "preview_shots")!
-  const problems = await Effect.runPromise(preview.run({ shots: [{ word: 1, src: 10, note: "x" }], markers: [] }))
+  const problems = await Effect.runPromise(Effect.map(preview.run({ shots: [{ word: 1, src: 10, note: "x" }], markers: [] }), (a) => a.text))
   assert.match(problems, /Fix these first:\n- the first shot must start on word 0/)
 
-  const drawn = await Effect.runPromise(preview.run({
+  const drawn = await Effect.runPromise(Effect.map(preview.run({
     shots: [{ word: 0, src: 10, note: "him" }, { word: 2, src: 20, note: "tasting" }, { word: 4, src: 30, note: "pain" }],
     markers: []
-  }))
+  }), (a) => a.text))
   assert.match(drawn, /passes the checks/)
   const storyboard = /Storyboard \(.*\): (\S+storyboard\.png)/.exec(drawn)?.[1]
   assert.ok(storyboard !== undefined && existsSync(storyboard), "the preview storyboard was drawn")
@@ -259,13 +259,13 @@ test("a short from two videos: shots name their video, are checked against its a
   assert.equal(plan.storyboard, "storyboard.png", "the storyboard was drawn from both videos")
 
   const [detail, preview] = seen[0]!.tools!
-  const sheet = await Effect.runPromise(detail!.run({ start: 10, end: 20, video: 2 }))
+  const sheet = await Effect.runPromise(Effect.map(detail!.run({ start: 10, end: 20, video: 2 }), (a) => a.text))
   assert.match(sheet, /\/v2\/10-20\/.*\(V2 10–\d+s\)/, "V2's detail sheet")
-  assert.match(await Effect.runPromise(detail!.run({ start: 0, end: 10, video: 3 })), /there's no V3/)
-  const drawn = await Effect.runPromise(preview!.run({
+  assert.match(await Effect.runPromise(Effect.map(detail!.run({ start: 0, end: 10, video: 3 }), (a) => a.text)), /there's no V3/)
+  const drawn = await Effect.runPromise(Effect.map(preview!.run({
     shots: [{ word: 0, src: 10, note: "him" }, { word: 2, src: 20, note: "tasting" }, { word: 4, src: 12, video: 2, note: "chemist" }],
     markers: []
-  }))
+  }), (a) => a.text))
   assert.match(drawn, /shot 3 \(word 4 "It", V2 12\.0s, chemist\)/)
   await rt.dispose()
 })

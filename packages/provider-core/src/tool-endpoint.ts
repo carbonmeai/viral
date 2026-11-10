@@ -66,7 +66,7 @@ export const toolEndpoint = Effect.fn("toolEndpoint")(function*<S extends Schema
     })
     for (const helper of task.tools ?? []) {
       server.registerTool(helper.name, { description: helper.description, inputSchema: toolShape(helper.schema) }, async (args) => ({
-        content: [{ type: "text", text: await Effect.runPromiseWith(services)(helper.run(args)) }]
+        content: [{ type: "text", text: (await Effect.runPromiseWith(services)(helper.run(args))).text }]
       }))
     }
     return server
