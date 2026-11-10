@@ -21,6 +21,8 @@ import { type StageContext, type StageDefinition, StageRegistry } from "../runs/
 import { Sources } from "../sources/sources.ts"
 import { ElevenLabs } from "../voice/eleven-labs.ts"
 import { DatabaseLive } from "../persistence/database.ts"
+import { UsageRecords } from "../usage/usage-records.ts"
+import { UsageReport } from "../usage/usage.ts"
 import { ShortChat } from "./chat-service.ts"
 import { ChatStore } from "./chat-store.ts"
 
@@ -107,6 +109,8 @@ const runtime = () =>
         Projects.layer,
         Presets.layer,
         MusicLibrary.layer,
+        UsageRecords.layer,
+        UsageReport.layer,
         replay,
         ElevenLabs.replay(() => new Uint8Array()),
         NodeServices.layer
@@ -205,6 +209,9 @@ test("a short's chat: the agent's words and checks, a note at the gate, a redo w
   assert.equal(toRender.said.item._tag === "YouSaid" && toRender.said.item.action._tag, "Action")
   assert.equal(toRender.replies[0]?.item._tag, "AgentSaid")
   assert.ok(asked.some((t) => t.stage === "chat" && t.defaultModel === "haiku"))
+  // the intent agent's call counts in Settings › Usage under the short, step "chat"
+  const usage = await rt.runPromise(UsageReport.use((report) => report.get(1)))
+  assert.deepEqual(usage.byStage.filter((st) => st.stage === "chat").map((st) => [st.model, st.runs]), [["replay", 1]])
   items = await until(rt, projectId, (all) => all.filter((i) => i.item._tag === "Gate").length === 4)
   assert.match(asked.filter((t) => t.stage === "sections").at(-1)!.message, /End the payoff sooner/)
   assert.equal(items.filter((i) => i.item._tag === "YouSaid" && i.item.text === "the ending drags").length, 1)

@@ -33,10 +33,10 @@ test("creates every table from the design", async () => {
     tables.map((t) => t.name).filter((name) => name !== "effect_sql_migrations"),
     [
       "artifacts", "chat_items", "eval_runs", "music_tracks", "presets", "project_sources", "projects", "reference_videos", "requests",
-      "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_set_research", "source_sets", "sources", "stage_runs", "voice_previews"
+      "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_set_research", "source_sets", "sources", "stage_runs", "usage_records", "voice_previews"
     ]
   )
-  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking", "cost_basis", "video_short_names", "chat"])
+  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking", "cost_basis", "video_short_names", "chat", "usage_records"])
 })
 
 test("enforces foreign keys and the one-owner rule on artifacts", async () => {
@@ -174,4 +174,21 @@ test("a short's chat items are ordered per short, go with the short, and a stage
   assert.equal(duplicate, true, "two items can't share a seq in one short's chat")
   assert.equal(reply, "Kept the hook.")
   assert.equal(left, 0, "deleting the short deletes its chat")
+})
+
+test("spend outside a run stays when its short is deleted, with no short", async () => {
+  const [row, badBilling] = await run(Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`INSERT INTO projects (id, number, slug, title, approach, format, created_at, updated_at)
+      VALUES ('spend-short', 98, '98-spend', 'Spend', 'cut-down', 'cut-down', ${now}, ${now})`
+    yield* sql`INSERT INTO usage_records (id, project_id, step, provider, model, billing, input_tokens, output_tokens, cost_usd, created_at)
+      VALUES ('u1', 'spend-short', 'chat', 'claude-cli', 'claude-haiku-4-5', 'subscription', 900, 40, 0.012, ${now})`
+    const badBilling = yield* Effect.exit(sql`INSERT INTO usage_records (id, step, provider, billing, created_at)
+      VALUES ('u2', 'sound-effect', 'elevenlabs', 'free', ${now})`)
+    yield* sql`DELETE FROM projects WHERE id = 'spend-short'`
+    const row = yield* sql<{ readonly project_id: string | null; readonly cost_usd: number }>`SELECT project_id, cost_usd FROM usage_records WHERE id = 'u1'`
+    return [{ ...row[0] }, Exit.isFailure(badBilling)] as const
+  }))
+  assert.deepEqual(row, { project_id: null, cost_usd: 0.012 })
+  assert.equal(badBilling, true, "billing stays checked")
 })

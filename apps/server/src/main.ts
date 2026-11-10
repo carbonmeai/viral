@@ -52,6 +52,7 @@ import { AppSettingsStore } from "./settings/app-settings.ts"
 import { SettingsRpcLive } from "./settings/settings-rpc.ts"
 import { StorageReport } from "./storage/storage.ts"
 import { UsageReport } from "./usage/usage.ts"
+import { UsageRecords } from "./usage/usage-records.ts"
 import { EvalRecords } from "./eval/eval-records.ts"
 import { CliSetups } from "./cli-setup/cli-setup.ts"
 import { DatabaseLive } from "./persistence/database.ts"
@@ -84,6 +85,7 @@ const DomainsLive = Layer.mergeAll(
   AppSettingsStore.layer,
   StorageReport.layer,
   UsageReport.layer,
+  UsageRecords.layer,
   EvalRecords.layer.pipe(Layer.provide(DatabaseLive)),
   SourceOverviews.layer,
   ShortWorkspaces.layer,

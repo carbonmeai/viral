@@ -32,6 +32,8 @@ import { RunStore } from "../runs/run-store.ts"
 import { StageRegistry } from "../runs/stages.ts"
 import { Sources } from "../sources/sources.ts"
 import { ElevenLabs } from "../voice/eleven-labs.ts"
+import { UsageRecords } from "../usage/usage-records.ts"
+import type { AgentCost } from "../agent-session/agent-task.ts"
 import { type IntentContext, runIntent } from "./chat-intent.ts"
 import { type ChatRefs, ChatStore } from "./chat-store.ts"
 import { AGENT_STAGE_NAMES, describeStep } from "./describe-step.ts"
@@ -111,6 +113,7 @@ export class ShortChat extends Context.Service<ShortChat, {
       const library = yield* MusicLibrary
       const beds = yield* MusicBeds
       const eleven = yield* ElevenLabs
+      const usage = yield* UsageRecords
       const fs = yield* FileSystem.FileSystem
       const posted = yield* PubSub.unbounded<Posted>()
       const lock = yield* Semaphore.make(1)
@@ -470,7 +473,20 @@ export class ShortChat extends Context.Service<ShortChat, {
       // A message to a step without an agent: the intent agent picks the action, the server checks it and runs it.
       const toIntent = Effect.fn("ShortChat.toIntent")(function*(project: Project, step: ChatStep, text: string, stopRun: boolean) {
         const ctx = yield* intentContext(project, step, text)
-        const intent = yield* runIntent(agent, ctx).pipe(Effect.mapError((e) => new ChatFailed({ message: `The agent couldn't read that: ${e.message}` })))
+        // the call counts in Settings › Usage under the short, step "chat", whatever the server does with its answer
+        const bill = (cost: AgentCost) =>
+          usage.record({
+            projectId: project.id,
+            step: "chat",
+            provider: cost.provider ?? "claude-cli",
+            model: cost.model,
+            billing: cost.billing ?? null,
+            inputTokens: cost.inputTokens,
+            outputTokens: cost.outputTokens,
+            costUsd: cost.costUsd,
+            costBasis: cost.costBasis ?? null
+          })
+        const intent = yield* runIntent(agent, ctx, bill).pipe(Effect.mapError((e) => new ChatFailed({ message: `The agent couldn't read that: ${e.message}` })))
         const result = yield* perform(project, intent.answer.action, stopRun)
         const entry = yield* said(project.id, step, text, result.action, result.refs)
         const reply = yield* append(project.id, "agent", {

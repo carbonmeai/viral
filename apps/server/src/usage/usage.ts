@@ -36,8 +36,8 @@ const PreviewRow = Schema.Struct({
 
 const DAY_MS = 86_400_000
 
-// What agents and voices cost over the last few days, from the stage runs' recorded costs, eval runs and voice
-// previews.
+// What agents and voices cost over the last few days, from the stage runs' recorded costs, spend outside a run (the
+// chat's intent agent, the generators), eval runs and voice previews.
 export class UsageReport extends Context.Service<UsageReport, {
   get(days: number): Effect.Effect<Usage>
 }>()("@viral/server/usage/usage/UsageReport") {
@@ -53,6 +53,19 @@ export class UsageReport extends Context.Service<UsageReport, {
                  s.started_at, r.project_id, p.title AS project_title
           FROM stage_runs s JOIN runs r ON r.id = s.run_id LEFT JOIN projects p ON p.id = r.project_id
           WHERE s.started_at >= ${from}
+        `
+      })
+
+      // spend outside a run (the chat's intent agent, the generators), read as the stage runs are: its step is the stage
+      const recordsSince = SqlSchema.findAll({
+        Request: Schema.String,
+        Result: Row,
+        execute: (from) => sql`
+          SELECT u.step AS stage, 'succeeded' AS status, u.model, u.provider, u.billing, u.cost_usd, u.cost_basis,
+                 u.characters AS tts_characters, u.input_tokens, u.output_tokens, u.created_at AS started_at, u.project_id,
+                 p.title AS project_title
+          FROM usage_records u LEFT JOIN projects p ON p.id = u.project_id
+          WHERE u.created_at >= ${from}
         `
       })
 
@@ -76,7 +89,7 @@ export class UsageReport extends Context.Service<UsageReport, {
         const now = DateTime.toEpochMillis(yield* DateTime.now)
         const today = dayKey(now)
         const from = DateTime.formatIso(DateTime.makeUnsafe(Date.parse(`${today}T00:00:00Z`) - (period - 1) * DAY_MS))
-        const rows = yield* since(from).pipe(Effect.orDie)
+        const rows = [...yield* since(from).pipe(Effect.orDie), ...yield* recordsSince(from).pipe(Effect.orDie)]
         const evalRows = yield* evalsSince(from).pipe(Effect.orDie)
         const previewRows = yield* previewsSince(from).pipe(Effect.orDie)
         return summarizeUsage(rows.map((r) => ({

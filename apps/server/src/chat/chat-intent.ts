@@ -70,8 +70,12 @@ export const intentMessage = (ctx: IntentContext) => {
 }
 
 // Runs the intent agent once, with no session: Haiku on the Claude CLI (the task's stage "chat" isn't a step of
-// Settings › Agents). Its cost comes back with the answer.
-export const runIntent = Effect.fn("runIntent")(function*(agent: AgentSession["Service"], ctx: IntentContext) {
+// Settings › Agents). Its cost comes back with the answer, and each call's cost goes to `record` as it's billed (Usage).
+export const runIntent = Effect.fn("runIntent")(function*(
+  agent: AgentSession["Service"],
+  ctx: IntentContext,
+  record: (cost: AgentCost) => Effect.Effect<void> = () => Effect.void
+) {
   const costs: Array<AgentCost> = []
   const answer = yield* agent.run({
     stage: "chat",
@@ -83,7 +87,7 @@ export const runIntent = Effect.fn("runIntent")(function*(agent: AgentSession["S
     maxTurns: 4
   }, {
     progress: () => Effect.void,
-    recordCost: (cost) => Effect.sync(() => void costs.push(cost)),
+    recordCost: (cost) => Effect.sync(() => void costs.push(cost)).pipe(Effect.andThen(record(cost))),
     recordSession: () => Effect.void
   })
   const cost = costs.at(-1) ?? null
