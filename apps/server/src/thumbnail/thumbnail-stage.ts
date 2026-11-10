@@ -2,7 +2,10 @@ import { NodeServices } from "@effect/platform-node"
 import {
   type Artifact,
   type ArtifactOwner,
+  ChooseThumbnailOption,
   CutPlan,
+  type GeneratedThumbnail,
+  ProposedThumbnailDesign,
   type GatePayload,
   type ProjectId,
   ProposedThumbnail,
@@ -12,6 +15,7 @@ import {
   StoryMap,
   ThumbConfig,
   Thumbnail,
+  ThumbnailPick,
   type ThumbnailProposal
 } from "@viral/contracts"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
@@ -29,7 +33,9 @@ import type { Range } from "../sources/piece-ranges.ts"
 import { SourcePieces } from "../sources/source-pieces.ts"
 import { loadShortStory } from "../video-sets/short-story.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
-import { buildThumbnailBrief, THUMBNAIL_PROMPT } from "./thumbnail-prompt.ts"
+import { checkDesign, checkPick, fromProposedDesign, rankingDesignBrief } from "./thumbnail-design.ts"
+import { type Round, ThumbnailImages } from "./thumbnail-images.ts"
+import { AI_THUMBNAIL_PROMPT, buildThumbnailBrief, THUMBNAIL_PROMPT } from "./thumbnail-prompt.ts"
 import { Tools } from "../tools/tools.ts"
 import { cutoutSummary, drawThumbnail } from "./thumbnail-draw.ts"
 import { checkRankingThumbnail, rankingThumbnailBrief, tiltInset } from "./ranking-thumbnail.ts"
@@ -54,10 +60,22 @@ const projectOf = (ctx: StageContext): ProjectId => {
 
 const IMAGE = "thumbnail.jpg"
 
-// Makes a finished short's thumbnail: an agent with vision picks the hero moment and crop, a reaction face and
-// 2–4 words, previewing its drafts; the server checks it and draws it in the skill's fixed layout. In a short from
-// several videos it sees every video's contact sheets, and the hero and the face can each come from any of them.
-// Gated; once you approve, the jpg is published next to the short's mp4 as <slug>.jpg.
+// the option whose faces matched best, among those made (1-based); null when none was
+const bestOption = (options: ReadonlyArray<{ readonly image: string | null; readonly faces: number | null }>) => {
+  let best: number | null = null
+  options.forEach((o, i) => {
+    if (o.image !== null && (best === null || (o.faces ?? 0) > (options[best - 1]!.faces ?? 0))) best = i + 1
+  })
+  return best
+}
+
+// Makes a finished short's thumbnail. With an image key (ElevenLabs), the short-thumbnail skill's way: an agent with
+// vision picks the real frames (two or three reactions, the hero, an on-screen graphic) and writes the four bands, the
+// image model makes three options from those frames, and the agent checks each option's faces against the real frames
+// and recommends one; at the gate you choose one or ask for another round with a note. Without a key, the basic
+// thumbnail (Decision 8): the agent picks the hero moment and crop, a reaction face and 2–4 words, and the server
+// draws it with render-thumbnail.py. In a short from several videos every frame can come from any of them. Once you
+// approve, the jpg is published next to the short's mp4 as <slug>.jpg.
 export class ThumbnailStage extends Context.Service<ThumbnailStage, {
   readonly stage: StageDefinition
 }>()("@viral/server/thumbnail/thumbnail-stage/ThumbnailStage") {
@@ -77,6 +95,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
       const draw = (config: ThumbConfig, out: string, progress: (pct: number | null, message: string) => Effect.Effect<void>) =>
         drawThumbnail(renderer.render(config, out), tools.ensureBackgroundRemoval(progress))
       const agent = yield* AgentSession
+      const images = yield* ThumbnailImages
       const home = yield* ViralHome
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
@@ -178,7 +197,8 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         return { sheets, dir: sheetsDir }
       })
 
-      const run = Effect.fn("ThumbnailStage.run")(function*(ctx: StageContext) {
+      // What both kinds of thumbnail start from: the short's videos, what it says, the overview sheets and the brief.
+      const prepare = Effect.fn("ThumbnailStage.prepare")(function*(ctx: StageContext, ai: boolean) {
         const c = yield* context(ctx)
         const [v1] = c.sources
         const published = yield* latestData(ctx.owner, "metadata", PublishedShort)
@@ -206,6 +226,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         )
         const shortStory = c.several ? yield* loadShortStory(c.project, artifacts, sets) : null
         const baseBrief = buildThumbnailBrief({
+          ai,
           creatorBrief: c.project.brief,
           title: Option.match(published, { onNone: () => c.project.title, onSome: (p) => p.title }),
           alternates: Option.match(published, { onNone: () => [], onSome: (p) => p.alternates }),
@@ -230,6 +251,16 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
             }
             : {})
         })
+        return { c, ranking, baseBrief, overviews, detailRoot, previewRoot, projectDir }
+      })
+
+      const run = Effect.fn("ThumbnailStage.run")(function*(ctx: StageContext) {
+        const ai = yield* images.ready
+        const prepared = yield* prepare(ctx, ai)
+        if (ai) return yield* runAi(ctx, prepared)
+        const { baseBrief, c, detailRoot, overviews, previewRoot, ranking } = prepared
+        const [v1] = c.sources
+        yield* ctx.progress(null, "no ElevenLabs key, so this is the basic thumbnail (add one in Settings › Accounts for AI thumbnails)")
         const brief = ranking === null ? baseBrief : `${baseBrief}\n\n${rankingThumbnailBrief(ranking, c.several)}`
         const proposal = yield* runChecked(agent, ctx, {
           stage: "thumbnail",
@@ -250,8 +281,128 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         yield* record(ctx, proposal, configFor(proposal, c.sources, ranking))
       })
 
+      // ── AI thumbnails ──
+      // The agent previews the frames for free, makes one round of options (paid) per attempt, then checks the faces
+      // and recommends one. A rejection with a note continues its conversation and makes another round.
+      const runAi = Effect.fn("ThumbnailStage.runAi")(function*(ctx: StageContext, prepared: Effect.Success<ReturnType<typeof prepare>>) {
+        const { baseBrief, c, detailRoot, overviews, previewRoot, projectDir, ranking } = prepared
+        const [v1] = c.sources
+        const videos = c.sources.map((s) => ({ index: s.index, path: s.path, source: s.source }))
+        const roundDir = path.join(projectDir, "thumbnail-rounds", `${ctx.stageRunId}-${ctx.attempt}`)
+        const brief = ranking === null ? baseBrief : `${baseBrief}\n\n${rankingDesignBrief(ranking, c.several)}`
+        const checkProposed = (proposed: ProposedThumbnailDesign) => checkDesign(fromProposedDesign(proposed), c.sources)
+        const problemsText = (problems: ReadonlyArray<string>) => `Fix these first:\n${problems.map((p) => `- ${p}`).join("\n")}`
+        let round: Round | null = null
+        let previews = 0
+
+        const previewFrames = agentTool({
+          name: "preview_frames",
+          description: "Check a thumbnail design and take its real frames from the video (free). Returns the problems to fix, or the frames to Read.",
+          schema: ProposedThumbnailDesign,
+          run: Effect.fn("ThumbnailStage.previewFrames")(function*(proposed: ProposedThumbnailDesign) {
+            const checked = checkProposed(proposed)
+            if (checked.problems.length > 0) return problemsText(checked.problems)
+            const dir = path.join(previewRoot, `attempt-${ctx.attempt}-${++previews}`)
+            const inputs = yield* images.frames(checked.value, videos, dir, () => Effect.void)
+            const files = inputs.map((i) => path.join(dir, i.file))
+            return toolAnswer([
+              "It passes the checks. The frames, in the order the image model numbers them:",
+              ...inputs.map((i, n) => `image ${n + 1} (${i.role}): ${files[n]}`),
+              "Read them. Is every reaction at its peak, sharp, the face clearly visible? Is the hero recognisable? Fix what isn't, then call generate_thumbnails."
+            ].join("\n"), files)
+          }, Effect.catch((error) => Effect.succeed(`couldn't take the frames: ${error.message}`)))
+        })
+
+        const generate = agentTool({
+          name: "generate_thumbnails",
+          description: "Make this attempt's one round: the image model composes 3 thumbnails from the design's real frames (paid, about $0.75). " +
+            "Returns the options and the real reaction frames to compare their faces with.",
+          schema: ProposedThumbnailDesign,
+          run: Effect.fn("ThumbnailStage.generate")(function*(proposed: ProposedThumbnailDesign) {
+            if (round !== null) return "This attempt's round is already made. Check its faces and call propose_thumbnail."
+            const checked = checkProposed(proposed)
+            if (checked.problems.length > 0) return problemsText(checked.problems)
+            yield* fs.remove(roundDir, { recursive: true }).pipe(Effect.ignore)
+            const made = yield* images.make({ design: checked.value, videos, dir: roundDir, projectId: c.project.id, progress: ctx.progress })
+            round = made
+            if (made.heldBack != null) return `${made.heldBack}\n\nNothing was generated. Call propose_thumbnail with no checks and recommended null.`
+            const reactions = made.inputs.flatMap((i) => i.role === "reaction" ? [path.join(roundDir, i.file)] : [])
+            const options = made.options.map((o, i) => o.image === null ? `option ${i + 1}: not made (${o.failure})` : `option ${i + 1}: ${path.join(roundDir, o.image)}`)
+            const files = [...reactions, ...made.options.flatMap((o) => o.image === null ? [] : [path.join(roundDir, o.image)])]
+            if (files.length === reactions.length) {
+              return `${options.join("\n")}\n\nNo option was made. Call propose_thumbnail with no checks and recommended null.`
+            }
+            return toolAnswer([
+              "The real reaction frames:",
+              ...reactions,
+              "",
+              "The options:",
+              ...options,
+              "",
+              "Read each option next to the real reaction frames. Score how well its faces match the real person photographically (0–10: 10 = the same " +
+              "face, 5 = similar but redrawn, 0 = someone else), and check the words are spelled right and clear of the hero, and the graphic is clean. " +
+              "Then call propose_thumbnail with a check per option made and the one to recommend (null when none is good enough)."
+            ].join("\n"), files)
+          }, Effect.catch((error) => Effect.succeed(`couldn't make the thumbnails: ${error.message}`)))
+        })
+
+        const pick = yield* runChecked(agent, ctx, {
+          stage: "thumbnail",
+          instructions: AI_THUMBNAIL_PROMPT,
+          skills: ["thumbnails"],
+          brief,
+          output: { tool: "propose_thumbnail", description: "Submit your check of the round's options and the one to use.", schema: ThumbnailPick },
+          tools: [
+            detailSheetTool(contactSheets, path, c.sources.map((s) => ({ video: s.path, seconds: s.sourceSeconds })), v1.sourceSeconds, detailRoot),
+            previewFrames,
+            generate
+          ],
+          defaultModel: null,
+          readDirs: [...overviews.flatMap((o) => Option.toArray(o.dir)), detailRoot, previewRoot, roundDir],
+          maxTurns: 40
+        }, (picked) =>
+          Effect.sync(() =>
+            round === null
+              ? { value: picked, problems: ["make the round first: call generate_thumbnails with your design"] }
+              : checkPick(picked, round.options)
+          )).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        const made = round as Round | null
+        if (made === null) return yield* fail("no-round", "the thumbnail agent didn't make a round")
+        const options = made.options.map((o, i) => {
+          const check = pick.checks.find((x) => x.option === i + 1)
+          return check === undefined ? o : { ...o, faces: check.faces, note: check.note }
+        })
+        const generated: GeneratedThumbnail = { ...made, options, recommended: pick.recommended, chosen: null }
+        if (options.length > 0 && options.every((o) => o.image === null)) {
+          yield* ctx.progress(null, `no option was made: ${options[0]!.failure ?? "the image model refused"}`)
+        }
+        // without a recommendation, the best-matching option made is shown (you still choose)
+        yield* recordGenerated(ctx, roundDir, generated, pick.recommended ?? bestOption(options))
+      })
+
+      // A new thumbnail version from a round: its frames and options copied in from `dir`, `shown` (1-based) in use.
+      const recordGenerated = Effect.fn("ThumbnailStage.recordGenerated")(function*(
+        ctx: StageContext,
+        dir: string,
+        generated: GeneratedThumbnail,
+        shown: number | null
+      ) {
+        const slot = yield* artifacts.allocate(ctx.owner, "thumbnail")
+        const files = [...generated.inputs.map((i) => i.file), ...generated.options.flatMap((o) => o.image === null ? [] : [o.image])]
+        yield* Effect.forEach(files, (file) => fs.copyFile(path.join(dir, file), path.join(slot.dir, file)), { discard: true }).pipe(
+          Effect.mapError(failWith("write"))
+        )
+        const image = shown === null ? null : generated.options[shown - 1]?.image ?? null
+        const thumbnail: Thumbnail = { proposal: null, config: null, image, generated }
+        // the version's path is the image in use, else its first frame, so its folder is always known
+        const file = image ?? generated.inputs[0]?.file ?? null
+        yield* artifacts.record(slot, { data: thumbnail, path: file === null ? null : path.join(slot.relDir, file), stageRunId: ctx.stageRunId })
+      })
+
       // An edit sends back the renderer's config: checked, then drawn from this short's own videos.
       const applyEdit = Effect.fn("ThumbnailStage.applyEdit")(function*(ctx: StageContext, edited: unknown) {
+        const choice = Schema.decodeUnknownOption(ChooseThumbnailOption)(edited)
+        if (Option.isSome(choice)) return yield* choose(ctx, choice.value.choose)
         const config = yield* Schema.decodeUnknownEffect(ThumbConfig)(edited).pipe(Effect.mapError(failWith("invalid-edit")))
         const c = yield* context(ctx)
         const problems = checkConfig(config, c.sources)
@@ -260,11 +411,28 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         yield* record(ctx, null, { ...rest, ...configSources(c.sources) })
       })
 
-      // Once approved, the jpg goes next to the published mp4.
+      // Choosing one of a round's options: a new version with that option in use, the round's files copied along.
+      const choose = Effect.fn("ThumbnailStage.choose")(function*(ctx: StageContext, n: number) {
+        const latest = yield* artifacts.latest(ctx.owner, "thumbnail")
+        const current = Option.flatMap(latest, (a) => Schema.decodeUnknownOption(Thumbnail)(a.data))
+        const generated = Option.getOrUndefined(current)?.generated
+        if (generated === undefined) return yield* fail("invalid-edit", "there's no round of AI thumbnails to choose from")
+        const option = generated.options[n - 1]
+        if (option === undefined || option.image === null) return yield* fail("invalid-edit", `option ${n} wasn't made`)
+        const file = Option.getOrNull(Option.flatMapNullishOr(latest, artifacts.resolve))
+        if (file === null) return yield* fail("not-ready", "the thumbnail's files are missing")
+        yield* recordGenerated(ctx, path.dirname(file), { ...generated, chosen: n }, n)
+      })
+
+      // Once approved, the jpg goes next to the published mp4 (an AI round with no option made has nothing to publish).
       const approved = Effect.fn("ThumbnailStage.approved")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const image = yield* Effect.fromOption(Option.flatMapNullishOr(yield* artifacts.latest(ctx.owner, "thumbnail"), artifacts.resolve)).pipe(
-          Effect.mapError(() => fail("not-ready", "there's no thumbnail to publish"))
+        const latest = yield* artifacts.latest(ctx.owner, "thumbnail")
+        const data = Option.getOrUndefined(Option.flatMap(latest, (a) => Schema.decodeUnknownOption(Thumbnail)(a.data)))
+        const image = yield* Effect.fromOption(
+          data?.image === null ? Option.none<string>() : Option.flatMapNullishOr(latest, artifacts.resolve)
+        ).pipe(
+          Effect.mapError(() => fail("not-ready", "there's no thumbnail to publish: ask for another round, or choose an option"))
         )
         yield* fs.copyFile(image, path.join(home.renders, `${project.slug}.jpg`)).pipe(Effect.mapError(failWith("publish")))
       })
@@ -279,7 +447,19 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         gatePayload: (artifact: Artifact): GatePayload =>
           Option.match(Schema.decodeUnknownOption(Thumbnail)(artifact.data), {
             onNone: () => ({ _tag: "ArtifactGate", artifact }),
-            onSome: (thumbnail) => ({ _tag: "ThumbnailGate", config: thumbnail.config, image: artifacts.resolve(artifact) })
+            onSome: (thumbnail): GatePayload => {
+              const file = artifacts.resolve(artifact)
+              const generated = thumbnail.generated
+              if (generated === undefined) return { _tag: "ThumbnailGate", config: thumbnail.config, image: file }
+              const dir = file === null ? null : path.dirname(file)
+              return {
+                _tag: "ThumbnailGate",
+                config: null,
+                image: thumbnail.image === null ? null : file,
+                options: generated.options.map((o) => o.image === null || dir === null ? null : path.join(dir, o.image)),
+                recommended: generated.chosen ?? generated.recommended
+              }
+            }
           })
       }
       return ThumbnailStage.of({ stage })
@@ -293,6 +473,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
     ThumbnailRenderer.layer,
     SourcePieces.layer,
     Tools.layer,
+    ThumbnailImages.layer,
     ViralHome.layer,
     NodeServices.layer
   ]))

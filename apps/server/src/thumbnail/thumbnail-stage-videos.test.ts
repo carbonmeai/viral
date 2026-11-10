@@ -105,7 +105,7 @@ test("the thumbnail agent sees every video, a layer from V2 is checked in V2 and
     assert.ok(gate._tag === "Event" && gate.event._tag === "RequestRaised")
     const drafted = yield* Schema.decodeUnknownEffect(Thumbnail)(Option.getOrThrow(yield* artifacts.latest(owner, "thumbnail")).data)
     // your edit, sent without the videos: they're the short's own again
-    const { sources: _sent, ...edited } = drafted.config
+    const { sources: _sent, ...edited } = drafted.config!
     yield* runs.respond(gate.event.request.id, { _tag: "Edit", artifact: { ...edited, lines: [{ ...edited.lines[0]!, text: "TWO CLIPS" }] } })
     const finished = Option.getOrThrow(yield* runs.subscribe(run.id, 0).pipe(
       Stream.filter((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RunFinished"),
@@ -124,12 +124,12 @@ test("the thumbnail agent sees every video, a layer from V2 is checked in V2 and
   assert.match(asked[1]!.message, /the face \(V2\) at 2\.0s is inside an excluded range/)
   const { drafted, latest } = result
   assert.equal(drafted.proposal?.face?.source, 1, "stored as a position")
-  assert.equal(drafted.config.inset?.source, 1)
-  assert.equal(drafted.config.sources?.length, 1)
-  assert.deepEqual(drafted.config.inset?.box, [192, 0, 448, 360], "the face's crop in V2's 640×360 frame")
-  assert.deepEqual(drafted.config.hero.box, [32, 18, 288, 162], "the hero's in V1's 320×180 frame")
-  assert.deepEqual(latest.config.sources, drafted.config.sources, "the edit is drawn from the short's videos")
-  assert.equal(latest.config.lines[0]?.text, "TWO CLIPS")
+  assert.equal(drafted.config!.inset?.source, 1)
+  assert.equal(drafted.config!.sources?.length, 1)
+  assert.deepEqual(drafted.config!.inset?.box, [192, 0, 448, 360], "the face's crop in V2's 640×360 frame")
+  assert.deepEqual(drafted.config!.hero.box, [32, 18, 288, 162], "the hero's in V1's 320×180 frame")
+  assert.deepEqual(latest.config!.sources, drafted.config!.sources, "the edit is drawn from the short's videos")
+  assert.equal(latest.config!.lines[0]?.text, "TWO CLIPS")
 
   // the tools take a V number
   const [sheet, preview] = asked[0]!.tools!

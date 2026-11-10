@@ -3,8 +3,8 @@ import { SecureRandom } from "effect/crypto"
 import { SqlClient } from "effect/sql"
 import { DatabaseLive } from "../persistence/database.ts"
 
-// The steps whose spend has no stage run: the chat's intent agent and the generators.
-export type UsageStep = "chat" | "voice-design" | "sound-effect"
+// The steps whose spend has no stage run: the chat's intent agent, the generators and the thumbnail's image model.
+export type UsageStep = "chat" | "voice-design" | "sound-effect" | "thumbnail"
 
 // One bill outside a run: an agent call's tokens and dollars, or ElevenLabs' characters (credits).
 export interface UsageRecord {

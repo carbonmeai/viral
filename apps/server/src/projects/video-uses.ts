@@ -35,7 +35,9 @@ export const videoUses = (work: ShortWork): ReadonlyMap<number, ReadonlyArray<Vi
   if (plan !== null && plan !== undefined) for (const clip of [...plan.shots, ...plan.inserts, ...plan.outro]) add("shots", clip.source)
   for (const section of work.cutPlan?.sections ?? []) add("sections", section.source)
   for (const entry of work.rankingPlan?.entries ?? []) add("moments", entry.source)
-  const thumbnail = work.thumbnail?.config
+  const generated = work.thumbnail?.generated
+  for (const input of generated?.inputs ?? []) add("thumbnail", input.source)
+  const thumbnail = work.thumbnail?.config ?? undefined
   if (thumbnail !== undefined) {
     if (thumbnail.layout !== "bold") add("thumbnail", thumbnail.background.source)
     add("thumbnail", thumbnail.hero.source)

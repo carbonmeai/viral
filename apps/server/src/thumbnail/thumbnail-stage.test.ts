@@ -98,7 +98,7 @@ test("the thumbnail stage fixes a rejected draft, takes an edit, and publishes t
     assert.ok(gate.payload?._tag === "ThumbnailGate" && gate.payload.image !== null && existsSync(gate.payload.image))
     const drafted = yield* Schema.decodeUnknownEffect(Thumbnail)(Option.getOrThrow(yield* artifacts.latest(owner, "thumbnail")).data)
     // your edit: one word changed in the config
-    const edited = { ...drafted.config, lines: [{ ...drafted.config.lines[0]!, text: "8 TASTES" }, drafted.config.lines[1]!] }
+    const edited = { ...drafted.config, lines: [{ ...drafted.config!.lines[0]!, text: "8 TASTES" }, drafted.config!.lines[1]!] }
     yield* runs.respond(gate.id, { _tag: "Edit", artifact: edited })
     const finished = yield* runs.subscribe(run.id, 0).pipe(
       Stream.filter((u: RunUpdate) => u._tag === "Event" && u.event._tag === "RunFinished"),
@@ -114,9 +114,9 @@ test("the thumbnail stage fixes a rejected draft, takes an edit, and publishes t
   assert.equal(asked.length, 2, "the agent was asked to fix its draft")
   assert.match(asked[1]!.message, /the hero at 2\.0s is inside an excluded range/)
   assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_thumbnail"])
-  assert.deepEqual(thumbnails.drafted.config.hero.box, [32, 18, 288, 162], "fraction crops became pixels of the 320×180 video")
+  assert.deepEqual(thumbnails.drafted.config!.hero.box, [32, 18, 288, 162], "fraction crops became pixels of the 320×180 video")
   assert.equal(thumbnails.latest.proposal, null, "the edit is recorded as your config")
-  assert.equal(thumbnails.latest.config.lines[0]?.text, "8 TASTES")
+  assert.equal(thumbnails.latest.config!.lines[0]?.text, "8 TASTES")
   const published = await rt.runPromise(Effect.map(ViralHome, (h) => join(h.renders, `${slug}.jpg`)))
   assert.ok(existsSync(published), "approved, so the jpg is published next to the short")
   await rt.dispose()

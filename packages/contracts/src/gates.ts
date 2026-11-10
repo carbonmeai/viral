@@ -22,8 +22,15 @@ export const GatePayload = Schema.Union([
   Schema.TaggedStruct("RankingGate", { plan: RankingPlan, storyboard: Schema.NullOr(Schema.String) }),
   // rejecting a render goes back to the shots (or sections) with your note
   Schema.TaggedStruct("RenderGate", { render: RenderedShort }),
-  // `image`: the rendered jpg; rejecting redraws it with your note, editing re-renders your changed config
-  Schema.TaggedStruct("ThumbnailGate", { config: ThumbConfig, image: Schema.NullOr(Schema.String) }),
+  // `image`: the jpg in use. Basic (`config`): rejecting redraws it with your note, editing re-renders your changed
+  // config. AI (`options`: each option's jpg, or null where the model refused; `recommended`, 1-based): rejecting asks
+  // for another round with your note, editing with {choose: n} uses option n
+  Schema.TaggedStruct("ThumbnailGate", {
+    config: Schema.NullOr(ThumbConfig),
+    image: Schema.NullOr(Schema.String),
+    options: Schema.optionalKey(Schema.Array(Schema.NullOr(Schema.String))),
+    recommended: Schema.optionalKey(Schema.NullOr(Schema.Int))
+  }),
   // a research's shortlist: approve to download the videos, edit to approve your changed list, reject to ask the agent
   // for a new list (or another video in one spot) with your note
   Schema.TaggedStruct("ShortlistGate", { shortlist: Shortlist }),

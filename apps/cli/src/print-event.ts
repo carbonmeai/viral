@@ -95,6 +95,10 @@ const describePayload = (payload: GatePayload | null): string => {
     }
     case "ThumbnailGate": {
       const c = payload.config
+      if (c === null) {
+        const options = (payload.options ?? []).map((o, i) => `  option ${i + 1}${payload.recommended === i + 1 ? " (recommended)" : ""}: ${o ?? "(not made)"}\n`).join("")
+        return `${options}  edit <id> <file.json> with {"choose": n} uses option n; rejecting asks for another round with your note\n`
+      }
       const text = c.lines.map((l) => l.text).join(" / ")
       // a config from several videos lists the others in `sources`
       const video = (source: number | undefined) => c.sources === undefined ? "" : `Video ${(source ?? 0) + 1} · `
