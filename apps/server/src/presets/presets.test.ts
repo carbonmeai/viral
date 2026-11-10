@@ -30,6 +30,32 @@ test("ensures the built-in presets once, with Viral recap as the default", async
   assert.equal(headline.config.captions.mode, "chunk")
 })
 
+const MARCUS = "3H55HGnNE1XjYxigHSAS"
+const ADAM = "eGSd0uV8dNQnZuEEX9lu"
+
+test("a new library narrates with Marcus, keeps Adam in Fast hype, and a library's own styles keep their voice", async () => {
+  const presets = await run(Effect.gen(function*() {
+    return yield* (yield* Presets).list
+  }))
+  const voice = (name: string) => presets.find((p) => p.name === name)!.config.voice.voiceId
+  assert.equal(voice(DEFAULT_PRESET_NAME), MARCUS)
+  assert.equal(voice("Headline full-bleed"), MARCUS)
+  assert.equal(voice("Fast hype"), ADAM)
+  const fastHype = presets.find((p) => p.name === "Fast hype")!
+  assert.deepEqual({ ...fastHype.config, voice: null }, { ...DEFAULT_PRESET_CONFIG, voice: null }, "Viral recap's look")
+
+  // an older library whose Viral recap still has Adam: starting again (a new seed) leaves it alone
+  const recap = presets.find((p) => p.name === DEFAULT_PRESET_NAME)!
+  await run(Effect.gen(function*() {
+    yield* (yield* Presets).edit(recap.id, { ...recap.config, voice: { ...recap.config.voice, voiceId: ADAM } })
+  }))
+  const again = await run(Effect.gen(function*() {
+    return yield* (yield* Presets).list
+  }))
+  assert.equal(again.find((p) => p.name === DEFAULT_PRESET_NAME)!.config.voice.voiceId, ADAM)
+  assert.equal(again.filter((p) => p.name === "Fast hype").length, 1)
+})
+
 test("moves the default, protects it from deletion and rejects duplicate names", async () => {
   const result = await run(Effect.gen(function*() {
     const presets = yield* Presets

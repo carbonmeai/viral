@@ -1,5 +1,15 @@
 import type { PresetConfig } from "@viral/contracts"
 
+// The creator's current narrator: Marcus at atempo ~1.1, which measured about 3.1–3.3 words/sec on the spicy and
+// rescues takes. New libraries' built-in styles use him; a library's existing styles keep their voice.
+const MARCUS_VOICE: PresetConfig["voice"] = {
+  provider: "elevenlabs",
+  voiceId: "3H55HGnNE1XjYxigHSAS", // "Marcus"
+  model: "eleven_v4",
+  wordsPerSecond: 3.2
+}
+
+// The voice of the first, fast-hype shorts (atempo ~1.25), kept in the "Fast hype" style.
 const ADAM_VOICE: PresetConfig["voice"] = {
   provider: "elevenlabs",
   voiceId: "eGSd0uV8dNQnZuEEX9lu", // "Adam – Dominant, Firm"
@@ -10,14 +20,14 @@ const ADAM_VOICE: PresetConfig["voice"] = {
 const CANDY_MUSIC: PresetConfig["music"] = { gain: 0.15, dropGain: 0.32, duckRatio: 3, duckThreshold: 0.03 }
 
 // The settings behind your first candy short: 9:16 band layout, one lowercase caption word at a time, no
-// ads, Adam at ~3.2 words/sec, and the music levels from its narrated.json.
+// ads, and the music levels from its narrated.json; narrated by Marcus (the candy short had Adam: see Fast hype).
 const VIRAL_RECAP: PresetConfig = {
   canvas: [1080, 1920],
   mainHeight: 1216,
   stripAds: true,
   framing: "band",
   headline: null,
-  voice: ADAM_VOICE,
+  voice: MARCUS_VOICE,
   captions: { enabled: true, y: 0.72, mode: "word", maxWords: 1, case: "lower", highlight: "#FFD400", quoteBox: false },
   labels: false,
   credit: false,
@@ -39,10 +49,15 @@ const HEADLINE_FULL_BLEED: PresetConfig = {
   pace: { shotSeconds: 2.2 }
 }
 
-// Ensured by name on every start: missing ones are added, ones you've edited are left alone.
+// The first candy short exactly as it was made: Viral recap's look with Adam's fast, hyped read.
+const FAST_HYPE: PresetConfig = { ...VIRAL_RECAP, voice: ADAM_VOICE }
+
+// Ensured by name on every start: missing ones are added, ones you've edited (or already have) are left alone, so a
+// change here reaches new libraries only.
 export const BUILT_IN_PRESETS: ReadonlyArray<{ readonly name: string; readonly config: PresetConfig }> = [
   { name: "Viral recap", config: VIRAL_RECAP },
-  { name: "Headline full-bleed", config: HEADLINE_FULL_BLEED }
+  { name: "Headline full-bleed", config: HEADLINE_FULL_BLEED },
+  { name: "Fast hype", config: FAST_HYPE }
 ]
 
 // The default when no preset is marked default yet.
