@@ -4,15 +4,24 @@ import { cn } from "../cn.ts"
 export interface SettingsGroupProps {
   // an optional small heading above the group
   readonly title?: React.ReactNode
+  // an optional muted line under the heading
+  readonly description?: React.ReactNode
   readonly children: React.ReactNode
   readonly className?: string
 }
 
 // A group of settings: rows in one panel, separated by hairlines.
-export function SettingsGroup({ title, children, className }: SettingsGroupProps) {
+export function SettingsGroup({ title, description, children, className }: SettingsGroupProps) {
   return (
     <section className={cn("grid gap-2", className)}>
-      {title === undefined ? null : <h2 className="m-0 px-1 text-base font-semibold">{title}</h2>}
+      {title === undefined && description === undefined
+        ? null
+        : (
+          <div className="grid gap-0.5 px-1">
+            {title === undefined ? null : <h2 className="m-0 text-base font-semibold">{title}</h2>}
+            {description === undefined ? null : <p className="m-0 text-xs text-fg-2">{description}</p>}
+          </div>
+        )}
       <div className="rounded-panel bg-panel px-4 [&>*+*]:shadow-[inset_0_1px_0_var(--color-line)]">{children}</div>
     </section>
   )

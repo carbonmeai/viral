@@ -1,98 +1,103 @@
-import { NodeServices } from "@effect/platform-node"
-import { Config, Context, Effect, Layer, Option, Redacted, Schema, Stream, String as Str } from "effect"
-import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import type { KeyName } from "@viral/contracts"
+import { Config, Context, Effect, Layer, Option, Redacted, String as Str } from "effect"
+import { type KeychainOptions, SecretsError, SecretStore } from "./secret-store.ts"
 
-// API keys Viral uses, with the environment variable that overrides the Keychain entry.
-export const SECRETS = {
-  xai: "XAI_API_KEY",
-  elevenlabs: "ELEVENLABS_API_KEY",
-  // the Vercel AI Gateway, for running agent stages on other models (experimental; evals)
-  gateway: "AI_GATEWAY_API_KEY"
-} as const
-export type SecretName = keyof typeof SECRETS
+export { SecretsError } from "./secret-store.ts"
 
-// `code`: "invalid" (a value the Keychain command can't carry) or "keychain" (the security command failed).
-export class SecretsError extends Schema.TaggedError<SecretsError>()("SecretsError", {
-  code: Schema.String,
-  message: Schema.String
-}) {}
-
-export interface SecretsOptions {
-  // the macOS `security` command; tests point it at a fake
-  readonly security?: string
+// API keys Viral uses, each with the environment variables that win over the saved key, in the order they're read.
+// Google's first name is the AI SDK's; GEMINI_API_KEY is Google's own.
+export const SECRETS: Record<KeyName, ReadonlyArray<string>> = {
+  anthropic: ["ANTHROPIC_API_KEY"],
+  openai: ["OPENAI_API_KEY"],
+  google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"],
+  openrouter: ["OPENROUTER_API_KEY"],
+  // the Vercel AI Gateway, for running agent stages on other models
+  gateway: ["AI_GATEWAY_API_KEY"],
+  elevenlabs: ["ELEVENLABS_API_KEY"],
+  xai: ["XAI_API_KEY"]
 }
+export type SecretName = KeyName
 
-const SERVICE = "viral"
-// keys are tokens: letters, digits and a few separators. Anything else could break the command line.
+// Keys are tokens: letters, digits and a few separators.
 const KEY_SHAPE = /^[A-Za-z0-9_\-.:]+$/
 
-// Keys live in the macOS Keychain as generic passwords with service "viral" and the secret's name as the
-// account. An environment variable of the same purpose wins, for development and CI. Keys are never stored in
-// the database, never returned to a client and never logged; writes go to `security -i` on stdin, so a key
-// never shows up in the process list either.
+// A pasted key, trimmed; None when it can't be a key (spaces inside, quotes, other characters).
+export const normalizeKey = (value: string): Option.Option<string> => {
+  const key = Str.trim(value)
+  return KEY_SHAPE.test(key) ? Option.some(key) : Option.none()
+}
+
+// The last four characters of a key long enough that they give nothing away; null otherwise.
+export const lastFour = (key: string): string | null => key.length >= 12 ? key.slice(-4) : null
+
+// Where a key comes from right now, without its value.
+export interface SecretInfo {
+  readonly source: Option.Option<"environment" | "keychain">
+  // the environment variable the key comes from, when it does
+  readonly envVar: string | null
+  readonly last4: string | null
+}
+
+interface Current {
+  readonly source: "environment" | "keychain"
+  readonly envVar: string | null
+  readonly key: string
+}
+
+// The keys Viral uses. An environment variable wins, for development and CI; otherwise the key saved in Settings
+// (SecretStore: the macOS Keychain). Keys are never stored in the database, never returned to a client (only their
+// last four characters) and never logged. A saved key is never put into process.env either: it's read when a call
+// needs it and handed only to that call.
 export class Secrets extends Context.Service<Secrets, {
   get(name: SecretName): Effect.Effect<Option.Option<Redacted.Redacted<string>>>
   // where a key comes from right now, without its value
   source(name: SecretName): Effect.Effect<Option.Option<"environment" | "keychain">>
+  info(name: SecretName): Effect.Effect<SecretInfo>
   set(name: SecretName, value: Redacted.Redacted<string>): Effect.Effect<void, SecretsError>
   remove(name: SecretName): Effect.Effect<void, SecretsError>
 }>()("@viral/server/secrets/secrets") {
-  static readonly make = Effect.fn("Secrets.make")(function*(options: SecretsOptions = {}) {
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-      const security = options.security ?? "security"
-      const fail = (code: string) => (error: { readonly message: string }) => new SecretsError({ code, message: error.message })
+  static readonly make = Effect.gen(function*() {
+    const store = yield* SecretStore
 
-      const fromKeychain = (name: SecretName) =>
-        spawner.string(ChildProcess.make(security, ["find-generic-password", "-s", SERVICE, "-a", name, "-w"])).pipe(
-          Effect.map((value) => Option.some(Str.trim(value)).pipe(Option.filter((key) => key !== ""))),
-          // not found, or not on macOS
-          Effect.orElseSucceed(() => Option.none<string>())
-        )
-      const fromEnv = (name: SecretName) => Config.option(Config.String(SECRETS[name])).pipe(Effect.orDie)
+    // the first of the key's variables that is set and not empty
+    const fromEnv = Effect.fn("Secrets.fromEnv")(function*(name: SecretName) {
+      for (const variable of SECRETS[name]) {
+        const value = yield* Config.option(Config.String(variable)).pipe(Effect.orDie)
+        const key = Option.filter(Option.map(value, Str.trim), (v) => v !== "")
+        if (Option.isSome(key)) return Option.some({ variable, key: key.value })
+      }
+      return Option.none<{ readonly variable: string; readonly key: string }>()
+    })
 
-      // Runs one Keychain command through `security -i`, which reads it from stdin.
-      const keychain = (command: string) =>
-        spawner.exitCode(ChildProcess.make(security, ["-i"], {
-          stdin: Stream.make(new TextEncoder().encode(`${command}\n`))
-        })).pipe(
-          Effect.mapError(fail("keychain")),
-          Effect.flatMap((code) =>
-            code === ChildProcessSpawner.ExitCode(0)
-              ? Effect.void
-              : Effect.fail(new SecretsError({ code: "keychain", message: `the Keychain command exited with ${code}` }))
-          )
-        )
+    const current = Effect.fn("Secrets.current")(function*(name: SecretName) {
+      const env = yield* fromEnv(name)
+      if (Option.isSome(env)) return Option.some<Current>({ source: "environment", envVar: env.value.variable, key: env.value.key })
+      return Option.map(yield* store.read(name), (key): Current => ({ source: "keychain", envVar: null, key }))
+    })
 
-      const get = Effect.fn("Secrets.get")(function*(name: SecretName) {
-        const env = yield* fromEnv(name)
-        const value = Option.isSome(env) ? env : yield* fromKeychain(name)
-        return Option.map(value, Redacted.make)
-      })
+    const get = (name: SecretName) => Effect.map(current(name), Option.map((c) => Redacted.make(c.key)))
+    const source = (name: SecretName) => Effect.map(current(name), Option.map((c) => c.source))
+    const info = (name: SecretName) =>
+      Effect.map(current(name), (c): SecretInfo => ({
+        source: Option.map(c, (x) => x.source),
+        envVar: Option.match(c, { onNone: () => null, onSome: (x) => x.envVar }),
+        last4: Option.match(c, { onNone: () => null, onSome: (x) => lastFour(x.key) })
+      }))
 
-      const source = Effect.fn("Secrets.source")(function*(name: SecretName) {
-        if (Option.isSome(yield* fromEnv(name))) return Option.some("environment" as const)
-        return Option.as(yield* fromKeychain(name), "keychain" as const)
-      })
+    const set = Effect.fn("Secrets.set")(function*(name: SecretName, value: Redacted.Redacted<string>) {
+      const key = normalizeKey(Redacted.value(value))
+      if (Option.isNone(key)) return yield* new SecretsError({ code: "invalid", message: "that doesn't look like an API key" })
+      yield* store.write(name, key.value)
+    })
 
-      const set = Effect.fn("Secrets.set")(function*(name: SecretName, value: Redacted.Redacted<string>) {
-        const key = Str.trim(Redacted.value(value))
-        if (!KEY_SHAPE.test(key)) {
-          return yield* new SecretsError({ code: "invalid", message: "that doesn't look like an API key" })
-        }
-        // -U replaces an existing entry
-        yield* keychain(`add-generic-password -U -s ${SERVICE} -a ${name} -w ${key}`)
-      })
+    const remove = (name: SecretName) => store.delete(name)
 
-      const remove = Effect.fn("Secrets.remove")(function*(name: SecretName) {
-        if (Option.isNone(yield* fromKeychain(name))) return
-        yield* keychain(`delete-generic-password -s ${SERVICE} -a ${name}`)
-      })
-
-      return Secrets.of({ get, source, set, remove })
+    return Secrets.of({ get, source, info, set, remove })
   })
 
-  static readonly layerWith = (options: SecretsOptions) =>
-    Layer.effect(Secrets, Secrets.make(options)).pipe(Layer.provide(NodeServices.layer))
+  // the Keychain store; tests point `security` at a fake
+  static readonly layerWith = (options: KeychainOptions) =>
+    Layer.effect(Secrets, Secrets.make).pipe(Layer.provide(SecretStore.keychain(options)))
 
   static readonly layer = Secrets.layerWith({})
 }

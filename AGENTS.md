@@ -135,7 +135,17 @@ apps/server/src/
                        A ranking (ranking-thumbnail.ts): bold, the hero inside #1's after, the face layer inside #1's
                        before (drawn as a tilted inset), "TOP N" over the subject
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
-  secrets/             API keys: env var (.env) first, then the macOS Keychain (service "viral")
+  secrets/             API keys: model keys (anthropic, openai, google, openrouter, gateway) and voice keys (elevenlabs,
+                       xai). An env var (.env) wins (SECRETS lists them; google also reads GEMINI_API_KEY), else the saved
+                       key in SecretStore (the macOS Keychain, service "viral", written via `security -i` on stdin; the
+                       seam for a future Windows/Linux store). Saved keys never go into process.env, never to a client
+                       (Accounts shows the last 4 characters) and never in a log. KeyChecks: one free call per key
+                       (list models / key info, 10 s, no tokens), each in the domain that owns the key
+                       (agent-session/model-key-checks.ts, voice/eleven-labs-key-check.ts, transcribe/xai-key-check.ts);
+                       *_API_URL variables move a service for tests (testing/fake-key-services.ts). KeyAccounts: SetSecret
+                       checks first (refused → not saved; unreachable → saved with a warning; refused while the env var
+                       is set), TestSecret re-checks; the last result is kept in settings (keys.<name>.check).
+                       provider-core's redactSecrets hides keys in service and SDK error text
   tools/               ffmpeg, ffprobe, uv, yt-dlp: Viral's tools folder first (~/Library/Application Support/
                        Viral/tools; VIRAL_TOOLS_DIR overrides), then the PATH. Not bundled in the app: missing ones
                        are downloaded on first run from pinned URLs, checksum-verified (ffmpeg: hash recorded on the
@@ -249,7 +259,8 @@ apps/server/src/
                        reference); eval.html shows each run's 3 proposals side by side, its videos as a colour dot and
                        short name (V labels in the text are put as names too)
   settings/            app preferences as JSON under keys; app-settings.ts is the typed view: agents.default and
-                       stage.<name>.provider/.model (Settings › Agents), transcription.provider
+                       stage.<name>.provider/.model (Settings › Agents), transcription.provider; keys.<name>.check holds
+                       each key's last Test result (never the key)
   usage/               Settings › Usage: spend by day, provider (billed vs plan), model, short, step, and evals; ElevenLabs
                        in characters (voice takes + "Try a line" previews, recorded in voice_previews) by day, model and
                        short, and the plan's characters used/left and reset date (GetElevenLabsPlan: GET /v1/user/subscription,

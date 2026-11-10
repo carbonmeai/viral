@@ -1,4 +1,6 @@
-import { Atom } from "effect/reactivity"
+import type { KeyName } from "@viral/contracts"
+import { Effect } from "effect"
+import { Atom, Reactivity } from "effect/reactivity"
 import { ViralClient } from "../../api/client.ts"
 
 // Reads, each tagged so a save on the same topic refreshes it.
@@ -12,8 +14,28 @@ export const usageAtom = Atom.family((days: number) => ViralClient.query("GetUsa
 export const elevenLabsPlanAtom = ViralClient.query("GetElevenLabsPlan", undefined, { reactivityKeys: ["usage", "accounts"] })
 
 // Writes.
-export const setSecret = ViralClient.mutation("SetSecret")
-export const removeSecret = ViralClient.mutation("RemoveSecret")
+// Key writes, one atom per key: a mutation atom interrupts its own previous call, so with one per key, checking one
+// key never cuts short another's check. Each refreshes Accounts.
+const refreshAccounts = <A, E, R>(effect: Effect.Effect<A, E, R>) => Reactivity.mutation(effect, ["accounts"])
+export const setSecret = Atom.family((name: KeyName) =>
+  ViralClient.runtime.fn(Effect.fnUntraced(function*(value: string) {
+    const client = yield* ViralClient
+    return yield* refreshAccounts(client("SetSecret", { name, value }))
+  }))
+)
+export const removeSecret = Atom.family((name: KeyName) =>
+  ViralClient.runtime.fn(Effect.fnUntraced(function*(_: void) {
+    const client = yield* ViralClient
+    return yield* refreshAccounts(client("RemoveSecret", { name }))
+  }))
+)
+// a pasted value, or null for the key in use
+export const testSecret = Atom.family((name: KeyName) =>
+  ViralClient.runtime.fn(Effect.fnUntraced(function*(value: string | null) {
+    const client = yield* ViralClient
+    return yield* refreshAccounts(client("TestSecret", { name, value }))
+  }))
+)
 export const setDefaultAgent = ViralClient.mutation("SetDefaultAgent")
 export const setStageAgent = ViralClient.mutation("SetStageAgent")
 export const setTranscriber = ViralClient.mutation("SetTranscriber")

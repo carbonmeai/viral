@@ -2,29 +2,71 @@ import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/rpc"
 import { PresetNotFound } from "./presets.ts"
 
-// The services Viral talks to. Claude, Codex and OpenCode run through their CLIs, signed in as you; ElevenLabs,
-// xAI and the AI Gateway use API keys. The AI Gateway runs agent steps on other models (Haiku, GPT-6 Luna, Gemini…).
-export const AccountName = Schema.Literals(["claude", "codex", "opencode", "elevenlabs", "xai", "gateway"])
+// The services Viral talks to. Claude, Codex and OpenCode run through their CLIs, signed in as you; the rest use API
+// keys: model keys (Anthropic, OpenAI, Google Gemini, OpenRouter, the AI Gateway) and voice and transcription keys
+// (ElevenLabs, xAI). The AI Gateway runs agent steps on other models today; the direct model keys are only kept and
+// checked for now (running steps on them comes later).
+export const AccountName = Schema.Literals([
+  "claude",
+  "codex",
+  "opencode",
+  "anthropic",
+  "openai",
+  "google",
+  "openrouter",
+  "gateway",
+  "elevenlabs",
+  "xai"
+])
 export type AccountName = typeof AccountName.Type
-export const KeyName = Schema.Literals(["elevenlabs", "xai", "gateway"])
+export const KeyName = Schema.Literals(["anthropic", "openai", "google", "openrouter", "gateway", "elevenlabs", "xai"])
 export type KeyName = typeof KeyName.Type
+export const MODEL_KEYS: ReadonlyArray<KeyName> = ["anthropic", "openai", "google", "openrouter", "gateway"]
+export const VOICE_KEYS: ReadonlyArray<KeyName> = ["elevenlabs", "xai"]
 
-// Whether an account is usable and where its key comes from. A key's value never crosses the wire. A CLI can also
-// be installed but signed out, or too old for Viral (OpenCode before 2.2.6).
+// What one free call to a service said about a key (listing its models or reading the key's own info; no tokens
+// are spent). ok: it works; refused: wrong, revoked or blocked; no-credit: it works but has nothing left to spend
+// (only services that report credit); unreachable: the service couldn't be reached (a network problem, a timeout
+// or the service failing), which says nothing about the key; unknown: an answer Viral didn't expect.
+export const KeyCheckCode = Schema.Literals(["ok", "refused", "no-credit", "unreachable", "unknown"])
+export type KeyCheckCode = typeof KeyCheckCode.Type
+export const KeyCheck = Schema.Struct({
+  code: KeyCheckCode,
+  // in plain words: "Works. 63 models available."
+  message: Schema.String,
+  // how many models the key can use, when the service lists them
+  models: Schema.NullOr(Schema.Int),
+  // ISO time of the check
+  checkedAt: Schema.String
+})
+export type KeyCheck = typeof KeyCheck.Type
+
+// Whether an account is usable and where its key comes from. A key's value never crosses the wire, only its last
+// four characters. A CLI can also be installed but signed out, or too old for Viral (OpenCode before 2.2.6).
 export const Account = Schema.Struct({
   name: AccountName,
   status: Schema.Literals(["ready", "missing", "signed-out", "outdated"]),
-  // environment: a variable set when the server started (wins over the Keychain); keychain: the macOS
-  // Keychain entry Viral manages; cli: an installed CLI
+  // environment: a variable set when the server started (wins over the saved key); keychain: the key saved in
+  // Settings (in the macOS Keychain); cli: an installed CLI
   source: Schema.NullOr(Schema.Literals(["environment", "keychain", "cli"])),
   // e.g. the Claude CLI's version, or how Codex is signed in
   detail: Schema.NullOr(Schema.String),
   // a CLI's version ("0.154.0")
   version: Schema.NullOr(Schema.String),
   // what to do before Viral can use it: how to install, sign in or update (Viral never does it for you)
-  hint: Schema.NullOr(Schema.String)
+  hint: Schema.NullOr(Schema.String),
+  // a key's environment variable when the key comes from it ("ANTHROPIC_API_KEY")
+  envVar: Schema.NullOr(Schema.String),
+  // the key's last four characters, never more ("a1F9"); null for a CLI, no key, or a key too short to show any
+  last4: Schema.NullOr(Schema.String),
+  // the last Test of the key in use (kept in settings, never with the key)
+  check: Schema.NullOr(KeyCheck)
 })
 export type Account = typeof Account.Type
+
+// A key that was checked and saved: unreachable services still save, with the check saying so.
+export const SecretSaved = Schema.Struct({ account: Account, check: KeyCheck })
+export type SecretSaved = typeof SecretSaved.Type
 
 // The agent stages whose model you can choose.
 export const AgentStage = Schema.Literals(["research", "ads", "story", "set-story", "script", "shots", "sections", "moments", "metadata", "thumbnail"])
@@ -260,8 +302,13 @@ export class SettingsRpcs extends RpcGroup.make(
   Rpc.make("GetAccounts", { success: Schema.Array(Account) }),
   // the models Codex and OpenCode offer on your account (empty for one that isn't installed or signed in)
   Rpc.make("GetCliModels", { success: Schema.Array(CliModels) }),
-  // Saves a key in the macOS Keychain. The value is only ever sent this way, never returned.
-  Rpc.make("SetSecret", { payload: { name: KeyName, value: Schema.String }, success: Account, error: SettingsError }),
+  // Checks a key with one free call to its service, then saves it (the macOS Keychain today). A refused key isn't
+  // saved; an unreachable service saves it anyway, with the check saying so. Refused while the key's environment
+  // variable is set (it would be ignored). The value is only ever sent this way, never returned.
+  Rpc.make("SetSecret", { payload: { name: KeyName, value: Schema.String }, success: SecretSaved, error: SettingsError }),
+  // Checks a key without saving it: a pasted value, or (value null) the key in use, saved or from the environment,
+  // whose result is kept for Accounts.
+  Rpc.make("TestSecret", { payload: { name: KeyName, value: Schema.NullOr(Schema.String) }, success: KeyCheck, error: SettingsError }),
   Rpc.make("RemoveSecret", { payload: { name: KeyName }, success: Account, error: SettingsError }),
   Rpc.make("GetSettings", { success: AppSettings }),
   // The provider and model for every step that hasn't got its own. The gateway needs a model and its key.

@@ -2,7 +2,7 @@ import { createGateway } from "@ai-sdk/gateway"
 import { generateText, type ImagePart, isStepCount, jsonSchema, type LanguageModel, type ModelMessage, type TextPart, tool, type ToolSet } from "ai"
 import { Effect, FileSystem, Option, Path, Redacted, Schema } from "effect"
 import { SecureRandom } from "effect/crypto"
-import { AgentError, type AgentHooks, type AgentRun, type AgentTask, outputMismatch, toolJsonSchema } from "@viral/provider-core"
+import { AgentError, type AgentHooks, type AgentRun, type AgentTask, outputMismatch, redactSecrets, toolJsonSchema } from "@viral/provider-core"
 import { decodeHistory, encodeHistory } from "./ai-gateway-history.ts"
 
 export interface AiGatewayOptions {
@@ -161,7 +161,8 @@ export const makeAiGatewayProvider = Effect.fn("makeAiGatewayProvider")(function
               ...step.toolCalls.map((call) => hooks.progress(null, `→ ${call.toolName}`))
             ], { discard: true }))
         }),
-      catch: (cause) => fail("session")(cause instanceof Error ? cause.message : String(cause))
+      // SDK errors can echo a request's headers back; keys never reach a stage error or a log
+      catch: (cause) => fail("session")(redactSecrets(cause instanceof Error ? cause.message : String(cause), [Redacted.value(key.value)]))
     })
 
     const costUsd = result.steps.reduce((sum, step) =>

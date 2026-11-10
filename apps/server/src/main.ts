@@ -41,6 +41,7 @@ import { ViralHome } from "./home/viral-home.ts"
 import { HealthRouteLive, MediaRouteLive } from "./media/media-route.ts"
 import { prependToolsPath, Tools } from "./tools/tools.ts"
 import { ToolsRpcLive } from "./tools/tools-rpc.ts"
+import { KeyAccounts } from "./secrets/key-accounts.ts"
 import { Secrets } from "./secrets/secrets.ts"
 import { AppSettingsStore } from "./settings/app-settings.ts"
 import { SettingsRpcLive } from "./settings/settings-rpc.ts"
@@ -71,6 +72,7 @@ const DomainsLive = Layer.mergeAll(
   ViralHome.layer,
   Tools.layer,
   Secrets.layer,
+  KeyAccounts.layer,
   AppSettingsStore.layer,
   StorageReport.layer,
   UsageReport.layer,
