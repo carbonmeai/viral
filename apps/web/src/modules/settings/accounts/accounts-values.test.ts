@@ -1,7 +1,7 @@
-import type { Account } from "@viral/contracts"
+import type { Account, CliSetup } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { keyRowState } from "./accounts-values.ts"
+import { cliSetupLines, envLines, envValueText, keyRowState, runsOnOptions } from "./accounts-values.ts"
 
 const NOW = Date.parse("2026-11-10T12:00:00Z")
 const base: Account = {
@@ -45,4 +45,34 @@ test("an environment key names its variable and can be tested but not changed or
   assert.deepEqual(state.chip, { tone: "ok", text: "From ANTHROPIC_API_KEY" })
   assert.match(state.lines[1]?.text ?? "", /ANTHROPIC_API_KEY …zz12\)\. A key saved here is ignored/)
   assert.deepEqual([state.canChange, state.canRemove, state.canTest], [false, false, true])
+})
+
+const setup: CliSetup = {
+  cli: "claude",
+  preset: "claude-openrouter",
+  presetVars: [{ name: "ANTHROPIC_AUTH_TOKEN", value: "your OpenRouter key …a1F9" }],
+  env: [],
+  configDir: "/Users/me/.viral/cli/claude-openrouter",
+  billing: "billed",
+  using: "Using your OpenRouter key",
+  problem: null
+}
+
+test("a preset needs its key saved before it can be picked", () => {
+  const options = runsOnOptions("claude", { ...setup, preset: null }, new Set(["anthropic"]))
+  assert.deepEqual(options.map((o) => [o.value, "disabled" in o]), [["signin", false], ["claude-openrouter", true], ["claude-anthropic", false]])
+  // the one in use stays pickable, so it can be seen
+  assert.ok(!("disabled" in runsOnOptions("claude", setup, new Set()).find((o) => o.value === "claude-openrouter")!))
+  assert.deepEqual(runsOnOptions("codex", undefined, new Set(["openai"])).map((o) => o.value), ["signin", "codex-openai"])
+})
+
+test("secrets show as dots and their last four; the preset's variables only in Detailed", () => {
+  assert.equal(envValueText({ name: "T", value: null, secret: true, last4: "1234" }), "••••••1234")
+  assert.equal(envValueText({ name: "T", value: "", secret: false, last4: null }), "(empty)")
+  assert.deepEqual(cliSetupLines(setup, false).map((l) => l.text), ["Runs here count as billed in Usage (real money)."])
+  assert.deepEqual(envLines(setup, false), [])
+  assert.deepEqual(envLines({ ...setup, presetVars: [{ name: "CLAUDE_CONFIG_DIR", value: "/Users/me/.viral/cli/claude-openrouter" }] }, true), [
+    { name: "CLAUDE_CONFIG_DIR", value: "~/.viral/cli/claude-openrouter", secret: false, fromSetup: true }
+  ])
+  assert.deepEqual(cliSetupLines({ ...setup, preset: null, presetVars: [], billing: "subscription" }, true), [])
 })

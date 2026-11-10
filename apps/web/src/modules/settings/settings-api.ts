@@ -6,6 +6,8 @@ import { ViralClient } from "../../api/client.ts"
 // Reads, each tagged so a save on the same topic refreshes it.
 export const accountsAtom = ViralClient.query("GetAccounts", undefined, { reactivityKeys: ["accounts"] })
 export const cliModelsAtom = ViralClient.query("GetCliModels", undefined, { reactivityKeys: ["accounts"] })
+// how each signed-in CLI runs: its sign-in or a key preset, and its own variables (secrets redacted)
+export const cliSetupsAtom = ViralClient.query("GetCliSetups", undefined, { reactivityKeys: ["accounts"] })
 export const appSettingsAtom = ViralClient.query("GetSettings", undefined, { reactivityKeys: ["settings"] })
 export const storageAtom = ViralClient.query("GetStorage", undefined, { reactivityKeys: ["storage"] })
 // the models a key can use, from the vendor's own list (the server keeps it for a day); refreshed with Accounts
@@ -42,3 +44,7 @@ export const setDefaultAgent = ViralClient.mutation("SetDefaultAgent")
 export const setStageAgent = ViralClient.mutation("SetStageAgent")
 export const setTranscriber = ViralClient.mutation("SetTranscriber")
 
+// A CLI's key setup; each refreshes Accounts (the row's status and models change with it) and the setups.
+export const setCliPreset = ViralClient.mutation("SetCliPreset")
+export const setCliEnvVar = ViralClient.mutation("SetCliEnvVar")
+export const removeCliEnvVar = ViralClient.mutation("RemoveCliEnvVar")
