@@ -13,7 +13,9 @@ skill and the approach skills below.
    Cover every stage (all the levels, every attempt), not just the highlights. Favour short, emotional lines
    that make sense with no context.
 3. Decide what kind of video this is (the format table in story-arc: stuff happens, people talk…) and propose
-   ${PROPOSALS} shorts, one per approach in the catalog, the one whose format suits this kind of video first. For each:
+   ${PROPOSALS} shorts, each a different approach from the catalog (the ones that fit this video best),
+   the one whose format suits this kind of video first. A video with many clear stages and a person reacting all the
+   way through suits story-recap: the whole story with a long real ending. For each:
    a working title, the opening hook line, why the approach suits this video in one or two sentences (name its
    weakest radar axis), and the virality radar scores (0–10). The first proposal's \`why\` starts with the kind of
    video and why its format suits it ("A challenge video where the talking is slow: a narrator carries it…").

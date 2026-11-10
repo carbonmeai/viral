@@ -15,10 +15,11 @@ import { Client } from "./client.ts"
 import { follow } from "./run-command.ts"
 import { show } from "./show.ts"
 
-export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <title> [--approach question-recap|claim-interleaved|cut-down|ranking]
+export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <title> [--approach question-recap|claim-interleaved|story-recap|cut-down|ranking]
                  [--preset <id>] [--music <track-id>] [--brief "<what it should achieve>"]
                                           (several videos in order, need a brief)
-  project from-proposal <source-id> <n>   (proposal n from \`source story\`)
+  project from-proposal <source-id> <n> [--as <approach>]
+                                          (proposal n from \`source story\`; --as makes it another way, e.g. story-recap)
   project rename <id> "<title>"           (the short's title; its folder and files keep their names)
   project style <id> <preset-id|default>  (the short's style; see \`preset list\`)
   project music <id> <track-id|none>      (none = voice only)
@@ -87,7 +88,12 @@ export const projectCommand = Effect.fn("projectCommand")(function*() {
     case "from-proposal": {
       const n = Number(title)
       if (first === undefined || !Number.isInteger(n) || n < 1) return yield* Console.error(PROJECT_USAGE)
-      const project = yield* client.CreateProjectFromProposal({ sourceId: SourceId.make(first), proposal: n - 1 })
+      const as = option("--as")
+      const project = yield* client.CreateProjectFromProposal({
+        sourceId: SourceId.make(first),
+        proposal: n - 1,
+        ...(as === undefined ? {} : { approach: yield* decodeApproach(as) })
+      })
       return yield* Console.log(describe(project))
     }
     case "rename": {

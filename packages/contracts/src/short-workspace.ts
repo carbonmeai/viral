@@ -23,7 +23,13 @@ const at = { version: Schema.Int, path: Schema.NullOr(Schema.String) }
 export const ScriptLimits = Schema.Struct({
   narrationWords: Schema.Tuple([Schema.Int, Schema.Int]),
   reals: Schema.Tuple([Schema.Int, Schema.Int]),
-  realsOnlyAtEnd: Schema.Boolean
+  realsOnlyAtEnd: Schema.Boolean,
+  // how long each real line may be, in seconds
+  realSeconds: Schema.Tuple([Schema.Finite, Schema.Finite]),
+  // the payoff as one long real take after the narration (story-recap); null = the ending is like any real line
+  ending: Schema.NullOr(Schema.Struct({ seconds: Schema.Tuple([Schema.Finite, Schema.Finite]) })),
+  // real lines are moved to whole sentences (a pause over 1.5 s ends one)
+  wholeSentences: Schema.Boolean
 })
 export type ScriptLimits = typeof ScriptLimits.Type
 

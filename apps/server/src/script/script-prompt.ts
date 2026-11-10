@@ -12,6 +12,10 @@ A script is a list of beats in playing order:
 - Narration: a line the narrator says, in your own words.
 - Real: a line from the video played in the creator's own voice. Quote it exactly as the transcript has it
   and give its start and end in source seconds, taken from the transcript's timestamps.
+- Narration with \`skipped: true\`: a line the real line just before it already says ("He said it felt like
+  getting electrocuted." after the real "It's like getting electrocuted"). It's voiced, so the narrator's delivery
+  flows around the cut, but the short jumps from the real line to the narration after it. Only right after a real
+  line, and only when more narration follows.
 
 Read the whole transcript first and cover the story's stages in order; before each real line, write the set-up it
 answers. Every real line is whole sentences: it starts on a sentence's first word and ends on a sentence's last word

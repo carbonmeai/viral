@@ -3,8 +3,13 @@ import { SourceIndex, VideoNumber } from "./sources.ts"
 
 // One beat of a narrated short: a line the narrator says, or a real line from the long video played in its
 // own audio. Real lines carry exact source seconds, checked against their video's transcript.
+// A narrated line can be `skipped`: it's voiced in the take, but the short jumps over it because the real line just
+// before it says the same thing (the renderer's `resume_word`). Writing it keeps the narrator's delivery natural around
+// the cut, and the creator can let the narrator say it after all without a new take. Absent = played.
+const Narration = Schema.TaggedStruct("Narration", { text: Schema.String, skipped: Schema.optionalKey(Schema.Boolean) })
+
 export const ScriptBeat = Schema.Union([
-  Schema.TaggedStruct("Narration", { text: Schema.String }),
+  Narration,
   Schema.TaggedStruct("Real", {
     // the words exactly as spoken in the video
     quote: Schema.String,
@@ -26,7 +31,7 @@ export type Script = typeof Script.Type
 // What the script agent sends: the same beats, with a real line's video numbered as the agent reads it (V2 = 2;
 // absent = V1). The server checks it and stores a Script, whose `source` is the position (V2 = 1).
 export const ProposedScriptBeat = Schema.Union([
-  Schema.TaggedStruct("Narration", { text: Schema.String }),
+  Narration,
   Schema.TaggedStruct("Real", {
     quote: Schema.String,
     start: Schema.Finite,

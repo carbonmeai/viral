@@ -64,7 +64,14 @@ test("a short's workspace gathers its style, voice, run, waiting gate and what t
   assert.equal(fresh.pending, null)
   assert.equal(fresh.script, null)
   assert.equal(fresh.voiceId, fresh.preset.config.voice.voiceId, "the style's voice when the short has none")
-  assert.deepEqual(fresh.scriptLimits, { narrationWords: [60, 100], reals: [4, 9], realsOnlyAtEnd: false })
+  assert.deepEqual(fresh.scriptLimits, {
+    narrationWords: [60, 100],
+    reals: [4, 9],
+    realsOnlyAtEnd: false,
+    realSeconds: [0.8, 8],
+    ending: null,
+    wholeSentences: true
+  })
   assert.match(fresh.sourceVideo ?? "", /source-video\/v1\/source\.mp4$/)
 
   assert.equal(made.run?.status, "running")

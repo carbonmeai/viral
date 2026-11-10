@@ -65,3 +65,87 @@ test("checks each real line against its own video, and keeps V1's lines as they 
     "beat 6: \"so nasty\" isn't in V1's transcript near 50.0s; quote the words exactly as spoken"
   ])
 })
+
+// ---------------------------------------------------------------- whole sentences, skipped lines, story-recap
+
+// words spoken one after another, 0.4 s each with 0.1 s between, from `at`
+const say = (at: number, text: string) => text.split(" ").map((word, i) => ({ w: word, s: at + i * 0.5, e: at + i * 0.5 + 0.4 }))
+const real = (quote: string, start: number) => ({ _tag: "Real" as const, quote, start, end: start + 1 })
+
+test("a real line that cuts a sentence is widened to the whole sentence", () => {
+  const words = say(10, "I am not scared of anything. Bring it on.")
+  const script: Script = { headline: null, beats: [narration(70), ...Array.from({ length: 4 }, () => real("not scared of", 11))] }
+  const { script: checked, problems } = checkScript(script, limits, [{ words, excluded: [] }])
+  assert.deepEqual(problems, [])
+  assert.deepEqual(checked.beats[1], { _tag: "Real", quote: "I am not scared of anything.", start: 9.95, end: 13.05 })
+})
+
+test("a sentence too long to play whole is a problem that says so", () => {
+  const long = Array.from({ length: 20 }, (_, i) => `w${i}`).join(" ")
+  const words = say(10, `${long} end.`)
+  const script: Script = { headline: null, beats: [narration(70), ...Array.from({ length: 4 }, () => real("w3 w4", 11.5))] }
+  const { problems } = checkScript(script, limits, [{ words, excluded: [] }])
+  assert.match(problems.join("\n"), /beat 2: "w3 w4" cuts a sentence; as whole sentences it's "w0 w1 .*" \(10\.\ds\), over 8s/)
+})
+
+test("a skipped line is voiced but not counted, and only follows a real line with narration after it", () => {
+  const words = say(10, "It's like getting electrocuted.")
+  const said = { _tag: "Narration" as const, text: "He said it felt like getting electrocuted.", skipped: true }
+  const good: Script = {
+    headline: null,
+    beats: [narration(60), real("like getting electrocuted", 10), said, narration(10), ...Array.from({ length: 3 }, () => real("electrocuted", 11.5))]
+  }
+  const ok = checkScript(good, limits, [{ words, excluded: [] }])
+  assert.deepEqual(ok.problems, [])
+  assert.deepEqual(ok.script.beats[2], said, "kept as skipped")
+  const bad: Script = { headline: null, beats: [{ ...said }, narration(70), real("electrocuted", 11.5), said] }
+  const text = checkScript(bad, limits, [{ words, excluded: [] }]).problems.join("\n")
+  assert.match(text, /the hook can't be skipped/)
+  assert.match(text, /is skipped, so a narrated line that plays must come straight after it/)
+})
+
+const recap = SCRIPT_LIMITS["story-recap"]!
+// the payoff: three sentences a second or two apart, 13 s in all
+const payoffWords = [
+  ...say(100, "Here comes the ice cream, spiked with twenty million Scoville."),
+  ...say(106, "Oh no. Oh no no no."),
+  ...say(110, "Give me all the milk right now please.")
+]
+const recapWords = [...say(10, "I am not scared of anything."), ...say(20, "It's like getting electrocuted."), ...payoffWords]
+
+test("story-recap: 150–220 words, 5–8 real lines, and the payoff merged into one long take", () => {
+  const script: Script = {
+    headline: null,
+    beats: [
+      narration(180),
+      ...Array.from({ length: 5 }, (_, i) => [real(i % 2 === 0 ? "not scared" : "electrocuted", i % 2 === 0 ? 11 : 21), narration(2)]).flat(),
+      real("ice cream", 101),
+      real("oh no", 106),
+      real("all the milk", 112)
+    ]
+  }
+  const { script: checked, problems } = checkScript(script, recap, [{ words: recapWords, excluded: [] }])
+  assert.deepEqual(problems, [])
+  const ending = checked.beats.at(-1)!
+  assert.equal(checked.beats.filter((b) => b._tag === "Real").length, 6, "the three ending lines are one take")
+  assert.ok(ending._tag === "Real" && ending.start === 99.95 && ending.end === 114.05, JSON.stringify(ending))
+  assert.ok(ending._tag === "Real" && ending.quote.startsWith("Here comes") && ending.quote.endsWith("please."), "every word between them")
+})
+
+test("story-recap: too few words and reals, an ending that's too short, or no real ending, are problems", () => {
+  const short: Script = { headline: null, beats: [narration(100), real("not scared", 11), narration(5), real("electrocuted", 21)] }
+  const text = checkScript(short, recap, [{ words: recapWords, excluded: [] }]).problems.join("\n")
+  assert.match(text, /narration is 105 words; this approach needs 150–220/)
+  assert.match(text, /there are 2 real lines; this approach needs 6–9: 5–8 during the narration, then the payoff take/)
+  assert.match(text, /beat 4: the payoff take lasts 2\.1s; this approach ends on one continuous real take of 10–25s/)
+  const noEnding: Script = { headline: null, beats: [narration(160), real("ice cream", 101), narration(10)] }
+  assert.match(checkScript(noEnding, recap, [{ words: recapWords, excluded: [] }]).problems.join("\n"), /the script ends on the payoff/)
+})
+
+test("story-recap: an ending take over 25 s is too long", () => {
+  const sentence = (n: number) => `${Array.from({ length: 15 }, (_, i) => `s${n}w${i}`).join(" ")} end.`
+  // three 8 s sentences 2 s apart: one 28 s take
+  const words = [...say(100, sentence(1)), ...say(110, sentence(2)), ...say(120, sentence(3))]
+  const script: Script = { headline: null, beats: [narration(180), real("s1w3 s1w4", 101.5), real("s2w3", 111.5), real("s3w3", 121.5)] }
+  assert.match(checkScript(script, recap, [{ words, excluded: [] }]).problems.join("\n"), /the ending \(beats 2–4\): the payoff take lasts 28\.\ds; this approach ends on one continuous real take of 10–25s/)
+})

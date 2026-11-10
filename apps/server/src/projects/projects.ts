@@ -21,6 +21,7 @@ import {
   Script,
   SetStory,
   ShotPlan,
+  SINGLE_VIDEO_APPROACHES,
   SourceId,
   type SourceNotFound,
   SourceSetId,
@@ -115,7 +116,12 @@ const toProject = (row: typeof ProjectRow.Type): Project => ({
 export class Projects extends Context.Service<Projects, {
   create(input: CreateProjectInput): Effect.Effect<Project, SourceNotFound | PresetNotFound | MusicTrackNotFound | ProjectSourcesInvalid>
   // A short from the source story's proposal number `proposal` (0-based): its approach and title.
-  fromProposal(sourceId: SourceId, proposal: number, brief?: string | null): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
+  fromProposal(
+    sourceId: SourceId,
+    proposal: number,
+    brief?: string | null,
+    approach?: ApproachName
+  ): Effect.Effect<Project, SourceNotFound | ProposalNotFound>
   // A short from a video set's proposal number `proposal` (0-based): its approach and title, the videos it uses in
   // set order, and the set's brief unless `brief` is given (editable later, like any short's).
   // `approach` makes it another way than proposed; a ranking uses every video in the set.
@@ -220,7 +226,12 @@ export class Projects extends Context.Service<Projects, {
         return yield* get(id).pipe(Effect.orDie)
       })
 
-      const fromProposal = Effect.fn("Projects.fromProposal")(function*(sourceId: SourceId, proposal: number, brief?: string | null) {
+      const fromProposal = Effect.fn("Projects.fromProposal")(function*(
+        sourceId: SourceId,
+        proposal: number,
+        brief?: string | null,
+        approach?: ApproachName
+      ) {
         yield* sources.get(sourceId)
         const story = yield* artifacts.latest({ _tag: "Source", id: sourceId }, "story-map")
         const chosen = Option.flatMap(story, (a) => Schema.decodeUnknownOption(StoryMap)(a.data)).pipe(
@@ -230,7 +241,8 @@ export class Projects extends Context.Service<Projects, {
         return yield* create({
           sourceIds: [sourceId],
           title: chosen.value.title,
-          approach: chosen.value.approach,
+          // made another way, it keeps the proposal's title and angle (the script stage finds it by title)
+          approach: approach !== undefined && SINGLE_VIDEO_APPROACHES.includes(approach) ? approach : chosen.value.approach,
           presetId: null,
           musicTrackId: null,
           brief: brief ?? null

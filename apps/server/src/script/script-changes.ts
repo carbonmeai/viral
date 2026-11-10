@@ -2,7 +2,8 @@ import type { ApproachName, Change, ChatCheck, Script, ScriptBeat } from "@viral
 import { align, capped, changed, changeOf, countHeadline, noted, passed, plural } from "../chat/change-lines.ts"
 import { narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
 
-const textOf = (beat: ScriptBeat) => beat._tag === "Narration" ? beat.text : `“${beat.quote}”`
+const textOf = (beat: ScriptBeat) =>
+  beat._tag === "Real" ? `“${beat.quote}”` : beat.skipped === true ? `${beat.text} (skipped: the real line says it)` : beat.text
 const reals = (script: Script) => script.beats.filter((b) => b._tag === "Real").length
 
 // What changed between two versions of a script, beat by beat: the old line struck through and the new one
@@ -49,6 +50,8 @@ export const scriptChecks = (script: Script, approach: ApproachName): ReadonlyAr
       passed(`${plural(reals(script), "real line")}, inside ${limits.reals[0]}–${limits.reals[1]}`)
     ]),
     passed("Every real line is in its own video's transcript, at its times"),
+    ...(limits?.wholeSentences === true ? [passed("Every real line is whole sentences")] : []),
+    ...(limits?.ending == null ? [] : [passed(`Ends on one real take of ${limits.ending.seconds[0]}–${limits.ending.seconds[1]}s`)]),
     passed("None inside an ad, a sponsor read or an end screen"),
     ...(limits?.realsOnlyAtEnd === true ? [passed("Real lines only after the narration")] : []),
     passed("Headline under 8 words")

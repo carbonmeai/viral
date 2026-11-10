@@ -4,7 +4,7 @@ import { locateQuote } from "../transcribe/quote-match.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
-// One proposal per approach while the catalog has three; later the three best fits.
+// The three approaches from the catalog that fit the video best, each a different one.
 export const PROPOSALS = 3
 
 // Checks a story map: quotes are snapped to the transcript and kept out of ad ranges, and the proposals are

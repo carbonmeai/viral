@@ -3,15 +3,15 @@ import { Schema } from "effect"
 // An approach is *what a short says and in what order*: hook, how voices mix, story shape, language and
 // ending. Its writing rules live in the matching `approach-<name>` skill; this descriptor is what the
 // stages and renderer act on.
-export const ApproachName = Schema.Literals(["question-recap", "claim-interleaved", "cut-down", "ranking"])
+export const ApproachName = Schema.Literals(["question-recap", "claim-interleaved", "story-recap", "cut-down", "ranking"])
 export type ApproachName = typeof ApproachName.Type
 
 export const ApproachDescriptor = Schema.Struct({
   hook: Schema.Literals(["question", "claim", "result-first", "quote", "title-list"]),
   voices: Schema.Literals(["narration-then-reactions", "interleaved", "creator-only", "clips-own-sound"]),
-  shape: Schema.Literals(["single-arc", "multi-loop", "countdown"]),
+  shape: Schema.Literals(["single-arc", "multi-loop", "full-story", "countdown"]),
   language: Schema.Literals(["plain", "technical"]),
-  ending: Schema.Literals(["reaction", "joke-button", "hard-payoff"]),
+  ending: Schema.Literals(["reaction", "joke-button", "hard-payoff", "real-payoff"]),
   // which renderer: a new voiceover over b-roll, the creator's own speech, or a ranked list of clips
   format: Schema.Literals(["narrated", "cut-down", "ranking"])
 })
@@ -37,6 +37,16 @@ export const APPROACHES: Record<ApproachName, ApproachDescriptor> = {
     ending: "joke-button",
     format: "narrated"
   },
+  // the creator's best-performing short ("10 Levels of Spicy"): claim-interleaved over the whole story, 60–120 s, with
+  // the real payoff as one long take
+  "story-recap": {
+    hook: "claim",
+    voices: "interleaved",
+    shape: "full-story",
+    language: "plain",
+    ending: "real-payoff",
+    format: "narrated"
+  },
   // the creator's own speech, spliced by story beat
   "cut-down": {
     hook: "quote",
@@ -59,4 +69,4 @@ export const APPROACHES: Record<ApproachName, ApproachDescriptor> = {
 }
 
 // The approaches a short from one video can take: a ranking needs an entry per video, so it's for several.
-export const SINGLE_VIDEO_APPROACHES: ReadonlyArray<ApproachName> = ["question-recap", "claim-interleaved", "cut-down"]
+export const SINGLE_VIDEO_APPROACHES: ReadonlyArray<ApproachName> = ["question-recap", "claim-interleaved", "story-recap", "cut-down"]

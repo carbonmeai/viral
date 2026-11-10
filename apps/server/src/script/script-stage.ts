@@ -56,11 +56,13 @@ export class ScriptStage extends Context.Service<ScriptStage, {
         return { project, limits, sources, v1, transcript: Option.getOrThrow(v1.transcript) }
       })
 
-      // V1's story proposal for this short's approach, if the video has a story map.
+      // V1's story proposal for this short's approach, if the video has a story map; a short made another way from a
+      // proposal ("Make this short" as a story recap) keeps that proposal's angle, found by its title.
       const chosenAngle = Effect.fn("ScriptStage.chosenAngle")(function*(project: Project) {
         const story = yield* artifacts.latest({ _tag: "Source", id: sourcesOf(project)[0] }, "story-map")
         const map = Option.flatMap(story, (a) => Schema.decodeUnknownOption(StoryMap)(a.data))
-        const proposal = Option.flatMapNullishOr(map, (m) => m.proposals.find((p) => p.approach === project.approach))
+        const proposal = Option.flatMapNullishOr(map, (m) =>
+          m.proposals.find((p) => p.approach === project.approach) ?? m.proposals.find((p) => p.title === project.title))
         return Option.match(proposal, { onNone: () => null, onSome: ({ title, hook, why }) => ({ title, hook, why }) })
       })
 

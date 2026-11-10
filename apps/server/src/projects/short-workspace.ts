@@ -205,7 +205,14 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
           voiceId: project.voiceId ?? preset.config.voice.voiceId,
           scriptLimits: limits === undefined
             ? null
-            : { narrationWords: [...limits.narrationWords], reals: [...limits.reals], realsOnlyAtEnd: limits.realsOnlyAtEnd },
+            : {
+              narrationWords: [...limits.narrationWords],
+              reals: [...limits.reals],
+              realsOnlyAtEnd: limits.realsOnlyAtEnd,
+              realSeconds: [...limits.realSeconds],
+              ending: limits.ending === null ? null : { seconds: [...limits.ending.seconds] },
+              wholeSentences: limits.wholeSentences
+            },
           run,
           stages,
           pending,

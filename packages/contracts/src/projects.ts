@@ -83,9 +83,15 @@ export class ProjectsRpcs extends RpcGroup.make(
     success: Project,
     error: Schema.Union([SourceNotFound, PresetNotFound, MusicTrackNotFound, ProjectSourcesInvalid])
   }),
-  // Creates a short from one of the story stage's proposals: its approach, with the proposal's title.
+  // Creates a short from one of the story stage's proposals: its approach, with the proposal's title. `approach`
+  // makes it another way instead (a single-video approach, e.g. "story-recap": the whole story with a long real ending).
   Rpc.make("CreateProjectFromProposal", {
-    payload: { sourceId: SourceId, proposal: Schema.Int, brief: Schema.optionalKey(Schema.NullOr(Schema.String)) },
+    payload: {
+      sourceId: SourceId,
+      proposal: Schema.Int,
+      brief: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      approach: Schema.optionalKey(ApproachName)
+    },
     success: Project,
     error: Schema.Union([SourceNotFound, ProposalNotFound])
   }),
