@@ -55,7 +55,40 @@ export class SoundEffectNotFound extends Schema.TaggedError<SoundEffectNotFound>
   id: SoundEffectId
 }) {}
 
+// A sound effect couldn't be made: `code` "no-key", "http", "response", "limit" (ElevenLabs' own words in `message`).
+export class SoundError extends Schema.TaggedError<SoundError>()("SoundError", {
+  code: Schema.String,
+  message: Schema.String
+}) {}
+
+// The sound-effect generator's limits (ElevenLabs Sound Effects).
+export const SOUND_MIN_S = 0.5
+export const SOUND_MAX_S = 30
+export const SOUND_MAX_TAKES = 4
+
+// What one take is expected to cost in ElevenLabs credits: 40 a second when you set the length, 200 when ElevenLabs
+// picks it (its published rates; the bill it reports is what's recorded).
+export const soundEffectCredits = (durationS: number | null) => durationS === null ? 200 : Math.ceil(durationS * 40)
+
+export const GenerateSoundEffectRequest = Schema.Struct({
+  prompt: Schema.String,
+  category: SoundCategory,
+  // null = ElevenLabs picks the length
+  durationS: Schema.NullOr(Schema.Finite.check(Schema.isBetween({ minimum: SOUND_MIN_S, maximum: SOUND_MAX_S }))),
+  loop: Schema.Boolean,
+  // 0–1: how closely it follows the prompt ("Follow the prompt")
+  promptInfluence: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+  takes: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SOUND_MAX_TAKES })),
+  // the short it was made from, for Settings › Usage (the sound itself goes to the library, not the short)
+  projectId: Schema.NullOr(Schema.String)
+})
+export type GenerateSoundEffectRequest = typeof GenerateSoundEffectRequest.Type
+
 export class SoundLibraryRpcs extends RpcGroup.make(
   Rpc.make("ListSoundEffects", { payload: { category: Schema.NullOr(SoundCategory) }, success: Schema.Array(SoundEffect) }),
-  Rpc.make("GetSoundEffect", { payload: { id: SoundEffectId }, success: SoundEffect, error: SoundEffectNotFound })
+  Rpc.make("GetSoundEffect", { payload: { id: SoundEffectId }, success: SoundEffect, error: SoundEffectNotFound }),
+  // Makes sound effects with ElevenLabs and keeps every take in the sound library (origin Generated).
+  Rpc.make("GenerateSoundEffect", { payload: GenerateSoundEffectRequest.fields, success: Schema.Array(SoundEffect), error: SoundError }),
+  // Removes a sound you made or added, and its file; bundled sounds stay.
+  Rpc.make("DeleteSoundEffect", { payload: { id: SoundEffectId }, success: Schema.Boolean, error: SoundError })
 ) {}

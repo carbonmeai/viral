@@ -101,6 +101,28 @@ export const Voiceover = Schema.Struct({
 })
 export type Voiceover = typeof Voiceover.Type
 
+// Voice design's line: ElevenLabs needs 100–1000 characters for each voice to speak.
+export const DESIGN_TEXT_MIN = 100
+export const DESIGN_TEXT_MAX = 1000
+
+// One voice made from a description, before it's yours: its sample in ~/.viral/voice-previews/.
+export const DesignedVoicePreview = Schema.Struct({
+  // ElevenLabs' id for it; SaveDesignedVoice turns it into a voice of yours
+  previewId: Schema.String,
+  path: Schema.String,
+  durationS: Schema.NullOr(Schema.Finite),
+  language: Schema.NullOr(Schema.String)
+})
+export type DesignedVoicePreview = typeof DesignedVoicePreview.Type
+
+export const DesignedVoices = Schema.Struct({
+  text: Schema.String,
+  previews: Schema.Array(DesignedVoicePreview),
+  // what ElevenLabs billed for the three
+  characters: Schema.Int
+})
+export type DesignedVoices = typeof DesignedVoices.Type
+
 export class VoicesRpcs extends RpcGroup.make(
   Rpc.make("ListVoices", { success: Schema.Array(Voice), error: VoiceError }),
   // ElevenLabs' shared voice library, filtered and paged (free to browse).
@@ -117,6 +139,24 @@ export class VoicesRpcs extends RpcGroup.make(
   Rpc.make("PreviewVoice", {
     payload: { voiceId: Schema.String, text: Schema.NullOr(Schema.String) },
     success: Schema.Struct({ path: Schema.String, characters: Schema.Int }),
+    error: VoiceError
+  }),
+  // Makes three voices from a description, each speaking `text` (ElevenLabs Voice Design; costs characters). Nothing is
+  // added to your account until SaveDesignedVoice.
+  Rpc.make("DesignVoice", {
+    payload: {
+      description: Schema.String,
+      text: Schema.String,
+      // the short it was made from, for Settings › Usage
+      projectId: Schema.NullOr(Schema.String)
+    },
+    success: DesignedVoices,
+    error: VoiceError
+  }),
+  // Keeps one designed voice as yours (uses a voice slot).
+  Rpc.make("SaveDesignedVoice", {
+    payload: { previewId: Schema.String, name: Schema.String, description: Schema.String },
+    success: Voice,
     error: VoiceError
   })
 ) {}

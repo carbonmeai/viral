@@ -1,4 +1,4 @@
-import { type ElevenLabsPlan, type ExploreVoicesQuery, type ExploreVoicesResult, type LibraryVoice, type Voice, VoiceError } from "@viral/contracts"
+import { type ElevenLabsPlan, type ExploreVoicesQuery, type ExploreVoicesResult, type LibraryVoice, soundEffectCredits, type Voice, VoiceError } from "@viral/contracts"
 import { Config, Context, DateTime, Duration, Effect, Exit, Layer, Option, Redacted, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import { Secrets } from "../secrets/secrets.ts"
@@ -67,6 +67,56 @@ export const usdPerCharacter = (sub: typeof SubscriptionResponse.Type): number |
   return monthly / 100 / sub.character_limit
 }
 
+// POST /v1/text-to-voice/design: three voices made from a description, each speaking the same line.
+const DesignResponse = Schema.Struct({
+  previews: Schema.Array(Schema.Struct({
+    audio_base_64: Schema.String,
+    generated_voice_id: Schema.String,
+    media_type: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    duration_secs: Schema.optionalKey(Schema.NullOr(Schema.Finite)),
+    language: Schema.optionalKey(Schema.NullOr(Schema.String))
+  })),
+  text: Schema.optionalKey(Schema.NullOr(Schema.String))
+})
+
+// POST /v1/text-to-voice: the voice it saved.
+const SavedVoiceResponse = Schema.Struct({ voice_id: Schema.String })
+
+// The models behind the generators (Library › Create). Voice design makes voices from a description; sound effects
+// make any sound that isn't speech. ElevenLabs' skill recommends SFX v3 over the API's default v2.
+export const VOICE_DESIGN_MODEL = "eleven_ttv_v3"
+export const SOUND_EFFECT_MODEL = "eleven_text_to_sound_v3"
+
+export interface DesignRequest {
+  readonly description: string
+  // the line each voice speaks: 100–1000 characters
+  readonly text: string
+}
+
+export interface DesignedVoice {
+  // ElevenLabs' id for the preview, which saving turns into a voice of yours
+  readonly generatedVoiceId: string
+  // mp3
+  readonly audio: Uint8Array
+  readonly durationS: number | null
+  readonly language: string | null
+}
+
+export interface SoundRequest {
+  readonly text: string
+  // 0.5–30 s; null = ElevenLabs picks
+  readonly durationS: number | null
+  readonly loop: boolean
+  // 0–1: how closely it follows the prompt
+  readonly promptInfluence: number
+}
+
+// What a billed call reported: the `character-cost` header (characters or credits), else `fallback`.
+const billedOf = (res: HttpClientResponse.HttpClientResponse, fallback: number) => {
+  const billed = Number(res.headers["character-cost"])
+  return Number.isFinite(billed) ? billed : fallback
+}
+
 export interface SpeechRequest {
   readonly voiceId: string
   readonly model: string
@@ -93,6 +143,12 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
   remove(voiceId: string): Effect.Effect<boolean, VoiceError>
   // the plan's characters used and left this period, read-only; kept for a minute (a few seconds when unavailable)
   readonly plan: Effect.Effect<ElevenLabsPlan>
+  // three voices made from a description, as previews: nothing is added to your account
+  design(request: DesignRequest): Effect.Effect<{ readonly text: string; readonly previews: ReadonlyArray<DesignedVoice>; readonly characters: number }, VoiceError>
+  // keeps one designed preview as a voice of yours (uses a voice slot; code "limit" when none is left)
+  saveDesigned(generatedVoiceId: string, name: string, description: string): Effect.Effect<Voice, VoiceError>
+  // a sound effect from a description (mp3), and the characters or credits it billed
+  soundEffect(request: SoundRequest): Effect.Effect<Speech, VoiceError>
 }>()("@viral/server/voice/eleven-labs/ElevenLabs") {
   static readonly layer = Layer.effect(
     ElevenLabs,
@@ -261,7 +317,59 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
         (exit: Exit.Exit<ElevenLabsPlan>) => Exit.isSuccess(exit) && exit.value._tag === "Plan" ? Duration.minutes(1) : Duration.seconds(5)
       )
 
-      return ElevenLabs.of({ voices, speak, explore, addShared, remove, plan })
+      // Generators can take a while (three voices, a long sound), so they get longer than the other calls.
+      const generate = Effect.fn("ElevenLabs.generate")(function*(request: HttpClientRequest.HttpClientRequest) {
+        const res = yield* client.execute(request.pipe(HttpClientRequest.setHeader("xi-api-key", yield* key))).pipe(
+          Effect.timeout(Duration.minutes(3)),
+          Effect.mapError(fail("http"))
+        )
+        if (res.status >= 200 && res.status < 300) return res
+        return yield* refused(res)
+      })
+
+      const design = Effect.fn("ElevenLabs.design")(function*(request: DesignRequest) {
+        const res = yield* generate(HttpClientRequest.post(`${api}/v1/text-to-voice/design`).pipe(
+          HttpClientRequest.setUrlParam("output_format", "mp3_44100_128"),
+          HttpClientRequest.bodyJsonUnsafe({ voice_description: request.description, model_id: VOICE_DESIGN_MODEL, text: request.text })
+        ))
+        const decoded = yield* res.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(DesignResponse)), Effect.mapError(fail("response")))
+        return {
+          text: decoded.text ?? request.text,
+          previews: decoded.previews.map((p): DesignedVoice => ({
+            generatedVoiceId: p.generated_voice_id,
+            audio: Uint8Array.from(Buffer.from(p.audio_base_64, "base64")),
+            durationS: p.duration_secs ?? null,
+            language: p.language ?? null
+          })),
+          characters: billedOf(res, request.text.length)
+        }
+      })
+
+      const saveDesigned = Effect.fn("ElevenLabs.saveDesigned")(function*(generatedVoiceId: string, name: string, description: string) {
+        const res = yield* call(HttpClientRequest.post(`${api}/v1/text-to-voice`).pipe(
+          HttpClientRequest.bodyJsonUnsafe({ voice_name: name, voice_description: description, generated_voice_id: generatedVoiceId })
+        ))
+        const saved = yield* res.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(SavedVoiceResponse)), Effect.mapError(fail("response")))
+        const voice = (yield* voices).find((v) => v.voiceId === saved.voice_id)
+        return voice ?? { voiceId: saved.voice_id, name, category: "generated", description, labels: {}, previewUrl: null }
+      })
+
+      const soundEffect = Effect.fn("ElevenLabs.soundEffect")(function*(request: SoundRequest) {
+        const res = yield* generate(HttpClientRequest.post(`${api}/v1/sound-generation`).pipe(
+          HttpClientRequest.setUrlParam("output_format", "mp3_44100_128"),
+          HttpClientRequest.bodyJsonUnsafe({
+            text: request.text,
+            model_id: SOUND_EFFECT_MODEL,
+            duration_seconds: request.durationS,
+            prompt_influence: request.promptInfluence,
+            loop: request.loop
+          })
+        ))
+        const audio = new Uint8Array(yield* res.arrayBuffer.pipe(Effect.mapError(fail("http"))))
+        return { audio, characters: billedOf(res, soundEffectCredits(request.durationS)) }
+      })
+
+      return ElevenLabs.of({ voices, speak, explore, addShared, remove, plan, design, saveDesigned, soundEffect })
     })
   ).pipe(Layer.provide([Secrets.layer, FetchHttpClient.layer]))
 
@@ -279,6 +387,9 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
       plan: Effect.succeed({ _tag: "Unavailable", reason: "failed", message: "no ElevenLabs in this test" }),
       speak: Effect.fn("ElevenLabs.replay")((request: SpeechRequest) =>
         Effect.sync(() => ({ audio: answer(request), characters: request.text.length }))
-      )
+      ),
+      design: Effect.fn("ElevenLabs.replay.design")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" }))),
+      saveDesigned: Effect.fn("ElevenLabs.replay.saveDesigned")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" }))),
+      soundEffect: Effect.fn("ElevenLabs.replay.soundEffect")(() => Effect.fail(new VoiceError({ code: "http", message: "no ElevenLabs in this test" })))
     }))
 }
