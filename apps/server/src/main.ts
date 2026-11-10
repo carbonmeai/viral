@@ -24,6 +24,7 @@ import { ProjectsRpcLive } from "./projects/projects-rpc.ts"
 import { References } from "./references/references.ts"
 import { ReferencesRpcLive } from "./references/references-rpc.ts"
 import { PipelineStagesLive } from "./runs/pipeline-stages.ts"
+import { GatewayImages } from "./thumbnail/thumbnail-images.ts"
 import { RunManager } from "./runs/run-manager.ts"
 import { RunStore } from "./runs/run-store.ts"
 import { RunsRpcLive } from "./runs/runs-rpc.ts"
@@ -74,6 +75,8 @@ const DomainsLive = Layer.mergeAll(
   References.layer,
   RunStore.layer,
   ElevenLabs.layer,
+  // the AI Gateway may make thumbnails in the app (off in tests)
+  Layer.succeed(GatewayImages, { enabled: true }),
   VoicePreviews.layer,
   Transcriber.layer,
   ViralHome.layer,

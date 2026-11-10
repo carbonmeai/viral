@@ -420,7 +420,14 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
             quality: request.quality,
             images: request.images.map((i) => ({ type: "inline_base64", content_base64: Buffer.from(i.data).toString("base64"), mime_type: i.mimeType }))
           })
-        ))
+        )).pipe(
+          // the Image & Video API needs a Pro plan or above
+          Effect.mapError((error) =>
+            /\(402\)/.test(error.message)
+              ? new VoiceError({ code: "plan", message: "Your ElevenLabs plan can't make images (its Image & Video API needs Pro or above)." })
+              : error
+          )
+        )
         const credits = Number(res.headers["character-cost"])
         let generation = yield* readGeneration(res)
         // asked about every couple of seconds until it's done or failed

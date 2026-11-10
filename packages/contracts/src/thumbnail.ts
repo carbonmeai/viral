@@ -71,7 +71,8 @@ export type ProposedThumbnail = typeof ProposedThumbnail.Type
 // huge outlined words, the hero made dramatic with an escalation row, and the real reactions side by side. The agent
 // picks the frames and writes the bands; the server extracts the frames, builds the prompt and asks for three options.
 
-// The image model and its settings, as the skill made the approved thumbnail (ElevenLabs' Image & Video API).
+// The image model and its settings, as the skill made the approved thumbnail (ElevenLabs' Image & Video API; the AI
+// Gateway serves the same model as openai/gpt-image-2.5-sunburst).
 export const THUMBNAIL_IMAGE_MODEL = "gpt-image-2.5-sunburst"
 export const THUMBNAIL_OPTIONS = 3
 // What one 9:16 2K "high" image cost in ElevenLabs credits when the skill made the approved thumbnail (~1,245 credits,
@@ -145,8 +146,12 @@ export const GeneratedThumbnail = Schema.Struct({
   options: Schema.Array(ThumbnailOption),
   recommended: Schema.NullOr(Schema.Int),
   chosen: Schema.NullOr(Schema.Int),
-  // the round's credits (estimated: completed images only; failed ones aren't charged)
+  // the round's ElevenLabs credits (estimated: completed images only; failed ones aren't charged); 0 on the Gateway
   credits: Schema.Finite,
+  // who made the images: ElevenLabs' Image & Video API, or the AI Gateway (the same model) when ElevenLabs' plan can't
+  service: Schema.optionalKey(Schema.Literals(["elevenlabs", "ai-gateway"])),
+  // what the Gateway reported the round cost, in dollars (ElevenLabs bills credits instead)
+  costUsd: Schema.optionalKey(Schema.Finite),
   // why the faces weren't sent (a real public figure), when they weren't
   heldBack: Schema.optionalKey(Schema.NullOr(Schema.String))
 })
