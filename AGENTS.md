@@ -45,11 +45,15 @@ apps/server/src/
                        video set (~/.viral/sets/<id>/), a project, a reference)
   transcribe/          word-timed transcripts: Grok STT (xAI key) or local mlx-whisper on Apple Silicon
                        (transcripts.ts reads a source's transcript for planning stages; quote-match.ts snaps
-                       an agent's quoted line to the transcript's exact word timings)
+                       an agent's quoted line to the transcript's exact word timings; sentences.ts is the skill's
+                       speech.py: a word ending . ? ! … or a pause over 1.5 s ends a sentence, a "sentence" over 25 s
+                       means no punctuation and is ignored. Nobody in a short is cut off mid-sentence: rankings' shots,
+                       real lines and cut-down sections all snap with it)
   contact-sheet/       timestamped frame grids for picking b-roll by eye
   ads/                 the ads stage (Haiku): sponsor reads, ads, intros and end screens to keep out of shorts
-  story/               the story stage: story beats with snapped quotes + 3 proposals (one per approach), each
-                       of which `Projects.fromProposal` turns into a short
+  story/               the story stage: story beats with snapped quotes + 3 proposals (the three approaches that fit
+                       best, each a different one), each of which `Projects.fromProposal` turns into a short, as it
+                       is or as another single-video approach ("Make this short" › Story recap; CLI `--as`)
   video-sets/          video sets: 2–10 videos (source_set_members, V1 first) with a required brief, named from the
                        brief unless you name it; VideoSets (create, list, rename, delete only while no short came
                        from it) and GetVideoSetOverview (each video's read state and latest run, the set run, the
@@ -223,7 +227,10 @@ apps/server/src/
                        first in the script, shots, sections, thumbnail and metadata prompts (creator-brief.ts)
   presets/             style profiles; one default, seeded on first start. Built-ins (added by name when missing, never
                        overwritten, so a change reaches new libraries only): Viral recap (the default) and Headline
-                       full-bleed narrated by Marcus, Fast hype with Adam. Edits (UpdatePreset) and renames
+                       full-bleed narrated by Marcus, Fast hype with Adam, Story recap (Viral recap with band 1280,
+                       captions 0.78, softJoins and voiceLevel −10 LUFS / 1.7). Two opt-ins, absent = as before:
+                       `softJoins` (assemble writes soft_joins + insert_pad 0.25) and `voiceLevel` (the voice stage
+                       loudnorms the take, assemble writes voice_gain). Edits (UpdatePreset) and renames
                        (RenamePreset) go through preset-rules.ts first; a bad one is PresetInvalid with plain problems
   music-library/       tracks (uploaded, imported from a link, or bundled) with origin and rights, in ~/.viral/music/;
                        each is a full song or an already edited clip (kind; SetMusicTrackKind). AddMusicFolder adds
@@ -258,10 +265,17 @@ apps/server/src/
                        chip's action as it is. change-lines.ts holds the card helpers; each domain owns its
                        *-changes.ts (script, shots, sections, moments/ranking, thumbnail, metadata, music-bed)
   script/              the script stage: prompt (built on the chosen proposal's angle), per-approach rules, and
-                       the script gate. Several videos: the set proposal's angle and beats (video-sets/short-story.ts;
+                       the script gate. SCRIPT_LIMITS per approach: words, real lines, each real line's seconds
+                       (0.8–8), whole sentences (every narrated approach: a quote widens to the sentences it's in; one
+                       too long to play whole is a problem), and story-recap's `ending` (150–220 words, 5–8 real lines
+                       plus the payoff as one 10–25 s take; real lines at the end less than 3 s apart merge into it).
+                       A Narration beat can be `skipped`: voiced in the take, jumped over in the short because the real
+                       line just before it says it (placeReals gives that insert a resumeWord; the creator toggles it
+                       at the gate without a new take). Several videos: the set proposal's angle and beats (video-sets/short-story.ts;
                        else each video's own story beats), every video's transcript, real lines checked per video
   voice/               ElevenLabs (voices, text to speech) + the voice stage: one take of the narration, leading
-                       silence trimmed, atempo to the preset's words/sec, local-Whisper word timings, voice gate.
+                       silence trimmed, atempo to the preset's words/sec (+ loudnorm to the style's voiceLevel),
+                       local-Whisper word timings, voice gate.
                        The voice is the project's (`project voice`) or the preset's; ListVoices / PreviewVoice.
                        Library › Voices: Explore ElevenLabs' shared library (ExploreVoices; Narration first), add one
                        (AddLibraryVoice; a full plan's voice slots fail as code "limit"), RemoveVoice (never premade).
@@ -271,7 +285,7 @@ apps/server/src/
                        Tests run against a fake HTTP server via ELEVENLABS_API_URL — never add voices to a real account
   sections/            the sections stage (cut-down shorts): an agent picks the creator's best stretches of
                        speech by story beat, hook first (`contact_sheet`, `preview_sections`); the server snaps
-                       them to the nearest whole words, checks length/order/overlaps/excluded ranges, and draws a
+                       them to whole sentences (stretch ≤4 s back / 8 s on, else move inward), then whole words, checks length/order/overlaps/excluded ranges, and draws a
                        storyboard with a frame per section. A cut-down run is sections → assemble → render → metadata.
                        A short from several videos: the agent sees every video (V1, V2… labels, whole transcripts or
                        outlines + `search_transcript`/`read_transcript`), answers with each section's `video` (V number;
@@ -295,6 +309,8 @@ apps/server/src/
   shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
                        asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
                        script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate.
+                       After an insert whose next line is skipped, the narration resumes on the word after it: a shot
+                       must start there, none in the skipped words.
                        Several videos: each video's sheets, ads and transcript; `contact_sheet {video}`; each shot
                        names its video; storyboard tiles carry their own video and a V label.
                        Frames are always kept one image per file (contact sheets: frames/frame_NNNNN.jpg;
@@ -374,7 +390,9 @@ apps/server/src/
                        render-narrated.py is the viral-shorts renderer;
                        music_bed.py is its music-bed math, shared with fit-music.py,
                        ported with JSON-line reporting, plus approach/style features: inserts, full-bleed,
-                       headline, chunk/quote captions, labels, credit). render-narrated.py plays each clip from its
+                       headline, chunk/quote captions, labels, credit; and the skill's 10 Nov joins as opt-in keys:
+                       an insert's `resume_word`, `insert_pad`, `soft_joins` (fades: clips 0.06/0.15 s, narration
+                       pieces 0.04/0.12 s); without them the original code path runs). render-narrated.py plays each clip from its
                        own video (`source` index into [source, ...sources]) and checks it against that video's ranges;
                        render-narrated-videos.test.ts renders two generated videos and checks colour and pitch.
                        render-ranking.py is the skill's final ranking style (title with a red accent, the numbered list
@@ -409,8 +427,8 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        /?status=waiting (home-search.ts); /waiting and /videos/new redirect to Home.
                        videos/: a video's page (GetSourceOverview; the source run followed live
                        by folding SubscribeRun in run-progress.ts); frames come from contact-sheet stills, or from
-                       sheet tiles on older sheets. "Make this short" asks for the optional brief first
-                       (make-short-dialog.tsx). research/: while a research set has no videos
+                       sheet tiles on older sheets. "Make this short" asks for the optional brief first and offers
+                       "As suggested" / "Story recap" (VIDEO_APPROACHES; make-short-dialog.tsx). research/: while a research set has no videos
                        (or a replacement waits) its page is the shortlist (shortlist-view.tsx: grey rows while it
                        searches; then remove, ⋯ ask for another (backups first), earlier/later, add a link
                        (LookupShortlistVideo), ask for a new list, undo; a changed list goes through
@@ -512,8 +530,8 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        the round's cost before Generate); a basic thumbnail in a phone frame, its moments (each with
                        its video's dot and short name), and word edits checked with CheckThumbnailEdit.
                        sections/: the Sections step of a cut-down short (preview or storyboard of the sections in
-                       order, each playable from its own video; inspector: words, beat, start/end snapped to that
-                       video's words, framing, order, remove, add a line found in any video; edits checked with
+                       order, each playable from its own video; inspector: words, beat, start/end stepped a whole
+                       sentence at a time (nudgeSentence; words where the transcript has no punctuation), framing, order, remove, add a line found in any video; edits checked with
                        CheckSectionsEdit). Several videos: each section carries its video's dot + short name and sits
                        in its video's lane on the timeline
                        ranking/: the Ranking step of a ranking short (Ranking → Render → Publish → Thumbnail): the stage
@@ -525,8 +543,13 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        order and title in Detailed; every change goes through CheckRankingEdit (snapped to whole
                        sentences) and answers the gate as one Edit. The Render step shows a ranking's checks
                        (loudness, black frames, each shot's first/last frame) and sends back to Ranking.
-                       make-short-dialog.tsx can offer "As suggested" / "Ranking" (SET_APPROACHES) and passes the choice
-                       to onMake; the Styles editor has the "Ranking credit" switch (rankingVia)
+                       make-short-dialog.tsx can offer "As suggested" / "Ranking" / "Story recap" (SET_APPROACHES) and
+                       passes the choice to onMake; the Styles editor has the "Ranking credit" switch (rankingVia) and,
+                       under Voice, "Level with the clips" (voiceLevel) and "Soft joins" (softJoins).
+                       Script step: a skipped line shows "skipped, the real line says it" and toggles with "Let the real
+                       line say it" / "Narrator says it" at the gate; the Rules view has a payoff-take meter for
+                       story-recap. editor-values.ts lays a skipped line out as a jump (a pause's `skip`) and a soft-joins
+                       style's breath before each clip, as the renderer plays them
                        library/: Styles (cards with a CSS 9:16 preview of each style; the editor at ?edit=<id>, whose
                        Voice group holds the style's voice and pace), Music (songs with a decoded waveform and drop,
                        kind and rights, add songs or a folder; "Used by" opens each short's editor) and Voices (free
