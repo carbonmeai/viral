@@ -41,7 +41,7 @@ export function AccountsPage() {
               </SettingsGroup>
               <SettingsGroup
                 title="Model keys"
-                description="Only the AI Gateway runs agent steps today. The others can be added and tested now; choosing their models in Agents comes next."
+                description="Each key runs agent steps on its models; pick them per step in Agents. Steps that look at images stay on the Claude CLI for now."
               >
                 {keyRows(MODEL_KEYS)}
               </SettingsGroup>

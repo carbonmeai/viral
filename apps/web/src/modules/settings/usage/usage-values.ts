@@ -21,11 +21,22 @@ export const dayLabel = (day: string) => {
 // Names for the providers that ran things.
 const PROVIDER_LABELS: Record<string, string> = {
   "claude-cli": "Claude CLI",
+  codex: "Codex",
+  opencode: "OpenCode",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google Gemini",
+  openrouter: "OpenRouter",
   "ai-gateway": "AI Gateway",
   elevenlabs: "ElevenLabs",
   unknown: "Before tracking"
 }
 export const providerLabel = (provider: string | null) => PROVIDER_LABELS[provider ?? "unknown"] ?? provider ?? "Before tracking"
+
+// A model's cost as the page shows it: "price unknown" for a model Viral has no price for (never $0), and "~" before
+// a cost estimated from tokens at Viral's prices (Anthropic, OpenAI and Google report tokens, not dollars).
+export const modelCostText = (usd: number, basis: "reported" | "estimate" | "unknown" | null) =>
+  basis === "unknown" ? (usd > 0 ? `${formatUsd(usd)} + price unknown` : "price unknown") : basis === "estimate" ? `~${formatUsd(usd)}` : formatUsd(usd)
 
 // What a cost is: real money, or what a CLI plan covered.
 export const billingLabel = (billing: "billed" | "subscription" | null) =>

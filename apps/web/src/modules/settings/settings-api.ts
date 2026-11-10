@@ -1,4 +1,4 @@
-import type { KeyName } from "@viral/contracts"
+import type { KeyName, KeyProvider } from "@viral/contracts"
 import { Effect } from "effect"
 import { Atom, Reactivity } from "effect/reactivity"
 import { ViralClient } from "../../api/client.ts"
@@ -8,6 +8,8 @@ export const accountsAtom = ViralClient.query("GetAccounts", undefined, { reacti
 export const cliModelsAtom = ViralClient.query("GetCliModels", undefined, { reactivityKeys: ["accounts"] })
 export const appSettingsAtom = ViralClient.query("GetSettings", undefined, { reactivityKeys: ["settings"] })
 export const storageAtom = ViralClient.query("GetStorage", undefined, { reactivityKeys: ["storage"] })
+// the models a key can use, from the vendor's own list (the server keeps it for a day); refreshed with Accounts
+export const keyModelsAtom = Atom.family((provider: KeyProvider) => ViralClient.query("ListKeyModels", { provider }, { reactivityKeys: ["accounts"] }))
 export const modelEvalsAtom = ViralClient.query("GetModelEvals", undefined, { reactivityKeys: ["evals"] })
 export const usageAtom = Atom.family((days: number) => ViralClient.query("GetUsage", { days }, { reactivityKeys: ["usage"] }))
 // the ElevenLabs plan's characters left; the server keeps ElevenLabs' answer for a minute

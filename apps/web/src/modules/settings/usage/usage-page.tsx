@@ -23,6 +23,7 @@ import {
   formatCount,
   formatExact,
   formatUsd,
+  modelCostText,
   planMeter,
   planUnavailableText,
   providerLabel,
@@ -66,7 +67,13 @@ function UsageContent({ usage }: { readonly usage: Usage }) {
           icon={<CreditCard />}
           label="Billed"
           value={formatUsd(billing.billedUsd)}
-          sub={billing.unknownUsd > 0 ? `+ ${formatUsd(billing.unknownUsd)} from before tracking` : "API keys and the AI Gateway"}
+          sub={billing.unknownUsd > 0
+            ? `+ ${formatUsd(billing.unknownUsd)} from before tracking`
+            : totals.unpricedRuns > 0
+            ? `+ ${totals.unpricedRuns} ${totals.unpricedRuns === 1 ? "run" : "runs"} with price unknown`
+            : totals.estimatedUsd > 0
+            ? `incl. ~${formatUsd(totals.estimatedUsd)} estimated from tokens`
+            : "your API keys"}
         />
         <Stat icon={<DollarSign />} label="Plan value" value={formatUsd(billing.subscriptionUsd)} sub="what your Claude plan covered" />
         <Stat
@@ -98,7 +105,9 @@ function UsageContent({ usage }: { readonly usage: Usage }) {
                 sub={[providerLabel(m.provider), `${m.runs} ${m.runs === 1 ? "run" : "runs"}`, m.inputTokens > 0 ? `${formatCount(m.inputTokens)} in · ${formatCount(m.outputTokens)} out` : null]
                   .filter(Boolean).join(" · ")}
               />
-              <span className="tabular-nums">{formatUsd(m.costUsd)}</span>
+              <span className="tabular-nums" title={m.costBasis === "estimate" ? "Estimated from tokens at list prices" : undefined}>
+                {modelCostText(m.costUsd, m.costBasis)}
+              </span>
             </Row>
           ))}
         </Panel>

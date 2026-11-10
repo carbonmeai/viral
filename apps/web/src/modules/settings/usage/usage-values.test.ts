@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { barHeights, billingLabel, dayLabel, estimateUsd, formatCount, formatExact, formatUsd, planMeter, planUnavailableText, providerLabel, ttsModelLabel } from "./usage-values.ts"
+import { barHeights, billingLabel, dayLabel, estimateUsd, formatCount, formatExact, formatUsd, modelCostText, planMeter, planUnavailableText, providerLabel, ttsModelLabel } from "./usage-values.ts"
 
 test("usage numbers read the way people say them", () => {
   assert.equal(formatUsd(0), "$0")
@@ -33,4 +33,12 @@ test("the ElevenLabs plan reads as characters used and left, and a price only wh
   assert.match(planUnavailableText("no-permission"), /User › Read/)
   assert.equal(ttsModelLabel("eleven_v4"), "Eleven v4")
   assert.equal(ttsModelLabel("eleven_multilingual_v2"), "Eleven Multilingual v2")
+})
+
+test("direct-key costs: an estimate is marked, a missing price is said, never $0", () => {
+  assert.equal(modelCostText(2.5, "reported"), "$2.50")
+  assert.equal(modelCostText(2.5, "estimate"), "~$2.50")
+  assert.equal(modelCostText(0, "unknown"), "price unknown")
+  assert.equal(modelCostText(1, "unknown"), "$1.00 + price unknown")
+  assert.equal(providerLabel("openrouter"), "OpenRouter")
 })
