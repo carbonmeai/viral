@@ -183,7 +183,7 @@ test("a short from two videos: the agent sees both, each real line is checked in
   assert.match(briefs[0]!, /V2 "/)
   assert.match(briefs[0]!, /\[V2 5\.0–6\.0\] Pure citric acid\./, "V2's lines are labelled with their video")
   assert.match(briefs[0]!, /Excluded ranges in V2.*49–55s/)
-  assert.deepEqual(tools[0], [], "short transcripts come whole, so no transcript tools")
+  assert.deepEqual(tools[0], ["tell_creator"], "short transcripts come whole, so no transcript tools")
   assert.match(briefs[1]!, /"so nasty" isn't in V2's transcript near 300\.0s/)
   assert.match(briefs[1]!, /"buy our gum" is inside an ad or sponsor read \(49–55s\)/)
 

@@ -113,7 +113,7 @@ test("the thumbnail stage fixes a rejected draft, takes an edit, and publishes t
 
   assert.equal(asked.length, 2, "the agent was asked to fix its draft")
   assert.match(asked[1]!.message, /the hero at 2\.0s is inside an excluded range/)
-  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_thumbnail"])
+  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_thumbnail", "tell_creator"])
   assert.deepEqual(thumbnails.drafted.config.hero.box, [32, 18, 288, 162], "fraction crops became pixels of the 320×180 video")
   assert.equal(thumbnails.latest.proposal, null, "the edit is recorded as your config")
   assert.equal(thumbnails.latest.config.lines[0]?.text, "8 TASTES")

@@ -132,6 +132,9 @@ const run = Effect.gen(function*() {
     budgetUsd,
     billing: (provider) => evalBilling(provider, billed),
     maxSubscriptionRuns: planRuns,
+    // the agent's words to the creator (its tell_creator call), so a report can say how often agents used it
+    onProgress: (stage, model, message) =>
+      message.startsWith("told the creator: ") ? Console.log(`    ${stage} ${model}: ${message}`) : Effect.void,
     onResult: (r, spent) =>
       records.record(evalId, r, r.billing, createdAt).pipe(Effect.andThen(Console.log(
         `  run ${r.run} ${r.stage.padEnd(8)} ${r.model.padEnd(28)} ${r.status.padEnd(7)} ` +

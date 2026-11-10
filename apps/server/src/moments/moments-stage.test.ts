@@ -158,7 +158,7 @@ test("the moments stage ranks the videos, snaps and checks the shots, catches dr
   }))
 
   assert.equal(asked.length, 3)
-  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_moments"])
+  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_moments", "tell_creator"], "a short's agent can speak to you in its chat")
   assert.match(asked[0]!.message, /\[V1 1\.0–2\.9\] Here is sentence 0\./, "the brief lists whole sentences")
   assert.match(asked[1]!.message, /#1 plays last/)
   assert.match(asked[2]!.message, /#3 shot 3 \(after, V3 28\.2–35\.6s\): its first and last frames look like different scenes/)

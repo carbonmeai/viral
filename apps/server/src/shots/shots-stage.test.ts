@@ -125,7 +125,7 @@ test("the shots stage places the real lines, fixes a rejected plan, and draws a 
   assert.equal(asked.length, 2)
   assert.match(asked[0]!.message, /REAL after word 3 "it\.": "Ow, that hurts\."/)
   assert.match(asked[1]!.message, /start a new shot on word 4 "It", where the narration resumes/)
-  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_shots"])
+  assert.deepEqual(asked[0]!.tools?.map((t) => t.name), ["contact_sheet", "preview_shots", "tell_creator"])
 
   const { plan, storyboard } = await rt.runPromise(Effect.gen(function*() {
     const artifacts = yield* Artifacts
