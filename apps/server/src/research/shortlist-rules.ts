@@ -4,6 +4,8 @@ import {
   MAX_SHORTLIST_VIDEOS,
   MIN_SHORTLIST_VIDEOS,
   type ProposedShortlist,
+  RANKING_MIN_VIEWS,
+  RANKING_VIDEO_SECONDS,
   type Shortlist,
   type ShortlistVideo,
   youTubeId,
@@ -24,12 +26,48 @@ export interface ShortlistContext {
   // replacing one spot of an approved list: the list as it was and the id being replaced; every other video keeps
   // its place
   readonly replacing: { readonly previous: Shortlist; readonly videoId: string } | null
+  // the idea reads as a ranking: every pick is vetted by the skill's ranking rules (rankingProblems)
+  readonly ranking?: boolean
 }
+
+const COMPILATION = /\b(compilations?|top \d+|\d+ (best|most|craziest|amazing|incredible)|best of|part \d+|episode \d+|ep\.? ?\d+)\b/i
+// the words someone says in a caption excerpt ("[0:42] text" lines), without the times, [Music]-style tags and notes
+const spokenWords = (captions: string) =>
+  captions.replace(/\[[^\]]*\]/g, " ").replace(/[♪♫]/g, " ").replace(/\(captions continue\)/g, " ").split(/\s+/).filter((w) => /\p{L}/u.test(w)).length
+// fewer spoken words than this in a caption excerpt means no one tells the story (music, a title card or two)
+const MIN_SPOKEN_WORDS = 15
+
+type Found = VideoFound | VideoDetails
+
+// What makes a video wrong for a ranking (the skill's vetting): a compilation (more than one subject), outside 1–6
+// minutes, captions with no one talking (or not read), and, when enough of the videos found clear it, under a million
+// views. `viewsCount`: whether to hold the pick to the views rule (the research found enough videos over a million).
+export const rankingProblems = (video: Found, viewsCount: boolean): ReadonlyArray<string> => {
+  const problems: Array<string> = []
+  if (COMPILATION.test(video.title)) problems.push("looks like a compilation; a ranking's video is about one subject")
+  const [min, max] = RANKING_VIDEO_SECONDS
+  if (video.durationS !== null && (video.durationS < min || video.durationS > max)) {
+    problems.push(`is ${clock(video.durationS)} long; a ranking's videos are ${min / 60}–${max / 60} minutes`)
+  }
+  if (viewsCount && video.views !== null && video.views < RANKING_MIN_VIEWS) {
+    problems.push(`has ${video.views.toLocaleString("en-US")} views; a ranking's videos have over a million (The Dodo, We Love Animals, Hope For Paws)`)
+  }
+  const captions = "description" in video ? video.captions : null
+  if ("description" in video && (captions === null || spokenWords(captions) < MIN_SPOKEN_WORDS)) {
+    problems.push("has no one telling the story in its captions (only music, or no captions); a narrated ranking needs real interview lines")
+  }
+  return problems
+}
+
+// A video that clears every ranking rule but the views one, and has over a million: enough of them in what the research
+// found means the views rule can be met.
+const clearsRanking = (video: Found) => rankingProblems(video, true).length === 0
 
 const named = (v: { readonly title: string }) => `"${v.title}"`
 
 // Checks the research agent's list against what YouTube said: every video was found and can be looked up, isn't a
 // live stream, is at most 20 minutes long and is on the list once (the same video under two links counts as one);
+// for a ranking idea, every pick also clears the skill's vetting (rankingProblems; backups aren't held to it);
 // exactly the number of videos asked for, and at most 3 backups. When replacing one spot, the other videos stay as
 // they were and the replaced one doesn't come back. The value is the shortlist with each video's details filled
 // in from YouTube's answers, not the agent's memory.
@@ -38,6 +76,8 @@ export const checkShortlist = (proposed: ProposedShortlist, context: ShortlistCo
   const seen = new Map<string, string>()
   const previous = context.replacing?.previous ?? null
   const keep = new Map((previous?.picks ?? []).map((p) => [p.videoId, p]))
+  // the views rule holds only when the research found enough videos that clear every ranking rule with it
+  const viewsCount = context.ranking === true && [...context.videos.values()].filter(clearsRanking).length >= context.count
 
   const resolve = (pick: ProposedShortlist["picks"][number], where: string): ShortlistVideo | null => {
     const id = youTubeId(pick.video)
@@ -64,6 +104,9 @@ export const checkShortlist = (proposed: ProposedShortlist, context: ShortlistCo
     }
     if (context.replacing !== null && id === context.replacing.videoId) {
       problems.push(`${where}: ${name} is the video being replaced; pick a different one`)
+    }
+    if (context.ranking === true && where.startsWith("pick")) {
+      for (const problem of rankingProblems(video, viewsCount)) problems.push(`${where}: ${name} ${problem}; pick another`)
     }
     const details = "description" in video ? video : null
     return {

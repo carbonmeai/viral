@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node"
 import {
   type Artifact,
   type GatePayload,
+  looksLikeRanking,
   type ProposedShortlist,
   Shortlist,
   type SourceSetId,
@@ -46,13 +47,15 @@ export class ResearchStage extends Context.Service<ResearchStage, {
 
       // Looks up, one at a time, every video on the proposed list that only a search has seen (so its length, live
       // state and existence are YouTube's answer) and any id the agent knows from an earlier conversation.
-      const verify = (proposed: ProposedShortlist, catalog: ResearchCatalog) =>
-        Effect.forEach([...proposed.picks, ...proposed.backups], (pick) => {
+      // every pick and backup looked up (a ranking's picks with their captions, for the interview-lines rule)
+      const verify = (proposed: ProposedShortlist, catalog: ResearchCatalog, ranking: boolean) =>
+        Effect.forEach([...proposed.picks.map((p) => ({ p, pick: true })), ...proposed.backups.map((p) => ({ p, pick: false }))], ({ p: pick, pick: isPick }) => {
           const id = youTubeId(pick.video)
           if (id === null || catalog.unavailable.has(id) || catalog.blocked !== null) return Effect.void
           const known = catalog.videos.get(id)
-          if (known !== undefined && isDetails(known)) return Effect.void
-          return youtube.details(id, { captions: false }).pipe(
+          const captions = ranking && isPick
+          if (known !== undefined && isDetails(known) && (!captions || known.captions !== null)) return Effect.void
+          return youtube.details(id, { captions }).pipe(
             Effect.tap((details) => Effect.sync(() => void catalog.videos.set(id, details))),
             Effect.catchTag("YouTubeError", (error) =>
               Effect.sync(() => {
@@ -91,7 +94,7 @@ export class ResearchStage extends Context.Service<ResearchStage, {
           ctx,
           researchTask({ research, tools: researchTools(youtube, catalog, (message) => ctx.progress(null, message)), replacing }),
           (proposed) =>
-            verify(proposed, catalog).pipe(
+            verify(proposed, catalog, looksLikeRanking(research.idea)).pipe(
               Effect.map(() =>
                 checkShortlist(proposed, {
                   count: replacing === null ? research.videos : replacing.previous.picks.length,
@@ -99,6 +102,7 @@ export class ResearchStage extends Context.Service<ResearchStage, {
                   unavailable: catalog.unavailable,
                   searches: catalog.searches,
                   idea: research.idea,
+                  ranking: looksLikeRanking(research.idea),
                   replacing: replacing === null ? null : { previous: replacing.previous, videoId: replacing.videoId }
                 })
               )

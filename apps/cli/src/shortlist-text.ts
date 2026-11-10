@@ -21,6 +21,6 @@ export const describeShortlist = (list: Shortlist) => {
     list.backups.length === 0 ? "" : "  Backups (downloaded only if needed):",
     ...list.backups.map((v, i) => row(v, i, "b")),
     "  These videos belong to their channels and can draw Content ID claims — more likely for a ranking, which plays",
-    "  each video's own sound. Each channel is kept for the credits."
+    "  every video. Each channel is kept for the credits."
   ].filter((line) => line !== "").join("\n") + "\n"
 }

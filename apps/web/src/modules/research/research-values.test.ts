@@ -37,9 +37,10 @@ test("New › From an idea: rankings start at Up to 3 min, with an estimate unde
   assert.equal(defaultLength("Top 10 animal rescue comebacks"), "180")
   assert.equal(defaultLength("The most dramatic bridge demolitions, ranked"), "180")
   assert.equal(defaultLength("Heidi Klum's Halloween costumes over the years"), "60")
-  assert.equal(estimateLine(10, "180"), "10 videos as a ranking ≈ 2:40")
-  assert.equal(estimateLine(5, "60"), "5 videos as a ranking ≈ 1:25, so in 60s each video gets only a moment or two")
-  assert.equal(estimateLine(3, "any"), "3 videos as a ranking ≈ 0:55")
+  assert.equal(estimateLine(5, "180"), "5 videos as a narrated ranking ≈ 2:12")
+  assert.equal(estimateLine(10, "180"), "10 videos as a narrated ranking ≈ 4:02, over the 3-minute Shorts limit")
+  assert.equal(estimateLine(5, "60"), "5 videos as a narrated ranking ≈ 2:12, so in 60s each video gets only a moment or two")
+  assert.equal(estimateLine(3, "any"), "3 videos as a narrated ranking ≈ 1:28")
 })
 
 test("a row reads channel · length · views, the upload date in Detailed, and the moments as guesses", () => {

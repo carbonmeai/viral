@@ -66,8 +66,9 @@ const replay = AgentSession.replay((task) => {
     proposals: [
       { approach: "claim-interleaved", title: "Comebacks", hook: "?", why: "w", scores, videos: [1, 2] },
       { approach: "question-recap", title: "Which one", hook: "?", why: "w", scores, videos: [2, 3] },
-      // the idea reads as a ranking, so one proposal is a ranking with every video
-      { approach: "ranking", title: "Top 3 Animal Comebacks", hook: "?", why: "w", scores, videos: [1, 2, 3] }
+      // the idea doesn't read as a ranking (a ranking idea's picks are held to the ranking vetting, which the skill run's
+      // 8-minute matted dog wouldn't pass: shortlist-rules.test.ts covers that), so no proposal is one
+      { approach: "story-recap", title: "Three Comebacks", hook: "?", why: "w", scores, videos: [1, 2, 3] }
     ]
   }
 })
@@ -131,9 +132,9 @@ test("a research finds the videos, waits at the shortlist, and your approved lis
   const library = await rt.runPromise(Effect.gen(function*() {
     return { matted: yield* readVideo(MATTED), cotton: yield* readVideo(COTTON), horse: yield* readVideo(HORSE), groom: yield* readVideo(GROOM) }
   }))
-  const set = await rt.runPromise(VideoSets.use((sets) => sets.createResearch({ idea: "Top 3 animal rescue comebacks", videos: 3, length: "60" })))
+  const set = await rt.runPromise(VideoSets.use((sets) => sets.createResearch({ idea: "Animal rescue comebacks, before and after", videos: 3, length: "60" })))
   assert.deepEqual(set.sourceIds, [], "a research set starts with no videos")
-  assert.equal(set.brief, "Top 3 animal rescue comebacks")
+  assert.equal(set.brief, "Animal rescue comebacks, before and after")
 
   // the research: one fix round (the hour-long video, too few), then the gate
   const gate = await until(rt, set.id, null)
@@ -142,7 +143,7 @@ test("a research finds the videos, waits at the shortlist, and your approved lis
   assert.equal(gate.request.title, "Download these videos?")
   const research = asked.filter((t) => t.stage === "research")
   assert.equal(research.length, 2)
-  assert.match(research[0]!.message, /^The idea: Top 3 animal rescue comebacks\n\nVideos: exactly 3, plus up to 3 backups\.\n\nLength of the short: Up to 60 seconds/)
+  assert.match(research[0]!.message, /^The idea: Animal rescue comebacks, before and after\n\nVideos: exactly 3, plus up to 3 backups\.\n\nLength of the short: Up to 60 seconds/)
   assert.deepEqual(research[0]!.tools?.map((t) => t.name), ["search_youtube", "video_details"])
   assert.deepEqual(research[0]!.skills, ["finding-source-videos"])
   assert.equal(research[0]!.defaultModel, "haiku")
@@ -179,8 +180,8 @@ test("a research finds the videos, waits at the shortlist, and your approved lis
   assert.deepEqual(overview.shortlist?.picks.map((p) => p.sourceId), [library.cotton, library.matted, library.horse])
   assert.equal(overview.story?.proposals.length, 3)
   assert.match(asked.findLast((t) => t.stage === "set-story")!.message, /These videos were found on YouTube for that idea/)
-  assert.match(asked.findLast((t) => t.stage === "set-story")!.message, /your first proposal must be a ranking/)
-  assert.equal(overview.story?.proposals.find((p) => p.approach === "ranking")?.sources.length, 3)
+  assert.doesNotMatch(asked.findLast((t) => t.stage === "set-story")!.message, /reads as a ranking/)
+  assert.equal(overview.story?.proposals.find((p) => p.approach === "story-recap")?.sources.length, 3)
   assert.deepEqual(overview.members.map((m) => m.missing), [null, "no after: it ends at the vet", null])
 
   // Replace this video, with a backup: the donkey takes the matted dog's place (a library video, so it stays there)
@@ -195,7 +196,7 @@ test("a research finds the videos, waits at the shortlist, and your approved lis
   assert.equal(afterSwap.donkey.rights, "unconfirmed")
   assert.equal(afterSwap.donkey.channel, "The Dodo")
   assert.equal(afterSwap.donkey.title, "Donkey With Overgrown Hooves Runs Free For The First Time | The Dodo Comeback Kids")
-  assert.equal(afterSwap.donkey.rightsNote, researchNote("Top 3 animal rescue comebacks"))
+  assert.equal(afterSwap.donkey.rightsNote, researchNote("Animal rescue comebacks, before and after"))
   assert.equal((afterSwap.donkey.origin as { readonly url: string }).url, youTubeUrl(DONKEY))
   assert.deepEqual(afterSwap.latest._tag === "Some" ? afterSwap.latest.value.backups.map((b) => b.videoId) : null, [BUSY], "the backup is used up")
   await rt.runPromise(Sources.use((s) => s.get(library.matted)))

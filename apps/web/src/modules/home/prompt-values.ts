@@ -117,7 +117,7 @@ export type FormatHint = "narrated" | "cut-down" | "ranking" | "idea"
 export const FORMAT_CARDS: ReadonlyArray<{ readonly id: FormatHint; readonly title: string; readonly line: string; readonly placeholder: string }> = [
   { id: "narrated", title: "Narrated", line: "A voice tells the story over the best footage, with real lines.", placeholder: "Paste a link to the video, or type an idea…" },
   { id: "cut-down", title: "Cut-down", line: "The creator's own best moments, trimmed to a minute.", placeholder: "Paste a link to the video, or drop it here…" },
-  { id: "ranking", title: "Ranking", line: "Several videos ranked #5 to #1, each with its own sound.", placeholder: "Type what to rank, e.g. Top 5 animal rescue comebacks…" },
+  { id: "ranking", title: "Ranking", line: "A narrator counts down #5 to #1, one video each, with real lines.", placeholder: "Type what to rank, e.g. Top 5 animal rescue comebacks…" },
   { id: "idea", title: "From an idea", line: "Type a topic; Viral finds the videos on YouTube first.", placeholder: "Type a topic; Viral finds the videos on YouTube…" }
 ]
 

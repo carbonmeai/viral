@@ -5,6 +5,7 @@ import {
   RESEARCH_VIDEO_COUNTS,
   type ResearchLength,
   type ResearchVideoCount,
+  videosForIdea,
   type SourceId,
   type SourceRights
 } from "@viral/contracts"
@@ -79,7 +80,8 @@ export function PromptBox({ start, art }: {
   const [text, setText] = useState("")
   const [files, setFiles] = useState<ReadonlyArray<string>>([])
   const [hint, setHint] = useState<FormatHint | null>(start ?? null)
-  const [videos, setVideos] = useState<ResearchVideoCount>(DEFAULT_RESEARCH_VIDEOS)
+  // null until you choose: follows the idea ("Top 7…" finds 7, else 5)
+  const [chosenVideos, setVideos] = useState<ResearchVideoCount | null>(null)
   // null until you choose: follows the idea (and a ranking card) like the old form
   const [chosenLength, setLength] = useState<ResearchLength | null>(null)
   const [rights, setRights] = useState<SourceRights>("unconfirmed")
@@ -105,6 +107,7 @@ export function PromptBox({ start, art }: {
   const problem = kind === "set" || inputs.length > 1 ? promptProblem(prompt, fullBrief) : null
   const ranking = hint === "ranking" || (prompt._tag === "Idea" && looksLikeRanking(prompt.text))
   const length = chosenLength ?? (hint === "ranking" ? "180" : defaultLength(prompt._tag === "Idea" ? prompt.text : ""))
+  const videos = chosenVideos ?? (prompt._tag === "Idea" ? videosForIdea(prompt.text) : DEFAULT_RESEARCH_VIDEOS)
   const ready = kind !== "none" && problem === null && !starting
   const chip = promptChip(prompt)
   const ChipIcon = chip.icon === null ? null : CHIP_ICONS[chip.icon]

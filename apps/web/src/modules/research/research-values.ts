@@ -1,7 +1,7 @@
 import {
   looksLikeRanking,
   MAX_RESEARCH_BACKUPS,
-  rankingSeconds,
+  narratedRankingSeconds,
   type Research,
   type ResearchLength,
   type Shortlist,
@@ -11,7 +11,7 @@ import { clock } from "../../lib/format.ts"
 
 // Ideas to click on New › From an idea.
 export const IDEA_EXAMPLES: ReadonlyArray<string> = [
-  "Top 10 animal rescue comebacks",
+  "Top 5 animal rescue comebacks",
   "The most dramatic bridge demolitions, ranked",
   "Heidi Klum's Halloween costumes over the years"
 ]
@@ -22,13 +22,14 @@ export const LENGTH_CHOICES: ReadonlyArray<{ readonly value: ResearchLength; rea
   { value: "any", label: "Any" }
 ]
 
-// A ranking ("top", "ranked", "best") needs about 15 s per entry, so it starts at Up to 3 min.
+// A ranking ("top", "ranked", "best") needs about 20–25 s per entry, so it starts at Up to 3 min.
 export const defaultLength = (idea: string): ResearchLength => looksLikeRanking(idea) ? "180" : "60"
 
-// The line under the length choice: "10 videos as a ranking ≈ 2:40", and a warning when that won't fit.
+// The line under the length choice: "5 videos as a narrated ranking ≈ 2:12" (the default ranking), and a warning when
+// that won't fit.
 export const estimateLine = (videos: number, length: ResearchLength) => {
-  const seconds = rankingSeconds(videos)
-  const base = `${videos} videos as a ranking ≈ ${clock(seconds)}`
+  const seconds = narratedRankingSeconds(videos)
+  const base = `${videos} videos as a narrated ranking ≈ ${clock(seconds)}`
   if (length === "60" && seconds > 60) return `${base}, so in 60s each video gets only a moment or two`
   if (length === "180" && seconds > 180) return `${base}, over the 3-minute Shorts limit`
   return base
@@ -130,4 +131,4 @@ export const BACKUPS_NOTE = `Up to ${MAX_RESEARCH_BACKUPS} spares, downloaded on
 
 export const COPYRIGHT_SHORT = "Videos found this way belong to their channels and can draw copyright claims."
 export const COPYRIGHT_FULL =
-  "These videos belong to their channels and can draw Content ID claims — more likely for a ranking, which plays each video's own sound. Each channel is kept for the credits."
+  "These videos belong to their channels and can draw Content ID claims — more likely for a ranking, which plays every video. Each channel is kept for the credits."

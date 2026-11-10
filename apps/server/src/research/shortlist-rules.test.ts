@@ -100,3 +100,38 @@ test("your changed list: 2–10 videos, none twice, none over 20 minutes, at mos
   assert.match(problems, /Keep at most 3 backups/)
   assert.match(checkShortlistEdit({ ...approved, picks: Array.from({ length: 11 }, (_, i) => video(`v${String(i).padStart(10, "0")}`)) }).join(), /up to 10 videos; the list has 11/)
 })
+
+// a looked-up video, as video_details gives it: captions with someone telling the story, or only music
+const TALK = "[0:00] When we found her she was so matted we couldn't even see her legs and she was shaking [0:15] It took two hours to shave her and we were not sure she would make it through the night [0:30] Today she runs"
+const looked = (videoId: string, title: string, durationS: number, views: number, captions: string | null = TALK) =>
+  ({ videoId, title, channel: "The Dodo", durationS, views, live: false, uploadDate: null, description: "d", chapters: [], captions })
+const rankingVideos = new Map([
+  looked("AAAAAAAAAAA", "Walking Cotton Ball Gets A Haircut", 103, 5_200_000),
+  looked("BBBBBBBBBBB", "Donkey With Overgrown Hooves", 345, 3_100_000),
+  looked("CCCCCCCCCCC", "Feral Cat Learns To Trust", 250, 2_000_000),
+  looked("DDDDDDDDDDD", "Top 10 Rescue Transformations Compilation", 300, 9_000_000),
+  looked("EEEEEEEEEEE", "Horse Rescue Vlog Day 3", 900, 1_500_000),
+  looked("FFFFFFFFFFF", "Puppy Saved From Drain", 150, 40_000),
+  looked("GGGGGGGGGGG", "Dog Rescue (music only)", 200, 2_500_000, "[0:00] [Music] ♪ ♪ [0:15] [Music]"),
+  looked("HHHHHHHHHHH", "Tiny Kitten Rescue", 40, 2_000_000)
+].map((v) => [v.videoId, v]))
+
+test("a ranking's picks clear the skill's vetting: one subject, 1–6 minutes, over a million views, someone talking", () => {
+  const ranking = (picks: ReadonlyArray<string>, backups: ReadonlyArray<string> = []) =>
+    checkShortlist(list(picks, backups), context({ videos: rankingVideos, ranking: true }))
+  assert.deepEqual(ranking(["AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC"], ["EEEEEEEEEEE"]).problems, [], "backups aren't held to it")
+  const text = ranking(["DDDDDDDDDDD", "EEEEEEEEEEE", "FFFFFFFFFFF", "GGGGGGGGGGG", "HHHHHHHHHHH"]).problems.join("\n")
+  assert.match(text, /pick 1: "Top 10 Rescue Transformations Compilation" looks like a compilation/)
+  assert.match(text, /pick 2: "Horse Rescue Vlog Day 3" is 15:00 long; a ranking's videos are 1–6 minutes/)
+  assert.match(text, /pick 3: "Puppy Saved From Drain" has 40,000 views; a ranking's videos have over a million/)
+  assert.match(text, /pick 4: "Dog Rescue \(music only\)" has no one telling the story in its captions/)
+  assert.match(text, /pick 5: "Tiny Kitten Rescue" is 0:40 long/)
+  // an idea that isn't a ranking isn't vetted this way
+  assert.doesNotMatch(checkShortlist(list(["DDDDDDDDDDD", "FFFFFFFFFFF", "GGGGGGGGGGG"]), context({ videos: rankingVideos })).problems.join("\n"), /compilation|views|telling the story/)
+})
+
+test("the views rule holds only when the research found enough videos over a million that clear the rest", () => {
+  const few = new Map([...rankingVideos].map(([id, v]) => [id, { ...v, views: id === "AAAAAAAAAAA" ? v.views : 50_000 }]))
+  const checked = checkShortlist(list(["AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC"]), context({ videos: few, ranking: true }))
+  assert.deepEqual(checked.problems, [], "only one video found clears it, so views can't be held against the picks")
+})

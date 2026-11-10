@@ -2,9 +2,9 @@ import {
   looksLikeRanking,
   MAX_RESEARCH_BACKUPS,
   MAX_RESEARCH_VIDEO_SECONDS,
+  narratedRankingSeconds,
   PREFERRED_RESEARCH_VIDEO_SECONDS,
   ProposedShortlist,
-  rankingSeconds,
   RESEARCH_LOOKUPS,
   RESEARCH_SEARCHES,
   type Research,
@@ -36,7 +36,7 @@ YouTube refuses a request, stop and propose from what you already found; never t
 
 // "Up to 60s", "Up to 3 min", "Any length", with the estimate for a ranking.
 export const lengthLine = (research: Research) => {
-  const ranking = `as a ranking ≈ ${clock(rankingSeconds(research.videos))} (about 15 s per entry, #1 about 25 s)`
+  const ranking = `as a narrated ranking ≈ ${clock(narratedRankingSeconds(research.videos))} (about 20–25 s per entry, then #1's reveal)`
   switch (research.length) {
     case "60":
       return `Up to 60 seconds: keep each video's moments short and clear (${research.videos} videos ${ranking}).`
@@ -66,7 +66,7 @@ export const researchTask = (input: ResearchInput): CheckedTask<typeof ProposedS
     `Videos: exactly ${replacing === null ? research.videos : replacing.previous.picks.length}, plus up to ${MAX_RESEARCH_BACKUPS} backups.`,
     `Length of the short: ${lengthLine(research)}`,
     looksLikeRanking(research.idea)
-      ? "The idea reads as a ranking, so vet every pick by the skill's ranking rules: one subject, 1–6 minutes, over a million views as a strong hint, real interview lines in its captions (someone telling the story, not only music), and clear before and after footage. No compilations, music-only vlogs or re-uploads."
+      ? "The idea reads as a ranking, so vet every pick by the skill's ranking rules: one subject, 1–6 minutes, over a million views, real interview lines in its captions (someone telling the story, not only music; look each pick up with video_details to read them), and clear before and after footage. No compilations, music-only vlogs or re-uploads. The list is checked against these: a pick that breaks one comes back to you."
       : "",
     replacing === null
       ? ""

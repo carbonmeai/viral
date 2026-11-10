@@ -1,9 +1,9 @@
 import {
-  DEFAULT_RESEARCH_VIDEOS,
   looksLikeRanking,
   ResearchLength,
   ResearchVideoCount,
-  SourceSetId
+  SourceSetId,
+  videosForIdea
 } from "@viral/contracts"
 import { Console, Effect, Schema } from "effect"
 import { option, positionals } from "./args.ts"
@@ -11,7 +11,7 @@ import { Client } from "./client.ts"
 import { follow } from "./run-command.ts"
 import { describeShortlist } from "./shortlist-text.ts"
 
-export const RESEARCH_USAGE = `  research start "<idea>" [--videos 3|5|7|10] [--length 60|180|any]
+export const RESEARCH_USAGE = `  research start "<idea>" [--videos 3|5|7|10] [--length 60|180|any]   (videos: the idea's "Top N", else 5)
                                           (searches YouTube, downloads nothing; stops at the shortlist for approve / reject "<note>" / edit <file>)
   research show <set-id>                  (the shortlist again, with its request id while it waits)`
 
@@ -24,7 +24,7 @@ export const researchCommand = Effect.fn("researchCommand")(function*() {
   switch (sub) {
     case "start": {
       if (value === undefined || value.trim() === "") return yield* Console.error(RESEARCH_USAGE)
-      const videos = yield* decodeVideos(option("--videos") === undefined ? DEFAULT_RESEARCH_VIDEOS : Number(option("--videos")))
+      const videos = yield* decodeVideos(option("--videos") === undefined ? videosForIdea(value) : Number(option("--videos")))
       const length = yield* decodeLength(option("--length") ?? (looksLikeRanking(value) ? "180" : "60"))
       const set = yield* client.StartResearch({ idea: value, videos, length })
       yield* Console.log(`video set ${set.id}  ${set.title}`)

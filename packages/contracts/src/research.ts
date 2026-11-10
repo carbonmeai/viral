@@ -37,13 +37,33 @@ export const PREFERRED_RESEARCH_VIDEO_SECONDS = 6 * 60
 export const MIN_SHORTLIST_VIDEOS = 2
 export const MAX_SHORTLIST_VIDEOS = 10
 
-// A ranking needs about 15 s per entry and about 25 s for #1 (before → care → after, from the skill run).
+// The list ranking needs about 15 s per entry and about 25 s for #1 (before → care → after, from the skill run).
 const SECONDS_PER_ENTRY = 15
 const FIRST_ENTRY_SECONDS = 25
 export const rankingSeconds = (videos: number) => (Math.max(videos, 1) - 1) * SECONDS_PER_ENTRY + FIRST_ENTRY_SECONDS
 
 // Ideas that read as a ranking ("top 10…", "…, ranked", "best…") default to Up to 3 min.
 export const looksLikeRanking = (idea: string) => /\b(top|ranked|ranking|rank|best|worst|greatest)\b/i.test(idea)
+
+// A narrated ranking (the default ranking): the hook, about 22 s an entry, #1's reveal take and the closing card. The
+// skill's rescues5: five entries, 2:12.
+const NARRATED_HOOK_SECONDS = 5
+const NARRATED_ENTRY_SECONDS = 22
+const NARRATED_ENDING_SECONDS = 17
+export const narratedRankingSeconds = (videos: number) => NARRATED_HOOK_SECONDS + Math.max(videos, 1) * NARRATED_ENTRY_SECONDS + NARRATED_ENDING_SECONDS
+
+// How many videos to find for an idea: the number a ranking names ("Top 7…") when it's one of the choices, else 5 (a
+// ranking's default: five entries of 20–25 s fit the 3-minute Shorts limit).
+export const videosForIdea = (idea: string): ResearchVideoCount => {
+  const named = /\btop\s+(\d{1,2})\b/i.exec(idea)
+  const n = named === null ? null : Number(named[1])
+  return RESEARCH_VIDEO_COUNTS.find((c) => c === n) ?? DEFAULT_RESEARCH_VIDEOS
+}
+
+// The skill's vetting for a ranking's videos (finding-source-videos): one subject, 1–6 minutes, over a million views,
+// real interview lines in the captions; no compilations.
+export const RANKING_VIDEO_SECONDS: readonly [number, number] = [60, 6 * 60]
+export const RANKING_MIN_VIEWS = 1_000_000
 
 // A moment the agent expects in a video, with a rough time: a guess until Viral reads the video.
 export const ExpectedMoment = Schema.Struct({
