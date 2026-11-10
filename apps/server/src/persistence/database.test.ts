@@ -32,11 +32,11 @@ test("creates every table from the design", async () => {
   assert.deepEqual(
     tables.map((t) => t.name).filter((name) => name !== "effect_sql_migrations"),
     [
-      "artifacts", "eval_runs", "music_tracks", "presets", "project_sources", "projects", "reference_videos", "requests",
+      "artifacts", "chat_items", "eval_runs", "music_tracks", "presets", "project_sources", "projects", "reference_videos", "requests",
       "run_events", "runs", "settings", "sound_effects", "source_set_members", "source_set_research", "source_sets", "sources", "stage_runs", "voice_previews"
     ]
   )
-  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking", "cost_basis", "video_short_names"])
+  assert.deepEqual(migrations.map((m) => m.name), ["initial_schema", "multi_video", "voice_previews", "research", "ranking", "cost_basis", "video_short_names", "chat"])
 })
 
 test("enforces foreign keys and the one-owner rule on artifacts", async () => {
@@ -153,4 +153,25 @@ test("a video keeps the short name you gave it, and starts with none", async () 
   }))
   assert.equal(column.length, 1)
   assert.deepEqual(row, [null, "Heidi"])
+})
+
+test("a short's chat items are ordered per short, go with the short, and a stage run keeps the agent's words", async () => {
+  const [left, duplicate, reply] = await run(Effect.gen(function*() {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`INSERT INTO projects (id, number, slug, title, approach, format, created_at, updated_at)
+      VALUES ('chat-short', 99, '99-chat', 'Chat', 'cut-down', 'cut-down', ${now}, ${now})`
+    yield* sql`INSERT INTO chat_items (id, project_id, seq, role, kind, body, created_at)
+      VALUES ('c1', 'chat-short', 1, 'you', 'YouSaid', '{}', ${now})`
+    const duplicate = yield* Effect.exit(sql`INSERT INTO chat_items (id, project_id, seq, role, kind, body, created_at)
+      VALUES ('c2', 'chat-short', 1, 'agent', 'AgentSaid', '{}', ${now})`)
+    yield* sql`INSERT INTO runs (id, project_id, status, started_at) VALUES ('chat-run', 'chat-short', 'completed', ${now})`
+    yield* sql`INSERT INTO stage_runs (id, run_id, stage, status, started_at, reply) VALUES ('chat-sr', 'chat-run', 'sections', 'succeeded', ${now}, 'Kept the hook.')`
+    const reply = yield* sql<{ readonly reply: string | null }>`SELECT reply FROM stage_runs WHERE id = 'chat-sr'`
+    yield* sql`DELETE FROM projects WHERE id = 'chat-short'`
+    const left = yield* sql<{ readonly n: number }>`SELECT count(*) AS n FROM chat_items WHERE id = 'c1'`
+    return [left[0]?.n, Exit.isFailure(duplicate), reply[0]?.reply] as const
+  }))
+  assert.equal(duplicate, true, "two items can't share a seq in one short's chat")
+  assert.equal(reply, "Kept the hook.")
+  assert.equal(left, 0, "deleting the short deletes its chat")
 })

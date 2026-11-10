@@ -8,6 +8,9 @@ import { createServer } from "node:http"
 import { AgentSession } from "./agent-session/agent-session.ts"
 import { Artifacts } from "./artifacts/artifacts.ts"
 import { ArtifactsRpcLive } from "./artifacts/artifacts-rpc.ts"
+import { ChatRpcLive } from "./chat/chat-rpc.ts"
+import { ShortChat } from "./chat/chat-service.ts"
+import { ChatStore } from "./chat/chat-store.ts"
 import { MusicBeds } from "./music-bed/music-beds.ts"
 import { MusicBedsRpcLive } from "./music-bed/music-beds-rpc.ts"
 import { Publishing } from "./metadata/publishing.ts"
@@ -114,6 +117,8 @@ const RpcLive = RpcServer.layerHttp({ group: ViralRpcs, path: "/rpc", protocol: 
     ShortWorkspaceRpcLive,
     VideoSetsRpcLive,
     MusicBedsRpcLive.pipe(Layer.provide(MusicBeds.layer)),
+    // the short's chat follows every run from the start, so it's built with the server, not on first use
+    ChatRpcLive.pipe(Layer.provide(ShortChat.layer.pipe(Layer.provide([ChatStore.layer, MusicBeds.layer])))),
     PublishRpcLive.pipe(Layer.provide(Publishing.layer))
   ]),
   Layer.provide(RunsLive),

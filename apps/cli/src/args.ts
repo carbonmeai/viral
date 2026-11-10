@@ -1,6 +1,6 @@
 // Minimal argv parsing for the dev CLI. Flags listed in BOOLEAN_FLAGS stand alone; any other
 // `--name` takes the next argument as its value. Everything else is positional.
-const BOOLEAN_FLAGS = new Set(["--force", "--again"])
+const BOOLEAN_FLAGS = new Set(["--force", "--again", "--stop"])
 
 const positionalArgs: Array<string> = []
 const options = new Map<string, string>()

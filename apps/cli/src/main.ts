@@ -1,6 +1,7 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect } from "effect"
 import { positionals } from "./args.ts"
+import { CHAT_USAGE, chatCommand } from "./chat-command.ts"
 import { Client } from "./client.ts"
 import { EVAL_USAGE, evalCommand } from "./eval-command.ts"
 import { MUSIC_USAGE, musicCommand } from "./music-command.ts"
@@ -14,7 +15,7 @@ import { TOOLS_USAGE, toolsCommand } from "./tools-command.ts"
 import { VOICE_USAGE, voiceCommand } from "./voice-command.ts"
 
 // Dev client for the local Viral server (ws://127.0.0.1:3410/rpc).
-const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, SET_USAGE, RESEARCH_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE, EVAL_USAGE].join("\n")
+const USAGE = ["usage: bun run cli <command>", SOURCE_USAGE, SET_USAGE, RESEARCH_USAGE, PROJECT_USAGE, PRESET_USAGE, MUSIC_USAGE, VOICE_USAGE, TOOLS_USAGE, RUN_USAGE, CHAT_USAGE, EVAL_USAGE].join("\n")
 
 const program = Effect.gen(function*() {
   switch (positionals[0]) {
@@ -34,6 +35,8 @@ const program = Effect.gen(function*() {
       return yield* voiceCommand()
     case "tools":
       return yield* toolsCommand()
+    case "chat":
+      return yield* chatCommand()
     case "follow":
     case "cancel":
     case "resume":
@@ -71,7 +74,8 @@ const program = Effect.gen(function*() {
     RequestNotPending: (e) => Console.error(`request ${e.id} isn't waiting for an answer`),
     NotPublished: (e) => Console.error(`short ${e.id} hasn't been published yet; run it to the end first`),
     PostTextInvalid: (e) => Console.error(`the post text can't be used:\n${e.problems.map((p) => `  - ${p}`).join("\n")}`),
-    PublishUnavailable: (e) => Console.error(`can't publish: ${e.message}`)
+    PublishUnavailable: (e) => Console.error(`can't publish: ${e.message}`),
+    ChatFailed: (e) => Console.error(e.message)
   }),
   Effect.provide([Client.layer, NodeServices.layer])
 )
