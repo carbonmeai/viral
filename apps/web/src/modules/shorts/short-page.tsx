@@ -120,7 +120,7 @@ function Editor(props: {
   const stage = STAGES[open]
   const Panel = PANELS[panel]
   return (
-    <ShortVideosProvider titles={ws.videos.map((v) => v.source.title)}>
+    <ShortVideosProvider sources={ws.videos.map((v) => v.source)}>
       <EditorFrame
         top={<EditorTopBar e={e} onSide={() => setSideOpen((o) => !o)} />}
         rail={<EditorRail items={railFor(ws.project.format)} panel={panel} dot={railDot(ws.project.format, e.waitingOn, panel)} onPanel={e.setPanel} />}

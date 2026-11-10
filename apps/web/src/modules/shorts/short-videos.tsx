@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useContext } from "react"
-import { videoLabel, videoNames } from "../sets/set-values.ts"
+import { sourceNames, videoLabel } from "../sets/set-values.ts"
 
 // The short's videos as its editor names them, by position: each one's short name and full title.
 export interface ShortVideos {
@@ -9,8 +9,12 @@ export interface ShortVideos {
 
 const Context = createContext<ShortVideos>({ names: [], titles: [] })
 
-export function ShortVideosProvider({ titles, children }: { readonly titles: ReadonlyArray<string | null>; readonly children: ReactNode }) {
-  return <Context.Provider value={{ names: videoNames(titles), titles }}>{children}</Context.Provider>
+// `sources`: the short's videos, V1 first; each goes by the short name you gave it, else one made from its title.
+export function ShortVideosProvider({ sources, children }: {
+  readonly sources: ReadonlyArray<{ readonly title: string | null; readonly shortName: string | null }>
+  readonly children: ReactNode
+}) {
+  return <Context.Provider value={{ names: sourceNames(sources), titles: sources.map((s) => s.title) }}>{children}</Context.Provider>
 }
 
 export const useShortVideos = () => useContext(Context)

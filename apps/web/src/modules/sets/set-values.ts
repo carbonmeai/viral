@@ -51,11 +51,23 @@ export const shortVideoName = (title: string | null | undefined, index: number):
   return capitalize(name)
 }
 
-// Every video's short name, by position; two that come out the same are spelled out ("Video 1", "Video 2") instead.
-export const videoNames = (titles: ReadonlyArray<string | null | undefined>): ReadonlyArray<string> => {
-  const names = titles.map((t, i) => shortVideoName(t, i))
-  return names.map((name, i) => names.filter((n) => n.toLowerCase() === name.toLowerCase()).length > 1 ? videoLabel(i) : name)
+// Every video's short name, by position: the name you gave it (`given`, stored on the video) when there is one, else
+// one made from its title; two made-up names that come out the same (or the same as a given one) are spelled out
+// ("Video 1", "Video 2") instead.
+export const videoNames = (
+  titles: ReadonlyArray<string | null | undefined>,
+  given: ReadonlyArray<string | null | undefined> = []
+): ReadonlyArray<string> => {
+  const own = titles.map((_, i) => (given[i] ?? "").trim())
+  const made = titles.map((t, i) => shortVideoName(t, i))
+  const names = made.map((name, i) => own[i] !== "" ? own[i]! : name)
+  return names.map((name, i) =>
+    own[i] !== "" ? name : names.filter((n) => n.toLowerCase() === name.toLowerCase()).length > 1 ? videoLabel(i) : name)
 }
+
+// The same, for videos as the server sends them (an unknown one is "Video n").
+export const sourceNames = (sources: ReadonlyArray<{ readonly title: string | null; readonly shortName: string | null } | null | undefined>) =>
+  videoNames(sources.map((s) => s?.title ?? null), sources.map((s) => s?.shortName ?? null))
 
 // Each video's colour, by position: the timeline's hues first, so a video keeps its colour from the set page to
 // the editor.

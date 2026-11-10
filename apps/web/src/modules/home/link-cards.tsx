@@ -1,8 +1,10 @@
 import { useAtomSet } from "@effect/atom-react"
 import type { VideoLinkDetails } from "@viral/contracts"
+import { SHORT_NAME_MAX } from "@viral/contracts"
 import { IconButton } from "@viral/ui/primitives/button"
+import { Input } from "@viral/ui/primitives/input"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
-import { Film, X } from "lucide-react"
+import { Film, Pencil, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { serverUrl } from "../../config/server-url.ts"
 import { clock } from "../../lib/format.ts"
@@ -55,14 +57,23 @@ export const titleOf = (video: VideoInput, lookups: ReadonlyMap<string, Lookup>)
   return lookup?._tag === "Found" ? lookup.details.title : null
 }
 
-// One card per video the box will start from: its picture, colour dot and short name, title, and channel and
-// length (a file: its folder). A link that couldn't be read says why; it may still download when you start.
-export function LinkCards({ videos, lookups, onRemove }: {
+// A video in the box by its link or path, for the names you give it.
+export const inputKey = (video: VideoInput) => video._tag === "Url" ? video.url : video.path
+
+// One card per video the box will start from: its picture, colour dot and short name (the pencil renames it; the
+// name is kept on the video when it's added), title, and channel and length (a file: its folder). A link that
+// couldn't be read says why; it may still download when you start.
+export function LinkCards({ videos, lookups, named, onRename, onRemove }: {
   readonly videos: ReadonlyArray<VideoInput>
   readonly lookups: ReadonlyMap<string, Lookup>
+  // the short names you gave, by link or path
+  readonly named: ReadonlyMap<string, string>
+  // null: back to the name made from the title
+  readonly onRename: (key: string, name: string | null) => void
   readonly onRemove: (video: VideoInput) => void
 }) {
-  const names = videoNames(videos.map((v) => titleOf(v, lookups)))
+  const names = videoNames(videos.map((v) => titleOf(v, lookups)), videos.map((v) => named.get(inputKey(v))))
+  const [editing, setEditing] = useState<string | null>(null)
   return (
     <div className="grid gap-1.5">
       {videos.map((video, i) => {
@@ -78,7 +89,20 @@ export function LinkCards({ videos, lookups, onRemove }: {
                 ? <img src={thumb} alt="" className="size-full object-cover" />
                 : lookup?._tag === "Loading" ? <Skeleton className="size-full rounded-none" /> : <Film className="size-3.5" />}
             </div>
-            <VideoBadge index={i} name={names[i]} />
+            {editing === key ? (
+              <ShortNameField
+                initial={names[i] ?? ""}
+                onDone={(name) => {
+                  setEditing(null)
+                  if (name !== undefined) onRename(key, name)
+                }}
+              />
+            ) : (
+              <span className="flex shrink-0 items-center gap-0.5">
+                <VideoBadge index={i} name={names[i]} />
+                <IconButton label="Rename" onClick={() => setEditing(key)} className="size-6 text-fg-3 [&_svg]:size-3"><Pencil /></IconButton>
+              </span>
+            )}
             <div className="grid min-w-0 flex-1 gap-0.5">
               {lookup?._tag === "Loading"
                 ? <><Skeleton className="h-3 w-[55%]" /><Skeleton className="h-2.5 w-[30%]" /></>
@@ -101,5 +125,27 @@ export function LinkCards({ videos, lookups, onRemove }: {
         )
       })}
     </div>
+  )
+}
+
+// The short name, edited in place: Enter (or leaving the field) keeps it, Esc cancels; blank goes back to automatic.
+function ShortNameField({ initial, onDone }: { readonly initial: string; readonly onDone: (name: string | null | undefined) => void }) {
+  const [value, setValue] = useState(initial)
+  const finish = () => onDone(value.trim() === "" ? null : value.trim() === initial ? undefined : value.trim())
+  return (
+    <Input
+      autoFocus
+      aria-label="Short name"
+      value={value}
+      maxLength={SHORT_NAME_MAX}
+      onChange={(e) => setValue(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={finish}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") finish()
+        if (e.key === "Escape") onDone(undefined)
+      }}
+      className="h-7 w-[130px] shrink-0 text-xs"
+    />
   )
 }

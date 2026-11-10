@@ -1,7 +1,7 @@
 import type { Run, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { BLOCKED_MESSAGE, failedOnItsOwn, memberState, plainMemberError, proposalMoment, proposalVideos, reorder, setPhase, shortVideoName, videoColor, videoLabel, videoNames } from "./set-values.ts"
+import { BLOCKED_MESSAGE, failedOnItsOwn, memberState, plainMemberError, proposalMoment, proposalVideos, reorder, setPhase, shortVideoName, videoColor, sourceNames, videoLabel, videoNames } from "./set-values.ts"
 
 const run = (status: Run["status"], error: string | null = null) => ({ status, error }) as Run
 const stage = (name: StageRun["stage"], status: StageRun["status"]) => ({ stage: name, status, attempt: 1 }) as StageRun
@@ -31,6 +31,10 @@ test("two videos whose short names match are spelled out instead", () => {
   assert.deepEqual(videoNames(["candy", "Heidi Klum at Halloween", null]), ["Candy", "Heidi Klum", "Video 3"])
   assert.deepEqual(videoNames(["Extreme candy part 1", "Extreme candy part 2"]), ["Extreme candy 1", "Extreme candy 2"])
   assert.deepEqual(videoNames(["The candy", "Candy!"]), ["Video 1", "Video 2"])
+  // a name you gave wins, and a made-up name that clashes with it is spelled out
+  assert.deepEqual(videoNames(["Extreme candy", "Heidi Klum at Halloween"], [null, "Heidi"]), ["Extreme candy", "Heidi"])
+  assert.deepEqual(videoNames(["Candy", "Heidi Klum"], [null, "candy"]), ["Video 1", "candy"])
+  assert.deepEqual(sourceNames([{ title: "candy", shortName: "  " }, { title: null, shortName: "Big John" }, null]), ["Candy", "Big John", "Video 3"])
 })
 
 test("a set's video: being read with its step, read, stopped, or not started", () => {

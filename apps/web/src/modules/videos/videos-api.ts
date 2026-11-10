@@ -21,6 +21,8 @@ export const runProgressAtom = Atom.family((runId: RunId) =>
 export const createSource = ViralClient.mutation("CreateSource")
 export const startSourceRun = ViralClient.mutation("StartSourceRun")
 export const setSourceDetails = ViralClient.mutation("SetSourceDetails")
+// A video's short name for lanes and badges (null: made from its title again).
+export const renameVideo = ViralClient.mutation("RenameVideo")
 export const createProjectFromProposal = ViralClient.mutation("CreateProjectFromProposal")
 export const startProjectRun = ViralClient.mutation("StartProjectRun")
 // A pasted link's title, channel, length and thumbnail, before anything downloads.

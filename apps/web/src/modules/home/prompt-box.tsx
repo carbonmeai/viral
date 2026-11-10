@@ -24,7 +24,7 @@ import { useDetailed } from "../system/detail.tsx"
 import { createSource, startSourceRun } from "../videos/videos-api.ts"
 import { RIGHTS_CHOICES } from "../videos/video-values.ts"
 import { FormatCards } from "./format-cards.tsx"
-import { LinkCards, useLinkLookups } from "./link-cards.tsx"
+import { inputKey, LinkCards, useLinkLookups } from "./link-cards.tsx"
 import { rememberMadeAs } from "./made-as.ts"
 import {
   briefOf,
@@ -83,6 +83,8 @@ export function PromptBox({ start, art }: {
   // null until you choose: follows the idea (and a ranking card) like the old form
   const [chosenLength, setLength] = useState<ResearchLength | null>(null)
   const [rights, setRights] = useState<SourceRights>("unconfirmed")
+  // the short names you gave on the link cards, by link or path; the rest are made from the titles
+  const [named, setNamed] = useState<ReadonlyMap<string, string>>(new Map())
   const [brief, setBrief] = useState("")
   const [drag, setDrag] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -180,14 +182,15 @@ export function PromptBox({ start, art }: {
         return
       }
       const origins = inputs.map((v) => v._tag === "Url" ? { _tag: "Url" as const, url: v.url } : { _tag: "File" as const, path: v.path })
+      const shortNameOf = (k: number) => named.get(inputKey(inputs[k]!)) ?? null
       if (origins.length === 1) {
-        const source = await create({ payload: { origin: origins[0]!, rights, rightsNote: null } })
+        const source = await create({ payload: { origin: origins[0]!, rights, rightsNote: null, shortName: shortNameOf(0) } })
         await startRun({ payload: { sourceId: source.id } })
         await navigate({ to: "/videos/$sourceId", params: { sourceId: source.id } })
         return
       }
       const ids: Array<SourceId> = []
-      for (const origin of origins) ids.push((await create({ payload: { origin, rights, rightsNote: null } })).id)
+      for (const [k, origin] of origins.entries()) ids.push((await create({ payload: { origin, rights, rightsNote: null, shortName: shortNameOf(k) } })).id)
       const set = await createSet({ payload: { sourceIds: ids, brief: fullBrief } })
       await startSet({ payload: { setId: set.id } })
       rememberMadeAs(set.id, formatOfHint(hint))
@@ -279,7 +282,18 @@ export function PromptBox({ start, art }: {
                       : "Downloads at up to 1080p, then Viral reads it and suggests three shorts."}
                   </span>
                 </Line>
-                <LinkCards videos={inputs} lookups={lookups} onRemove={remove} />
+                <LinkCards
+                  videos={inputs}
+                  lookups={lookups}
+                  named={named}
+                  onRename={(key, name) => setNamed((all) => {
+                    const next = new Map(all)
+                    if (name === null) next.delete(key)
+                    else next.set(key, name)
+                    return next
+                  })}
+                  onRemove={remove}
+                />
                 {rightsLine}
                 {inputs.length > 1 && briefOf(prompt) === "" ? (
                   <Line label="The brief">

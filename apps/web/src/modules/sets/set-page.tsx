@@ -31,7 +31,7 @@ import { ReplaceDialog, type ReplaceTarget } from "../research/replace-dialog.ts
 import { researchFacts } from "../research/research-values.ts"
 import { ShortlistGate, ShortlistSearching } from "../research/shortlist-view.tsx"
 import { SetProposalCard } from "./set-proposal-card.tsx"
-import { BLOCKED_MESSAGE, failedOnItsOwn, memberState, plainMemberError, proposalMoment, proposalVideos, setPhase, videoNames } from "./set-values.ts"
+import { BLOCKED_MESSAGE, failedOnItsOwn, memberState, plainMemberError, proposalMoment, proposalVideos, setPhase, sourceNames } from "./set-values.ts"
 import { createProjectFromSetProposal, deleteVideoSet, renameVideoSet, startSetRun, videoSetOverviewAtom } from "./sets-api.ts"
 import { VideoBadge, VideoDot } from "./video-badge.tsx"
 
@@ -114,7 +114,7 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
   const [replacing, setReplacing] = useState<ReplaceTarget | null>(null)
   const current: SetTab = tab ?? (phase === "proposed" ? "proposals" : "videos")
   const titles = members.map((m) => m.source.title ?? "Untitled video")
-  const names = videoNames(members.map((m) => m.source.title))
+  const names = sourceNames(members.map((m) => m.source))
   const thumbOf = new Map((home?.videos ?? []).map((v) => [v.source.id, v.thumb]))
   const statusOf = new Map((home?.shorts ?? []).map((s) => [s.project.id, s.status]))
   const read = members.filter((m) => m.ready).length

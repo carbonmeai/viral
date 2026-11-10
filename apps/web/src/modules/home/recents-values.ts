@@ -1,6 +1,6 @@
 import type { ProjectFormat, Run, RunId, StageName } from "@viral/contracts"
 import { plural } from "../../lib/format.ts"
-import { videoNames } from "../sets/set-values.ts"
+import { sourceNames } from "../sets/set-values.ts"
 import { latestAttempts, type RunProgress } from "../videos/run-progress.ts"
 import { STEP_NAMES } from "../waiting/waiting.ts"
 import type { Overview } from "./overview.ts"
@@ -65,14 +65,14 @@ const settled = (run: Run | null): RecentStatus => {
 // which step; a running one is followed live.
 export const recentRows = (overview: Pick<Overview, "shorts" | "setSummaries" | "videos" | "waiting">): ReadonlyArray<RecentRow> => {
   const { shorts, setSummaries, videos, waiting } = overview
-  const titleOf = new Map(videos.map((v) => [v.source.id, v.source.title]))
+  const sourceOf = new Map(videos.map((v) => [v.source.id, v.source]))
   const inSet = new Set(setSummaries.flatMap((s) => s.set.sourceIds))
 
   const shortRows = shorts.map((short): RecentRow => {
     const { project } = short
     const gate = waiting.find((w) => w.projectId === project.id)
     const run = short.latestRun
-    const names = videoNames(project.sourceIds.map((id) => titleOf.get(id) ?? null))
+    const names = sourceNames(project.sourceIds.map((id) => sourceOf.get(id) ?? null))
     return {
       key: `short:${project.id}`,
       kind: "short",
