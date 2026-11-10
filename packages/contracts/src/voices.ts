@@ -91,8 +91,13 @@ export const Voiceover = Schema.Struct({
   voiceId: Schema.String,
   model: Schema.String,
   text: Schema.String,
-  // ElevenLabs characters spent on this take
+  // what ElevenLabs billed for this take, from its `character-cost` header: the characters taken off the plan, which
+  // can be fewer than the text's (on 10 Nov every model billed 0.4 per character of text on Viral's account: 133 → 53,
+  // 242 → 97); the text's length only when the header is missing
   characters: Schema.Int,
+  // the length of the text sent (the narration lines, skipped ones included since they're voiced; never the real lines);
+  // absent on takes made before it was kept
+  textCharacters: Schema.optionalKey(Schema.Int),
   // words per second of the raw take, the atempo applied, and the pace after it
   rawPace: Schema.Finite,
   atempo: Schema.Finite,

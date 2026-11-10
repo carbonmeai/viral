@@ -20,7 +20,8 @@ const projectOf = (ctx: StageContext): ProjectId => {
 
 const TranscriptJson = Schema.fromJsonString(Transcript)
 
-// The script's narrated lines as one take; the real lines play in the creator's voice between them.
+// The script's narrated lines as one take; the real lines play in the creator's voice between them. Skipped lines are
+// in it (voiced, then jumped over in the short), so they're billed too.
 export const narrationText = (script: Script) =>
   script.beats.flatMap((beat) => beat._tag === "Narration" ? [beat.text.trim()] : []).join(" ")
 
@@ -85,7 +86,9 @@ export class VoiceStage extends Context.Service<VoiceStage, {
         // 1. one take
         yield* ctx.progress(0, `speaking ${text.length} characters`)
         const speech = yield* eleven.speak({ voiceId, model, text }).pipe(Effect.mapError((e) => fail(e.code, e.message)))
+        // what ElevenLabs billed (its character-cost header), which can be less than the text's length
         yield* ctx.recordCost({ model, ttsCharacters: speech.characters, provider: "elevenlabs", billing: "billed" })
+        yield* ctx.progress(25, `ElevenLabs billed ${speech.characters} characters for ${text.length} characters of text`)
         const slot = yield* artifacts.allocate(ctx.owner, "voiceover")
         const raw = path.join(slot.dir, "vo_raw.mp3")
         const trimmed = path.join(slot.dir, "vo_trim.wav")
@@ -110,6 +113,7 @@ export class VoiceStage extends Context.Service<VoiceStage, {
           model,
           text,
           characters: speech.characters,
+          textCharacters: text.length,
           rawPace,
           atempo,
           pace: finalPace,

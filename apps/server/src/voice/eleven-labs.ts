@@ -230,9 +230,9 @@ export class ElevenLabs extends Context.Service<ElevenLabs, {
           Effect.mapError(fail("http"))
         )
         const audio = new Uint8Array(yield* res.arrayBuffer.pipe(Effect.mapError(fail("http"))))
-        // ElevenLabs reports what it billed; the text length is the fallback
-        const billed = Number(res.headers["character-cost"])
-        return { audio, characters: Number.isFinite(billed) ? billed : request.text.length }
+        // ElevenLabs reports what it billed (the plan's characters, which can be fewer than the text's: 0.4 a character
+        // on Viral's account on 10 Nov); the text length is the fallback
+        return { audio, characters: billedOf(res, request.text.length) }
       })
 
       // A call whose failure carries ElevenLabs' own explanation; a voice-slot limit gets the code "limit".
