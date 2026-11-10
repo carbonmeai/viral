@@ -25,7 +25,7 @@ export const narrationText = (script: Script) =>
   script.beats.flatMap((beat) => beat._tag === "Narration" ? [beat.text.trim()] : []).join(" ")
 
 // Speaks the approved script's narration with ElevenLabs in one take, trims the leading silence, speeds it to
-// the preset's pace with atempo, and transcribes the result for word timings (local Whisper, like the approved
+// the preset's pace with atempo (and levels it to the style's loudness when it asks), and transcribes the result for word timings (local Whisper, like the approved
 // candy voiceovers). Gated, since a new take costs credits.
 export class VoiceStage extends Context.Service<VoiceStage, {
   readonly stage: StageDefinition
@@ -97,7 +97,9 @@ export class VoiceStage extends Context.Service<VoiceStage, {
         yield* ffmpeg(["-i", raw, "-af", "silenceremove=start_periods=1:start_threshold=-45dB", "-ar", "48000", trimmed])
         const rawPace = pace(yield* words(ctx, trimmed, path.join(slot.dir, "raw-transcript")))
         const atempo = atempoFor(rawPace, wordsPerSecond)
-        yield* ffmpeg(["-i", trimmed, "-af", `atempo=${atempo}`, "-ar", "48000", final])
+        // a style that levels the voice normalises the take (−10 LUFS: a raw take sits near −27 against clips near −9)
+        const level = preset.config.voiceLevel === undefined ? "" : `,loudnorm=I=${preset.config.voiceLevel.lufs}:TP=-1.5:LRA=11`
+        yield* ffmpeg(["-i", trimmed, "-af", `atempo=${atempo}${level}`, "-ar", "48000", final])
 
         // 4. word timings of the take as it will play
         yield* ctx.progress(60, `atempo ${atempo}; transcribing the take`)

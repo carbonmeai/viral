@@ -57,7 +57,12 @@ export const PresetConfig = Schema.Struct({
     duckRatio: Schema.Finite,
     duckThreshold: Schema.Finite
   }),
-  loudnessLufs: Schema.Finite
+  loudnessLufs: Schema.Finite,
+  // short fades where real clips meet the narration, and a 0.25 s breath before each clip; absent = hard cuts
+  softJoins: Schema.optionalKey(Schema.Boolean),
+  // the voiceover take normalised to `lufs` (the skill's −10, since a raw take sits near −27 against clips near −9)
+  // and played at `gain` in the mix (1.7), so narration and clips sit level; absent = the take as spoken, gain 1
+  voiceLevel: Schema.optionalKey(Schema.Struct({ lufs: Schema.Finite, gain: Schema.Finite }))
 })
 export type PresetConfig = typeof PresetConfig.Type
 

@@ -35,6 +35,10 @@ export const checkPresetConfig = (config: PresetConfig): ReadonlyArray<string> =
   between(problems, "the loudness", config.loudnessLufs, -30, -6)
   between(problems, "the narrator's pace", config.voice.wordsPerSecond, 2, 5)
   if (config.voice.voiceId.trim() === "") problems.push("the style needs a voice")
+  if (config.voiceLevel !== undefined) {
+    between(problems, "the voice's loudness", config.voiceLevel.lufs, -24, -6)
+    between(problems, "the voice's level in the mix", config.voiceLevel.gain, 0.5, 3)
+  }
   return problems
 }
 

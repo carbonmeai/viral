@@ -1,13 +1,15 @@
 import { type RunUpdate, Voiceover } from "@viral/contracts"
 import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 import assert from "node:assert/strict"
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, before, test } from "node:test"
 import { AgentSession } from "../agent-session/agent-session.ts"
 import { Artifacts } from "../artifacts/artifacts.ts"
+import { BUILT_IN_PRESETS } from "../presets/built-in-presets.ts"
+import { Presets } from "../presets/presets.ts"
 import { Projects } from "../projects/projects.ts"
 import { PipelineStagesLive } from "../runs/pipeline-stages.ts"
 import { RunManager } from "../runs/run-manager.ts"
@@ -53,6 +55,7 @@ const runtime = () =>
         Artifacts.layer,
         Sources.layer,
         Projects.layer,
+        Presets.layer,
         AgentSession.replay(() => null),
         eleven,
         transcriber
@@ -131,5 +134,52 @@ test("the voice stage speaks the narration in one take, paces it, and waits for 
   assert.ok(file !== null && Math.abs(durationOf(file) - 5 / 1.23) < 0.1)
   assert.equal(voiceover.characters, 43)
   assert.match(transcript.path ?? "", /transcript\.json$/)
+  await rt.dispose()
+})
+
+// integrated loudness of a file, in LUFS (ebur128's summary goes to stderr)
+const loudness = (file: string) => {
+  const result = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", "ebur128", "-f", "null", "-"], { encoding: "utf8" })
+  const summary = result.stderr.slice(result.stderr.lastIndexOf("Integrated loudness"))
+  return Number(/I:\s*(-?[\d.]+)/.exec(summary)?.[1])
+}
+
+test("a style that levels the voice normalises the take to its loudness", async () => {
+  const rt = runtime()
+  const project = await rt.runPromise(Effect.gen(function*() {
+    const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/y" }, rights: "owned", rightsNote: null })
+    const storyRecap = BUILT_IN_PRESETS.find((p) => p.name === "Story recap")!.config
+    const preset = yield* (yield* Presets).create("Levelled", { ...storyRecap, voice: { ...storyRecap.voice, voiceId: "voice-9" } })
+    const project = yield* (yield* Projects).create({
+      sourceIds: [source.id],
+      title: "Levelled",
+      approach: "story-recap",
+      presetId: preset.id,
+      musicTrackId: null
+    })
+    const artifacts = yield* Artifacts
+    yield* artifacts.record(yield* artifacts.allocate({ _tag: "Project", id: project.id }, "script"), {
+      data: { headline: null, beats: [{ _tag: "Narration", text: "This guy made a candy." }] },
+      path: null
+    })
+    return project
+  }))
+  await rt.runPromise(Effect.gen(function*() {
+    const runs = yield* RunManager
+    const run = yield* runs.start({ _tag: "Project", id: project.id }, null)
+    yield* runs.subscribe(run.id, 0).pipe(
+      Stream.takeUntil((u: RunUpdate) => u._tag === "Event" && (u.event._tag === "RequestRaised" || u.event._tag === "RunFinished")),
+      Stream.runCollect
+    )
+    yield* runs.cancel(run.id)
+  }))
+  const file = await rt.runPromise(Effect.gen(function*() {
+    const artifacts = yield* Artifacts
+    return artifacts.resolve(Option.getOrThrow(yield* artifacts.latest({ _tag: "Project", id: project.id }, "voiceover")))
+  }))
+  assert.ok(file !== null)
+  const raw = loudness(join(home, "take.mp3"))
+  const levelled = loudness(file)
+  assert.ok(Math.abs(levelled - -10) < 1.5, `the take is at ${levelled} LUFS (raw ${raw})`)
   await rt.dispose()
 })

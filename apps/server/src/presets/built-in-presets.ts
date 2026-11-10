@@ -52,12 +52,24 @@ const HEADLINE_FULL_BLEED: PresetConfig = {
 // The first candy short exactly as it was made: Viral recap's look with Adam's fast, hyped read.
 const FAST_HYPE: PresetConfig = { ...VIRAL_RECAP, voice: ADAM_VOICE }
 
+// The creator's best-performing narrated short (spicy): Viral recap's look with the skill's frame (a taller band, captions
+// lower), soft joins where real clips meet the narration, and the voice levelled with the clips (the take at −10 LUFS,
+// played at 1.7). Made for story-recap shorts, whose payoff is one long real take.
+const STORY_RECAP: PresetConfig = {
+  ...VIRAL_RECAP,
+  mainHeight: 1280,
+  captions: { ...VIRAL_RECAP.captions, y: 0.78 },
+  softJoins: true,
+  voiceLevel: { lufs: -10, gain: 1.7 }
+}
+
 // Ensured by name on every start: missing ones are added, ones you've edited (or already have) are left alone, so a
 // change here reaches new libraries only.
 export const BUILT_IN_PRESETS: ReadonlyArray<{ readonly name: string; readonly config: PresetConfig }> = [
   { name: "Viral recap", config: VIRAL_RECAP },
   { name: "Headline full-bleed", config: HEADLINE_FULL_BLEED },
-  { name: "Fast hype", config: FAST_HYPE }
+  { name: "Fast hype", config: FAST_HYPE },
+  { name: "Story recap", config: STORY_RECAP }
 ]
 
 // The default when no preset is marked default yet.
