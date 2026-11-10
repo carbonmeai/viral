@@ -221,9 +221,9 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const voiceUrl = ws.voiceover?.path === null || ws.voiceover === null ? null : artifactPathUrl(serverUrl, projectOwner, ws.voiceover.path)
   const layout = useMemo(
     () => ws.script !== null && ws.voiceover !== null && ws.voiceover.words.length > 0
-      ? layoutTimeline(ws.script.script, ws.voiceover.words, ws.voiceover.voiceover.durationS)
+      ? layoutTimeline(ws.script.script, ws.voiceover.words, ws.voiceover.voiceover.durationS, { softJoins: ws.preset.config.softJoins === true })
       : null,
-    [ws.script, ws.voiceover]
+    [ws.script, ws.voiceover, ws.preset.config.softJoins]
   )
   // the short's videos (the first one first): each one's file, and a still of it, by position
   const videoOf = (source: number) => ws.videos[source] ?? ws.videos[0]

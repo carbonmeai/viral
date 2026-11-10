@@ -139,3 +139,28 @@ test("the top bar's primary: the waiting step's Approve, else Publish; Publish n
   assert.equal(primaryButtons({ waiting: "Thumbnail", rendered: true, outOfDate: false }).publish.primary, false)
   assert.equal(primaryButtons({ waiting: null, rendered: false, outOfDate: true }).publish.label, "Publish", "nothing to publish again before a render")
 })
+
+test("a skipped line is jumped over: the narration picks up after it, and a style's soft joins add a breath", () => {
+  // "He ate it." → REAL "So hot." → (skipped) "He said hot." → "Then milk."
+  const said = ["He", "ate", "it.", "He", "said", "hot.", "Then", "milk."]
+  const words = said.map((w, i) => ({ w, s: i * 0.5, e: i * 0.5 + 0.4 }))
+  const script: Script = {
+    headline: null,
+    beats: [
+      { _tag: "Narration", text: "He ate it." },
+      { _tag: "Real", quote: "So hot.", start: 10, end: 11 },
+      { _tag: "Narration", text: "He said hot.", skipped: true },
+      { _tag: "Narration", text: "Then milk." }
+    ]
+  }
+  assert.equal(narratedWords(script), 5, "the skipped line doesn't count")
+  const layout = layoutTimeline(script, words, 4)
+  // pauses at 1.4 ("it." ends), the clip plays 1 s, then picks up at "Then" (3.0 − 0.08)
+  assert.deepEqual(layout.pauses, [{ at: 1.4, dur: 1, source: 0, skip: 1.52 }])
+  assert.deepEqual(layout.reals.map((r) => [r.start, r.end]), [[1.4, 2.4]])
+  assert.ok(Math.abs(shortTimeOf(layout, 3) - 2.48) < 1e-9, "\"Then\" plays 0.08 s after the clip")
+  assert.equal(shortTimeOf(layout, 2), 2.4, "a skipped word lands where the narration picks up")
+  assert.ok(Math.abs(layout.total - (4 - 1.52 + 1)) < 1e-9)
+  // with soft joins the clip waits for a breath: 0.25 s, at most half way to the next word (1.5)
+  assert.equal(layoutTimeline(script, words, 4, { softJoins: true }).pauses[0]!.at, 1.45)
+})

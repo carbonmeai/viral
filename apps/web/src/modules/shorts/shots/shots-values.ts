@@ -76,15 +76,19 @@ export const timelineShots = (
   spans: ReadonlyArray<{ readonly k: number; readonly from: number; readonly to: number }>,
   layout: Pick<TimelineLayout, "pauses">
 ): ReadonlyArray<ShotBlock> => {
-  const before = (t: number) => layout.pauses.filter((p) => p.at < t).reduce((n, p) => n + p.dur, 0)
+  const skipOf = (p: { readonly skip?: number }) => p.skip ?? 0
+  const before = (t: number) => layout.pauses.filter((p) => p.at < t).reduce((n, p) => n + p.dur - skipOf(p), 0)
+  // a stretch of voiceover the short jumps over (a skipped line) is never on screen
+  const skipped = (a: number, b: number) => layout.pauses.some((p) => skipOf(p) > 0 && a >= p.at - 1e-6 && b <= p.at + skipOf(p) + 1e-6)
   return spans.flatMap(({ k, from, to }) => {
-    const cuts = layout.pauses.map((p) => p.at).filter((at) => at > from && at < to)
+    const cuts = [...new Set(layout.pauses.flatMap((p) => [p.at, p.at + skipOf(p)]))].filter((at) => at > from && at < to).sort((a, b) => a - b)
     const edges = [from, ...cuts, to]
-    return edges.slice(0, -1).map((start, i): ShotBlock => {
+    return edges.slice(0, -1).flatMap((start, i): ReadonlyArray<ShotBlock> => {
       const end = edges[i + 1]!
+      if (skipped(start, end)) return []
       // a piece that starts at a pause comes after the real line that plays there
-      const shift = before(start) + (i > 0 ? layout.pauses.filter((p) => p.at === start).reduce((n, p) => n + p.dur, 0) : 0)
-      return { k, start: start + shift, end: end + shift }
+      const shift = before(start) + (i > 0 ? layout.pauses.filter((p) => p.at === start && skipOf(p) === 0).reduce((n, p) => n + p.dur, 0) : 0)
+      return [{ k, start: start + shift, end: end + shift }]
     }).filter((b) => b.end - b.start > 0.01)
   })
 }

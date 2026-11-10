@@ -5,7 +5,7 @@ import { Check } from "lucide-react"
 import { useState } from "react"
 import { InspectorBlock } from "../editor-frame.tsx"
 import { VideoDot } from "../../sets/video-badge.tsx"
-import { narratedWords, realLines, realsByVideo } from "../editor-values.ts"
+import { narratedWords, payoffSeconds, realLines, realsByVideo } from "../editor-values.ts"
 import type { GateControls } from "../gate.ts"
 import { StepDetails } from "../step-details.tsx"
 
@@ -53,6 +53,9 @@ export function ScriptRules({ script, limits, preset, videos, stages, gate }: {
         <>
           <Meter label="Narrated words" value={narratedWords(script)} range={limits.narrationWords} />
           <Meter label="Real lines" value={realLines(script)} range={limits.reals} />
+          {limits.ending === null ? null : (
+            <Meter label="Payoff take (seconds)" value={Math.round(payoffSeconds(script))} range={limits.ending.seconds} />
+          )}
         </>
       )}
       {videos.length < 2 ? null : (
@@ -70,6 +73,8 @@ export function ScriptRules({ script, limits, preset, videos, stages, gate }: {
         {[
           videos.length < 2 ? "Every real line is in the transcript, at its times" : "Every real line is in its own video's transcript, at its times",
           "None inside an ad, a sponsor read or the end screen",
+          ...(limits?.wholeSentences === true ? ["Every real line is whole sentences (a pause over 1.5 s ends one)"] : []),
+          `Real lines ${limits?.realSeconds[0] ?? 0.8}–${limits?.realSeconds[1] ?? 8} s each${limits?.ending == null ? "" : `; the payoff one take of ${limits.ending.seconds[0]}–${limits.ending.seconds[1]} s`}`,
           ...(limits?.realsOnlyAtEnd ? ["Real lines only after the narration"] : []),
           "Headline under 8 words"
         ].map((rule) => (

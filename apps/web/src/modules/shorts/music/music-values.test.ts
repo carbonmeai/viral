@@ -130,3 +130,9 @@ test("split, duplicate, move, add and drag to other bars", () => {
   assert.deepEqual(addBlock(blocks, 10).at(-1), block(6, 10, 1))
   assert.deepEqual(moveRange(block(0, 4, 2), 12, 14), block(10, 14, 2))
 })
+
+test("after a real line the voiceover can jump over a skipped line", () => {
+  const pauses = [{ at: 2, dur: 1, skip: 0.5 }]
+  assert.deepEqual(voiceAt(pauses, 2.5), { t: 2, paused: true })
+  assert.deepEqual(voiceAt(pauses, 3.2), { t: 2.7, paused: false })
+})

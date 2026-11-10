@@ -20,7 +20,7 @@ import {
   type EditSection,
   framingOf,
   lengthOf,
-  nudge,
+  nudgeSentence,
   searchVideos,
   sectionFrom,
   type SectionsDraft,
@@ -58,24 +58,25 @@ function Meter({ label, value, shown, range, max }: {
   )
 }
 
-// −1s, −0.1 · the time · +0.1, +1s for one edge of a section; each step snaps to whole words.
+// ‹ · the time · › for one edge of a section; each step moves it to the next whole sentence, so nobody is cut off
+// mid-sentence.
 function EdgeNudge({ label, at, disabled, onNudge }: {
   readonly label: string
   readonly at: number
   readonly disabled: boolean
-  readonly onNudge: (delta: number) => void
+  readonly onNudge: (direction: -1 | 1) => void
 }) {
-  const step = (delta: number, text: string) => (
-    <Button size="sm" variant="ghost" className="px-1.5" disabled={disabled} title={`Move the ${label.toLowerCase()} ${delta < 0 ? "earlier" : "later"} to the next word`} onClick={() => onNudge(delta)}>{text}</Button>
+  const step = (direction: -1 | 1) => (
+    <Button size="sm" variant="ghost" className="px-1.5" disabled={disabled} title={`Move the ${label.toLowerCase()} to the ${direction < 0 ? "sentence before" : "next sentence"}`} onClick={() => onNudge(direction)}>
+      {direction < 0 ? "‹ Sentence" : "Sentence ›"}
+    </Button>
   )
   return (
     <div className="flex min-w-0 items-center gap-1">
       <span className="w-9 shrink-0 text-xs text-fg-2">{label}</span>
-      {step(-1, "−1s")}
-      {step(-0.1, "−0.1")}
+      {step(-1)}
       <span className="mx-auto font-mono text-sm tabular-nums">{clock(at)}</span>
-      {step(0.1, "+0.1")}
-      {step(1, "+1s")}
+      {step(1)}
     </div>
   )
 }
@@ -167,9 +168,9 @@ export function SectionsInspector(props: SectionsInspectorProps) {
             </InspectorBlock>
 
             <InspectorBlock title={several ? `From ${nameOf(named, section.source ?? 0)}` : "From the video"}>
-              <EdgeNudge label="Start" at={section.start} disabled={!editable} onNudge={(d) => set(selected, nudge(section, "start", d, video.words, video.sourceSeconds))} />
-              <EdgeNudge label="End" at={section.end} disabled={!editable} onNudge={(d) => set(selected, nudge(section, "end", d, video.words, video.sourceSeconds))} />
-              <span className="text-xs text-fg-2">Each step moves to the next whole word.</span>
+              <EdgeNudge label="Start" at={section.start} disabled={!editable} onNudge={(d) => set(selected, nudgeSentence(section, "start", d, video.words, video.sourceSeconds))} />
+              <EdgeNudge label="End" at={section.end} disabled={!editable} onNudge={(d) => set(selected, nudgeSentence(section, "end", d, video.words, video.sourceSeconds))} />
+              <span className="text-xs text-fg-2">Each step moves to the next whole sentence, so nobody is cut off mid-sentence.</span>
             </InspectorBlock>
 
             <InspectorBlock title="Framing">

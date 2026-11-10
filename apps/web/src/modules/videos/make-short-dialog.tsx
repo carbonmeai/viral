@@ -14,10 +14,20 @@ export interface ApproachChoice {
   readonly hint?: string
 }
 
-// Offered on a video set's proposals: as suggested, or as a ranking of every video.
+const STORY_RECAP: ApproachChoice = {
+  value: "story-recap",
+  label: "Story recap",
+  hint: "The whole story in 60–120 s: the narrator sets up each moment, the real people answer, and the payoff plays as one long real take."
+}
+
+// Offered on a video's proposals: as suggested, or as a story recap (the creator's best-performing format).
+export const VIDEO_APPROACHES: ReadonlyArray<ApproachChoice> = [{ value: null, label: "As suggested" }, STORY_RECAP]
+
+// Offered on a video set's proposals: as suggested, as a ranking of every video, or as a story recap.
 export const SET_APPROACHES: ReadonlyArray<ApproachChoice> = [
   { value: null, label: "As suggested" },
-  { value: "ranking", label: "Ranking", hint: "An entry per video, each clip's own sound, #1 last." }
+  { value: "ranking", label: "Ranking", hint: "An entry per video, each clip's own sound, #1 last." },
+  STORY_RECAP
 ]
 
 // Before a proposal becomes a short: an optional brief, in your words, that steers its agents, and (when the caller

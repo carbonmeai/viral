@@ -42,6 +42,11 @@ export function StyleEditor({ preset, frame, usedBy }: { readonly preset: Preset
   }
   const captions = (next: Partial<PresetConfig["captions"]>) => edit({ captions: { ...draft.captions, ...next } })
   const music = (next: Partial<PresetConfig["music"]>) => edit({ music: { ...draft.music, ...next } })
+  // the voice levelled with the clips (the take at −10 LUFS, played at 1.7), or the take as spoken
+  const levelVoice = (on: boolean) => {
+    setDraft(({ voiceLevel: _, ...d }) => on ? { ...d, voiceLevel: { lufs: -10, gain: 1.7 } } : d)
+    setSaved(false)
+  }
   const voice = (next: Partial<PresetConfig["voice"]>) => edit({ voice: { ...draft.voice, ...next } })
 
   const store = async () => {
@@ -156,6 +161,12 @@ export function StyleEditor({ preset, frame, usedBy }: { readonly preset: Preset
             <StyleVoice voiceId={draft.voice.voiceId} onChange={(voiceId) => voice({ voiceId })} />
             <SettingRow label="Pace" sub="Words per second after speeding up the take. About 3.2 suits most narrators.">
               <RangeField label="Words per second" value={draft.voice.wordsPerSecond} min={2} max={5} step={0.1} format={(v) => `${v.toFixed(1)}/s`} onChange={(wordsPerSecond) => voice({ wordsPerSecond })} />
+            </SettingRow>
+            <SettingRow label="Level with the clips" sub="Brings the take up to −10 LUFS and plays it a little louder, so the narrator sits level with the real lines. For new takes.">
+              <Switch label="Level with the clips" checked={draft.voiceLevel !== undefined} onChange={levelVoice} />
+            </SettingRow>
+            <SettingRow label="Soft joins" sub="Short fades where a real line meets the narration, and a breath before each line, so nothing pops.">
+              <Switch label="Soft joins" checked={draft.softJoins === true} onChange={(softJoins) => edit({ softJoins })} />
             </SettingRow>
           </SettingsGroup>
 

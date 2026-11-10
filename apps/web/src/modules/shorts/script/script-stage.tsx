@@ -60,6 +60,13 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
     setDraft(text)
     setProblems([])
   }
+  // a narrated line right after a real line can be skipped (the real line says it): voiced, but jumped over
+  const skippable = (i: number) => script.beats[i - 1]?._tag === "Real" &&
+    script.beats[i + 1]?._tag === "Narration" && (script.beats[i + 1] as { readonly skipped?: boolean }).skipped !== true
+  const setSkipped = (i: number, skipped: boolean) => {
+    const beats = script.beats.map((b, k) => k !== i || b._tag !== "Narration" ? b : skipped ? { ...b, skipped: true } : { _tag: "Narration" as const, text: b.text })
+    void gate.edit({ ...script, beats }).then(setProblems)
+  }
   const save = (i: number) => {
     const beats = script.beats.map((b, k) => k === i && b._tag === "Narration" ? { ...b, text: draft.trim() } : b)
     void gate.edit({ ...script, beats }).then((refused) => {
@@ -120,6 +127,7 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
             >
               <span className="flex min-h-5 items-center gap-1.5 text-[11px] tracking-[.03em] text-fg-3">
                 <span className="uppercase">Narrator</span>
+                {beat.skipped === true ? <span title="Voiced, but the short jumps over it: the real line before it says it">· skipped, the real line says it</span> : null}
                 <Detail><span className="ml-auto tabular-nums">{words(beat.text)}w</span></Detail>
               </span>
               {editing === i ? (
@@ -135,7 +143,7 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
                 </div>
               ) : (
                 <>
-                  <div className="text-[13.5px] leading-[1.5]">{beat.text}</div>
+                  <div className={cn("text-[13.5px] leading-[1.5]", beat.skipped === true && "text-fg-3")}>{beat.text}</div>
                   {isSel ? (
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button
@@ -146,7 +154,22 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
                       >
                         <Pencil />Edit
                       </Button>
+                      {beat.skipped === true || skippable(i) ? (
+                        <Button
+                          variant="ghost"
+                          disabled={gate.request === null || gate.busy}
+                          title={beat.skipped === true
+                            ? "The narrator says this line after the real line (no new take needed)"
+                            : "The real line before it says the same: keep it in the take, but jump over it"}
+                          onClick={() => setSkipped(i, beat.skipped !== true)}
+                        >
+                          {beat.skipped === true ? "Narrator says it" : "Let the real line say it"}
+                        </Button>
+                      ) : null}
                     </div>
+                  ) : null}
+                  {isSel && problems.length > 0 ? (
+                    <ul className="m-0 grid gap-1 pl-4 text-xs text-danger">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
                   ) : null}
                 </>
               )}

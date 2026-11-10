@@ -36,6 +36,18 @@ test("on the short's timeline, shots after a real line move later by its length"
   ])
 })
 
+test("a skipped stretch of voiceover is never on screen; shots after it move by the clip less the skip", () => {
+  // the real line plays after 1.9 s for 1.5 s, then the voiceover picks up at 2.5 (0.6 s skipped)
+  const layout = { pauses: [{ at: 1.9, dur: 1.5, source: 0, skip: 0.6 }] }
+  const blocks = timelineShots(shotSpans(plan, words, 4), layout)
+  assert.deepEqual(blocks.map((b) => [b.k, +b.start.toFixed(2), +b.end.toFixed(2)]), [
+    [0, 0, 1],
+    [1, 1, 1.9],
+    // shot 3 (from 2 s) loses 2–2.5, which is skipped, and plays from where the narration picks up
+    [2, 3.4, 4.9]
+  ])
+})
+
 test("the storyboard plays the real lines where they cut in, and the outro last", () => {
   assert.deepEqual(storyboardOrder(plan), [
     { _tag: "Shot", k: 0 },

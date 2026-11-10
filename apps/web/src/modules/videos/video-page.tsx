@@ -1,5 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import type { RunId, SourceId, SourceOverview } from "@viral/contracts"
+import type { ApproachName, RunId, SourceId, SourceOverview } from "@viral/contracts"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@viral/ui/primitives/button"
 import { Panel } from "@viral/ui/primitives/panel"
@@ -27,7 +27,7 @@ import { StoryBeats } from "./story-beats.tsx"
 import { StoryStrip } from "./story-strip.tsx"
 import { TranscriptList } from "./transcript-list.tsx"
 import { VideoDetails } from "./video-details.tsx"
-import { MakeShortDialog } from "./make-short-dialog.tsx"
+import { MakeShortDialog, VIDEO_APPROACHES } from "./make-short-dialog.tsx"
 import { VideoSkeleton } from "./video-skeleton.tsx"
 import { createProjectFromProposal, runProgressAtom, sourceOverviewAtom, startProjectRun } from "./videos-api.ts"
 import { firstSentence, type FrameView, framesOf, nearestStill, proposalStillTime, runSpend, shortForProposal } from "./video-values.ts"
@@ -96,10 +96,10 @@ function VideoContent({ data, progress, tab, onTab, refresh }: {
 
   // the proposal whose "Make this short" dialog is open
   const [asking, setAsking] = useState<number | null>(null)
-  const make = (index: number, brief: string | null) => {
+  const make = (index: number, brief: string | null, approach: ApproachName | null) => {
     setMaking(index)
     setError(null)
-    create({ payload: { sourceId: source.id, proposal: index, brief } })
+    create({ payload: { sourceId: source.id, proposal: index, brief, ...(approach === null ? {} : { approach }) } })
       .then((project) => start({ payload: { projectId: project.id, from: null } }).then(() => project))
       .then((project) => navigate({ to: "/shorts/$projectId", params: { projectId: project.id } }))
       .catch(() => setError("Couldn't make that short. Is the server running?"))
@@ -239,8 +239,9 @@ function VideoContent({ data, progress, tab, onTab, refresh }: {
         open={asking !== null}
         busy={making !== null}
         onCancel={() => setAsking(null)}
-        onMake={(brief) => {
-          if (asking !== null) make(asking, brief)
+        approaches={asking !== null && story?.proposals[asking]?.approach === "story-recap" ? [] : VIDEO_APPROACHES}
+        onMake={(brief, approach) => {
+          if (asking !== null) make(asking, brief, approach)
         }}
       />
     </Page>

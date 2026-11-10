@@ -43,14 +43,15 @@ export const songSpans = (bed: MusicBed): ReadonlyArray<{ readonly from: number;
   return merged
 }
 
-// Where the voiceover is at a moment of the short: it pauses while a real line plays (`paused`), and has ended
-// once the narration is over.
-export const voiceAt = (pauses: ReadonlyArray<{ readonly at: number; readonly dur: number }>, shortSeconds: number) => {
+// Where the voiceover is at a moment of the short: it pauses while a real line plays (`paused`), jumps over a skipped
+// line after it, and has ended once the narration is over.
+export const voiceAt = (pauses: ReadonlyArray<{ readonly at: number; readonly dur: number; readonly skip?: number }>, shortSeconds: number) => {
   let offset = 0
   for (const p of [...pauses].sort((a, b) => a.at - b.at)) {
     if (shortSeconds < p.at + offset) return { t: shortSeconds - offset, paused: false }
     if (shortSeconds < p.at + offset + p.dur) return { t: p.at, paused: true }
-    offset += p.dur
+    // after the line, the voiceover picks up `skip` seconds on (past a line the real line says anyway)
+    offset += p.dur - (p.skip ?? 0)
   }
   return { t: shortSeconds - offset, paused: false }
 }

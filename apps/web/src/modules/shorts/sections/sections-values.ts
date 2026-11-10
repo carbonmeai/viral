@@ -88,6 +88,55 @@ export const nudge = (
   return section
 }
 
+// A video's sentences, as the server finds them (transcribe/sentences.ts): a word ending in . ? ! … or followed by a
+// pause over 1.5 s ends one. A "sentence" over 25 s means no punctuation there, so it's left out.
+const SENTENCE_GAP = 1.5
+const LONG_SENTENCE = 25
+export const sentencesOf = (words: ReadonlyArray<TranscriptWord>): ReadonlyArray<{ readonly start: number; readonly end: number }> => {
+  const out: Array<{ start: number; end: number }> = []
+  let first: TranscriptWord | null = null
+  words.forEach((word, i) => {
+    first ??= word
+    const next = words[i + 1]
+    if (/[.?!…]$/.test(word.w) || next === undefined || next.s - word.e > SENTENCE_GAP) {
+      if (word.e - first.s <= LONG_SENTENCE) out.push({ start: first.s, end: word.e })
+      first = null
+    }
+  })
+  return out
+}
+
+// Moves one edge of a section to the next whole sentence, earlier (−1) or later (+1): a start to a sentence's first word,
+// an end to a sentence's last, with the same air as snapSection. Where the transcript has no sentences to go by, it
+// steps a word at a time instead. Unchanged when there's nowhere to go.
+export const nudgeSentence = (
+  section: EditSection,
+  edge: "start" | "end",
+  direction: -1 | 1,
+  words: ReadonlyArray<TranscriptWord>,
+  duration: number
+): EditSection => {
+  const sentences = sentencesOf(words)
+  const current = snapSection(section.start, section.end, words, duration)
+  const first = current.words[0]
+  const last = current.words.at(-1)
+  if (sentences.length === 0 || first === undefined || last === undefined) return nudge(section, edge, direction * 0.1, words, duration)
+  const target = edge === "start"
+    ? (direction < 0 ? sentences.findLast((x) => x.start < first.s - 0.01) : sentences.find((x) => x.start > first.s + 0.01 && x.start < last.s))?.start
+    : (direction < 0 ? sentences.findLast((x) => x.end < last.e - 0.01 && x.end > first.e) : sentences.find((x) => x.end > last.e + 0.01))?.end
+  if (target === undefined) return section
+  const snapped = snapSection(edge === "start" ? target : section.start, edge === "end" ? target : section.end, words, duration)
+  if (snapped.words.length === 0) return section
+  return {
+    ...section,
+    start: round(snapped.start),
+    end: round(snapped.end),
+    text: textOf(snapped.words),
+    // a moved start shows a different moment; its old frame no longer fits
+    frame: edge === "start" ? null : section.frame
+  }
+}
+
 // A line of the transcript you found, as a section you can add. `source` is its video (by position) when the
 // search covers several.
 export interface TranscriptMatch {

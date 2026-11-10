@@ -1,5 +1,5 @@
 import type { TranscriptWord } from "@viral/contracts"
-import { shortTimeOf, type TimelineLayout } from "./editor-values.ts"
+import { shortTimeOf, skippedAt, type TimelineLayout } from "./editor-values.ts"
 import { entryBlocks, type RankingDraft } from "./ranking/ranking-values.ts"
 import { type EditSection, sectionBlocks } from "./sections/sections-values.ts"
 
@@ -120,7 +120,15 @@ export const narratedWords = (
 
 // A narrated short's: the voiceover's words on the short's clock and each real line's quote spread over its clip.
 export const narratedShortCues = (layout: TimelineLayout, voiceover: ReadonlyArray<TranscriptWord>, style: CaptionStyle) =>
-  narratedCues(narratedWords(voiceover, (t) => shortTimeOf(layout, t), layout.reals.map((r) => spreadWords(r.label, r.start, r.end - r.start))), style, layout.total)
+  narratedCues(
+    narratedWords(
+      voiceover.filter((w) => !skippedAt(layout, w.s + 0.001)),
+      (t) => shortTimeOf(layout, t),
+      layout.reals.map((r) => spreadWords(r.label, r.start, r.end - r.start))
+    ),
+    style,
+    layout.total
+  )
 
 // A cut-down short's: each section's words from its video's transcript, at its place in the short.
 export const sectionCues = (sections: ReadonlyArray<EditSection>, wordsOf: (video: number) => ReadonlyArray<TranscriptWord>, style: CaptionStyle) => {

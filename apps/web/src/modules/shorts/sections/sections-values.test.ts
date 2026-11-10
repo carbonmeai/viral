@@ -1,7 +1,7 @@
 import type { CutPlan } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { changeCount, draftOf, move, nudge, proposalOf, searchTranscript, searchVideos, sectionBlocks, sectionFrom, snapSection, stillKey, totalSeconds, videoOfSection } from "./sections-values.ts"
+import { changeCount, draftOf, move, nudge, nudgeSentence, proposalOf, searchTranscript, searchVideos, sectionBlocks, sectionFrom, snapSection, stillKey, totalSeconds, videoOfSection } from "./sections-values.ts"
 
 // "It worked. The spice killed it. This is so nasty." at a word every half second
 const said = ["It", "worked.", "The", "spice", "killed", "it.", "This", "is", "so", "nasty."]
@@ -89,4 +89,17 @@ test("a short from two videos: the search covers both, a found line keeps its vi
   assert.deepEqual(sectionBlocks(draft.sections).map((b) => b.source), [0, 0, 1])
   assert.equal(stillKey(1, 4.4), "1:4")
   assert.equal(stillKey(undefined, 4.6), "0:5")
+})
+
+test("a section's edge steps a whole sentence at a time", () => {
+  // "We tried it. It totally worked. Then we went home." a word every half second from 10 s
+  const said = "We tried it. It totally worked. Then we went home.".split(" ").map((w, i) => ({ w, s: 10 + i * 0.5, e: 10 + i * 0.5 + 0.4 }))
+  const section = { key: "s", beat: "hook" as const, start: 11.44, end: 13, note: "", text: "It totally worked.", frame: "f.jpg" }
+  const later = nudgeSentence(section, "end", 1, said, 60)
+  assert.equal(later.text, "It totally worked. Then we went home.")
+  assert.equal(later.frame, "f.jpg", "a moved end keeps the frame")
+  const earlier = nudgeSentence(section, "start", -1, said, 60)
+  assert.equal(earlier.text, "We tried it. It totally worked.")
+  assert.equal(earlier.frame, null)
+  assert.equal(nudgeSentence(section, "start", 1, said, 60), section, "no later sentence starts inside it")
 })

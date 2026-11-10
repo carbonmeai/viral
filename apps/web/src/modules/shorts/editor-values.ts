@@ -98,9 +98,16 @@ const normalize = (word: string) => word.toLowerCase().replace(/[^\p{L}\p{N}]/gu
 // how a script line splits into the words a transcriber hears ("spicy-cold" is two)
 const tokens = (text: string) => text.split(/[\s\-–—]+/).map(normalize).filter((t) => t !== "")
 
+// The narrated words that play (a skipped line is voiced, but the short jumps over it), as the server counts them.
 export const narratedWords = (script: Script) =>
-  script.beats.reduce((n, beat) => n + (beat._tag === "Narration" ? beat.text.split(/\s+/).filter((w) => /\w/.test(w)).length : 0), 0)
+  script.beats.reduce((n, beat) =>
+    n + (beat._tag === "Narration" && beat.skipped !== true ? beat.text.split(/\s+/).filter((w) => /\w/.test(w)).length : 0), 0)
 export const realLines = (script: Script) => script.beats.filter((b) => b._tag === "Real").length
+// How long the real take that ends the script plays (0 when it ends on narration): the payoff of a story recap.
+export const payoffSeconds = (script: Script) => {
+  const last = script.beats.at(-1)
+  return last?._tag === "Real" ? Math.max(0, last.end - last.start) : 0
+}
 
 // How many real lines come from each of the short's videos, by position (the first one first).
 export const realsByVideo = (script: Script, videos: number) =>
@@ -144,21 +151,52 @@ export interface TimelineLayout {
   readonly reals: ReadonlyArray<TimelineSegment & { readonly kind: "insert" | "outro"; readonly source: number }>
   // where the narration ends and the outro clips begin
   readonly outroStart: number
-  // where the voiceover pauses for a real line (voiceover seconds), for how long, and the line's video
-  readonly pauses: ReadonlyArray<{ readonly at: number; readonly dur: number; readonly source: number }>
+  // where the voiceover pauses for a real line (voiceover seconds), for how long, and the line's video; with `skip`, it
+  // picks up that many seconds later, jumping over a line the real line says anyway
+  readonly pauses: ReadonlyArray<Pause>
 }
 
-// A moment of the voiceover in the short's own time: every pause before it has played by then.
-export const shortTimeOf = (layout: Pick<TimelineLayout, "pauses">, voiceoverSeconds: number) =>
-  voiceoverSeconds + layout.pauses.filter((p) => p.at < voiceoverSeconds).reduce((n, p) => n + p.dur, 0)
+export interface Pause {
+  readonly at: number
+  readonly dur: number
+  readonly source: number
+  readonly skip?: number
+}
+
+// A moment of the voiceover in the short's own time: every pause before it has played by then (and every skipped
+// stretch before it is gone). A moment inside a skipped stretch never plays: it lands where the narration picks up.
+export const shortTimeOf = (layout: { readonly pauses: ReadonlyArray<Pick<Pause, "at" | "dur" | "skip">> }, voiceoverSeconds: number) => {
+  let offset = 0
+  for (const p of [...layout.pauses].sort((a, b) => a.at - b.at)) {
+    if (voiceoverSeconds <= p.at) break
+    const skip = p.skip ?? 0
+    if (voiceoverSeconds < p.at + skip) return p.at + offset + p.dur
+    offset += p.dur - skip
+  }
+  return voiceoverSeconds + offset
+}
+
+// Whether a moment of the voiceover is in a stretch the short skips.
+export const skippedAt = (layout: { readonly pauses: ReadonlyArray<Pick<Pause, "at" | "skip">> }, voiceoverSeconds: number) =>
+  layout.pauses.some((p) => (p.skip ?? 0) > 0 && voiceoverSeconds > p.at && voiceoverSeconds < p.at + p.skip!)
+
+// With a style's soft joins, the narrator breathes after the word before a clip: 0.25 s, at most half way to the next word.
+export const INSERT_PAD = 0.25
+// The narration picks up just before the word after a skipped line, as the renderer does.
+const RESUME_LEAD = 0.08
 
 // The short on one timeline, as the renderer plays it: the voiceover pauses after the last word of the narration
 // before each real line, the line plays, then the voiceover goes on; real lines after the last narration play at
 // the end. Everything is in the short's own seconds.
-export const layoutTimeline = (script: Script, words: ReadonlyArray<TranscriptWord>, voiceoverSeconds: number): TimelineLayout => {
+export const layoutTimeline = (
+  script: Script,
+  words: ReadonlyArray<TranscriptWord>,
+  voiceoverSeconds: number,
+  options: { readonly softJoins?: boolean } = {}
+): TimelineLayout => {
   const ends = narrationEnds(script, words)
   const lastNarration = script.beats.findLastIndex((b) => b._tag === "Narration")
-  const inserts: Array<{ at: number; dur: number; label: string; source: number }> = []
+  const inserts: Array<{ at: number; dur: number; label: string; source: number; skip: number }> = []
   const outro: Array<{ dur: number; label: string; source: number }> = []
   const spans: Array<{ from: number; to: number; label: string }> = []
   let narrated = -1
@@ -174,15 +212,26 @@ export const layoutTimeline = (script: Script, words: ReadonlyArray<TranscriptWo
       return
     }
     const clip = { dur: Math.max(0, beat.end - beat.start), label: beat.quote, source: beat.source ?? 0 }
-    if (i > lastNarration || narrated < 0) outro.push(clip)
-    else inserts.push({ ...clip, at: words[ends[narrated] ?? 0]?.e ?? 0 })
+    if (i > lastNarration || narrated < 0) {
+      outro.push(clip)
+      return
+    }
+    const after = ends[narrated] ?? 0
+    const wordEnd = words[after]?.e ?? 0
+    const next = words[after + 1]?.s ?? voiceoverSeconds
+    const at = options.softJoins === true ? Math.min(wordEnd + INSERT_PAD, (wordEnd + next) / 2) : wordEnd
+    // a skipped line next: the narration picks up at the word after it
+    const following = script.beats[i + 1]
+    const resumeWord = following?._tag === "Narration" && following.skipped === true ? (ends[narrated + 1] ?? after) + 1 : null
+    const resume = resumeWord === null || words[resumeWord] === undefined ? at : Math.max(at, words[resumeWord]!.s - RESUME_LEAD)
+    inserts.push({ ...clip, at, skip: resume - at })
   })
   // voiceover time → the short's time: every insert that starts before t has played by then
-  const shifted = (t: number) => t + inserts.filter((x) => x.at < t).reduce((n, x) => n + x.dur, 0)
+  const shifted = (t: number) => shortTimeOf({ pauses: inserts }, t)
   const reals: Array<TimelineSegment & { readonly kind: "insert" | "outro"; readonly source: number }> = []
   inserts.forEach((x, k) => {
     // back-to-back inserts after the same word follow each other
-    const start = x.at + inserts.slice(0, k).reduce((n, y) => n + y.dur, 0)
+    const start = x.at + inserts.slice(0, k).reduce((n, y) => n + y.dur - y.skip, 0)
     reals.push({ start, end: start + x.dur, label: x.label, kind: "insert", source: x.source })
   })
   const outroStart = shifted(voiceoverSeconds) + inserts.filter((x) => x.at >= voiceoverSeconds).reduce((n, x) => n + x.dur, 0)
@@ -196,7 +245,7 @@ export const layoutTimeline = (script: Script, words: ReadonlyArray<TranscriptWo
     narration: spans.map((s) => ({ start: shifted(s.from), end: shifted(s.to), label: s.label, from: s.from, to: s.to })),
     reals,
     outroStart,
-    pauses: inserts.map((x) => ({ at: x.at, dur: x.dur, source: x.source }))
+    pauses: inserts.map((x) => ({ at: x.at, dur: x.dur, source: x.source, ...(x.skip > 0 ? { skip: x.skip } : {}) }))
   }
 }
 
