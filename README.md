@@ -7,6 +7,8 @@ agent, or edit it yourself.
 It's a desktop app (Electron) for macOS. All the work happens on your own machine: your videos, shorts and keys stay
 with you.
 
+![The editor: the script step waiting for approval, the agent's reply with the changed line and what the server checked, and the multi-track timeline](.github/readme/editor-chat.jpg)
+
 ## What it makes
 
 - **Narrated shorts:** a voiceover tells the story over the best footage, with the creator's real lines cut in.
@@ -19,6 +21,12 @@ with you.
 
 Every short also gets a thumbnail, a title with alternates, a description, hashtags, captions (`.srt`) and credits.
 Finished files land in `~/.viral/renders/`.
+
+| Start from an idea, a link or a file | Approve the videos Viral found |
+| --- | --- |
+| ![Home: "What would you like to create?" with format cards and recent shorts](.github/readme/home.jpg) | ![The shortlist: five rescue videos with the reason each was picked, and backups](.github/readme/shortlist.jpg) |
+| **Ask the agent for changes in chat** | **Music fitted so the drop lands on a word** |
+| ![A ranking short: the agent swapped two ranks and shows what changed](.github/readme/ranking.jpg) | ![The Music step: the song's parts under the voice, with the drop on "So"](.github/readme/music.jpg) |
 
 ## How it works
 
@@ -41,6 +49,8 @@ Each agent step runs on the provider you choose for it:
 
 Keys are entered in Settings › Accounts and stored in the macOS Keychain. A variable in `.env` overrides a saved key.
 Settings › Usage shows what each step cost, split between money billed and value used from a plan.
+
+![Settings › Agents: picking a model per step, with descriptions, badges and costs](.github/readme/models.jpg)
 
 ## Requirements
 
