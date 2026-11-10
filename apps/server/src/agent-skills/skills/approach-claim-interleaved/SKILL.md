@@ -46,6 +46,11 @@ voice within a few seconds. Four to six of them keep the viewer from swiping.
   Never pad to reach a count.
 - **Every narrator line leads into the next real line** or the next step. No line repeats what a real clip is
   about to say.
+- **Write the set-up the person answers.** The narrator's line ends where the real line picks up, so the two read
+  as one conversation: "This man says he's not scared of anything." → "I am not scared of anything." A "But…" line
+  brings the setback, a "So he…" or "Somehow…" line the fix.
+- **Cover the story, not just its highlights.** Walk through its stages in order, one punchy line each with its
+  real number; a short that jumps from the start to the end loses viewers.
 - **Never invent.** Every claim comes from the transcript, and every real line is quoted exactly from it.
 - **Third person, short sentences**, numbers written as words.
 
@@ -59,6 +64,8 @@ voice within a few seconds. Four to six of them keep the viewer from swiping.
 - **Never from an excluded range** (sponsor reads, ads, end screens).
 - **The ending is a joke button when the video has one:** a short, understated real exchange after the
   payoff ("You can have the rest." / "Yeah, I'm okay, thanks."). Otherwise end on the strongest reaction.
+- **Whole sentences only.** Each real line starts on the first word of a sentence and ends on the last word of
+  one; never cut the person off mid-thought.
 - **Give each one as exact source times** from the transcript's word timings, starting on the first word and
   ending just after the last.
 
@@ -83,3 +90,12 @@ REAL      "You can have the rest." / "Yeah, I'm okay, thanks."
 ```
 
 87 narrated words and about 22 seconds of real voices: 49.5 seconds in all.
+
+After the payoff comes the closing question (see `story-arc`), never inside the beats above.
+
+## The full-story version (the creator's best short)
+
+The same shape, run over the whole video, made the creator's best-performing short ("10 Levels of Spicy"): every
+stage of the challenge in order, 5–8 real lines answering the narrator, and the real payoff as one long continuous
+take. Its narration is longer than this approach allows (150–220 words, 60–120 s), so it is its own approach; within
+this one, take its habits: set-ups the person answers, every stage covered in a line, the strongest real ending.

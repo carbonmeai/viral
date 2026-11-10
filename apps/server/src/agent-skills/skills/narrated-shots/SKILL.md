@@ -10,7 +10,8 @@ description: How to plan the shots of a narrated short (any narrated approach). 
 - **Anchor each shot to the voiceover word it illustrates** (a word index plus that word's text), not to
   seconds, so re-voicing or speeding up never breaks the sync. The first shot starts on word 0.
 - **The shot matches its words.** "Machine" shows the machine, "powder" shows the powder, "he tasted it"
-  shows him tasting it. When a line is about the creator, show the creator, not someone else.
+  shows him tasting it. Show the actual thing named: the pepper, the Scoville card, the dish, the face. When a line
+  is about the creator, show the creator, not someone else.
 - **Pace:** follow the style's target average shot length (about 1.3s for a fast recap, about 2.2s for an
   interleaved short). Change shots on the words that matter, not mechanically.
 - **Open on the payoff.** The first shot (word 0) shows the finished result or the most striking frame (the
@@ -23,8 +24,9 @@ description: How to plan the shots of a narrated short (any narrated approach). 
 - **Pick frames from the contact sheets**, then refine with finer sheets around the moment. A shot's source
   time is where the action starts.
 - **Look at what you picked before you submit.** A tile in a 5-second sheet can hide a cut: the second you
-  chose may be a wide shot, a different person, or the moment before the action. Check each shot's actual first
-  frame against its words and move the ones that don't match.
+  chose may be a wide shot, a different person, or the moment before the action. About 30% of picks taken from
+  coarse sheets land on a transition or a graphic frame, so confirm every pick on a still: check each shot's actual
+  first frame against its words and move the ones that don't match.
 - **Never use sponsor, ad, QR or end-screen footage.** Those ranges are excluded and the renderer refuses
   any shot that touches them.
 
@@ -41,7 +43,12 @@ description: How to plan the shots of a narrated short (any narrated approach). 
   start right where the narration resumes, so the frame before the insert doesn't repeat.
 - **Outro clips** play after the last narrated line: the final reaction, or the joke button.
 - **Every real clip is exact source seconds** from the transcript's word timings: start on the first word,
-  end just after the last, and keep it clear of excluded ranges.
+  end just after the last, and keep it clear of excluded ranges. Real clips are whole sentences; never cut a person
+  off mid-sentence.
+- **The real payoff plays as one continuous take.** Outro clips a few seconds apart in the source are one stretch
+  of the video, so no line in between is skipped.
+- **The closing question** (when the style has it on) plays after the outro over a held last frame of it, so the
+  outro's last frame should be a clean one (not the start of the video's next scene).
 
 ## Shorts from several videos
 

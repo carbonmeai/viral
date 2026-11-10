@@ -12,7 +12,14 @@ Drawn from the creator's viral-shorts skill and its final rescues render (`ranki
 entries), made after the reference short "Ranking Best Pool Fails" (11.3M views).
 
 **When it fits:** "top N", "ranked", "best…" ideas over several videos found for them, where each video holds one
-complete turnaround (a rescue, a restoration, a glow-up). One entry per video. A single video never makes a ranking.
+complete turnaround (a rescue, a restoration, a glow-up) **that explains itself visually**. One entry per video. A
+single video never makes a ranking.
+
+**This is the list style, no longer the creator's default ranking.** Their top 10 and top 6 in this style were judged
+poor on 10 Nov: each entry got about 15 s of out-of-context talk ("So we had him in a smaller crate…") and couldn't
+tell an engaging story. Their default is now a **narrated ranking** (top 5, a narrator telling each entry's story with
+1–2 real lines cut in). Use the list style when the clips tell their stories without words: a fall, a save, a goal,
+a glow-up you can see.
 
 ## What it looks like
 
@@ -65,9 +72,11 @@ names; a compilation that cuts to other animals is the wrong footage.
 
 ## Post text
 
-- Title like "Top 10 Animal Comebacks (Before & After)", under 40 characters, with alternates that tease #1 ("#1 Was
-  Lying Down To Die").
-- A two-sentence description with the extreme real numbers, no spoiled ending, ending **"Wait for #1."**
+- Title like "Top 10 Animal Comebacks (Before & After)" or a tease of #1 ("He Had Already Given Up… 😢"), under 40
+  characters, with alternates that tease #1 ("#1 Was Lying Down To Die"). A ranking's title may end with **one
+  emoji** that fits the feeling; nowhere else.
+- A two-sentence description with the extreme real numbers, no spoiled ending, whose **last line teases #1**:
+  "Number one will get you." or "Wait for #1."
 - Every channel is credited: a "Footage:" line naming each, and a sources list with each rank's channel and link
   (Viral adds both). No on-screen credit unless the style turns on "via <channel>".
 

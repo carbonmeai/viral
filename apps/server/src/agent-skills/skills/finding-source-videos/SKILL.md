@@ -29,10 +29,12 @@ only as good as the moments its videos really contain.
 
 - **Compilations** ("Top 5 Craziest Transformations", "50 Rescue Cats Before & After"): someone else's edit, cut to
   other subjects mid-shot, often with their own music and captions.
+- **Music-only vlogs**: no one tells the story, so there's nothing for a narrator to hand over to.
 - **Re-uploads, slideshows of photos and machine-made videos.** A channel with 0–5 views on a topic where others have
   millions is usually one of these.
-- **Hour-long videos.** At most 20 minutes; prefer under 6. Shorter means less to download and read, and the moments
-  are easier to find. A longer one is fine only when nothing shorter tells that story.
+- **Hour-long videos.** At most 20 minutes; prefer under 6 (for a ranking, 1–6 minutes). Shorter means less to
+  download and read, and the moments are easier to find. A longer one is fine only when nothing shorter tells that
+  story.
 - **Live streams** and premieres that haven't happened.
 
 ## What makes a good pick
@@ -48,6 +50,29 @@ only as good as the moments its videos really contain.
 - **Order** the picks the way the short plays them. For a ranking, order by how dramatic the turnaround is, with #1
   last; give each pick its part ("#3: the matted dog").
 - **Views are a hint, not a rule.** A 49k-view piglet with the right story beats an 8M-view video that doesn't fit.
+  For a ranking, though, over a million views is a strong sign the video tells its story well.
+
+## Videos for a ranking (required)
+
+The creator's rankings are now narrated (a narrator tells each entry's story and the people in the video answer in
+their own words), and **five entries** is the default. Each entry needs:
+
+- **One video about one subject, 1–6 minutes long**, filmed by the people who were there (The Dodo, We Love Animals,
+  Hope For Paws for animals).
+- **Over a million views** as a strong hint that the story works.
+- **Real interview lines in its captions**: someone telling the story ("That's why I named her Halo…"), not only
+  music. Check the start of the captions with `video_details`; a video whose captions are empty or only "[Music]"
+  can't answer the narrator.
+- **Clear before and after footage** (and the care in between for a transformation).
+- **Reject** long compilations, music-only vlogs and re-uploads: a 20-minute "ER dog" video was mostly music and
+  merch plugs.
+
+## Topic ideas (news, a person over the years)
+
+- Prefer the subject's own channel, official interviews and long-form footage; **news clips (ET, E! News, AP,
+  broadcasters) draw copyright claims**, so when your picks lean on them, say so in your summary.
+- The short may only state facts the videos say, so pick videos whose captions carry the facts the idea needs (a
+  record, a date, a number), not only footage.
 
 ## Moments and times
 

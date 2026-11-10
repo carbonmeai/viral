@@ -39,6 +39,13 @@ each other.
 - **Search before you claim a moment is missing.** With several long videos you may only have outlines:
   `search_transcript` finds a word or phrase across all of them, `read_transcript` reads a few minutes of one.
 
+## Topic shorts
+
+When the videos were found for a topic (a person over the years, a news story), the short is a narrated one in topic
+mode (see `story-arc`): facts only from what the videos say, narrate only what there is footage for, let the
+subject's own quotes answer the narrator, and note it in `why` when the footage leans on news clips (they draw
+copyright claims).
+
 ## Judging across videos
 
 Score the radar as for any short (story-arc), plus two questions:

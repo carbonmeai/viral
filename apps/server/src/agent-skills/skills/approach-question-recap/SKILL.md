@@ -36,7 +36,9 @@ the best real reaction comes at the very end.
 - **The setback gets a "But…" line**, and the fix gets a "So he…" or "Somehow…" line.
 - **Write numbers as words** ("twenty thousand"), so the voice reads them naturally.
 - Third person throughout. Short sentences. No filler, no sign-off.
-- **The ending:** one to three real reaction clips after the last narrated line (see `narrated-shots`).
+- **The ending:** one to three real reaction clips after the last narrated line (see `narrated-shots`), each on
+  whole sentences; when the reaction is a few clips seconds apart, take it as one continuous stretch. The closing
+  question (see `story-arc`) comes after them, never inside the script's beats.
 
 ## Example (the first candy short)
 
