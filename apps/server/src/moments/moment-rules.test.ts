@@ -1,14 +1,8 @@
 import type { RankingProposal, TranscriptWord } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import {
-  checkRanking,
-  fromProposedRanking,
-  type RankingVideo,
-  sentencesOf,
-  shuffledOrder,
-  snapToSentences
-} from "./moment-rules.ts"
+import { sentencesOf, snapToSentences } from "../transcribe/sentences.ts"
+import { checkRanking, fromProposedRanking, type RankingVideo, shuffledOrder } from "./moment-rules.ts"
 
 // words spoken one after another, 0.4 s each with 0.1 s between, from `at`
 const say = (at: number, text: string): Array<TranscriptWord> =>

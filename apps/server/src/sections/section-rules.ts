@@ -1,6 +1,7 @@
 import type { CutPlan, ProposedSections, SectionsProposal, SourceIndex, TranscriptWord } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 import { clipSource, type SourceContext, sourceField } from "../projects/source-context.ts"
+import { LONG_SENTENCE, type Sentence, sentencesOf, snapToSentences } from "../transcribe/sentences.ts"
 
 export type Range = { readonly start: number; readonly end: number }
 
@@ -13,7 +14,11 @@ export const SECTION_LIMITS = {
   // seconds per section, and for the whole short (approach-cut-down: 30–120 s, so an exchange lands whole)
   minSection: 0.8,
   total: [30, 120] as const,
-  hookWords: 8
+  hookWords: 8,
+  // how far a section's edge may stretch to keep a sentence whole (back to its start, on to its end); past that it
+  // moves inward past the partial sentence (approach-cut-down: never end on a half-answer)
+  maxBack: 4,
+  maxForward: 8
 }
 
 // A little air before a section's first word and after its last, never reaching into the next word.
@@ -56,8 +61,9 @@ export const fromProposedSections = (proposed: ProposedSections): SectionsPropos
 const fmt = (t: number) => t.toFixed(1)
 const countWords = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length
 
-// Checks a proposed cut-down short against the short's videos (V1 first), and snaps each section to whole words
-// of its own video, adding the words it says. The renderer plays the snapped times as they are.
+// Checks a proposed cut-down short against the short's videos (V1 first), and snaps each section to whole sentences
+// (then whole words, with a little air) of its own video, adding the words it says. The renderer plays the snapped
+// times as they are.
 export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray<SourceContext>): Checked<CutDraft> => {
   const problems: Array<string> = []
   if (proposal.sections.length === 0) problems.push("there are no sections")
@@ -66,6 +72,15 @@ export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray
   }
 
   const several = sources.length > 1
+  const sentenceCache = new Map<number, ReadonlyArray<Sentence>>()
+  const sentences = (source: number, words: SourceContext["words"]) => {
+    const known = sentenceCache.get(source)
+    if (known !== undefined) return known
+    // a transcript without punctuation has no sentences to go by: those stretches snap to words only
+    const found = sentencesOf(words).filter((x) => x.end - x.start <= LONG_SENTENCE)
+    sentenceCache.set(source, found)
+    return found
+  }
   const sections = proposal.sections.map(({ source, ...section }, k) => {
     const name = `section ${k + 1} (${section.beat} ${several ? `V${(source ?? 0) + 1} ` : ""}${fmt(section.start)}–${fmt(section.end)}s)`
     const video = clipSource(sources, source, name)
@@ -79,7 +94,15 @@ export const checkSections = (proposal: SectionsProposal, sources: ReadonlyArray
       problems.push(`${name} is outside ${several ? `V${(source ?? 0) + 1}` : "the video"} (0–${fmt(ctx.seconds)}s)`)
     }
     if (section.cropX !== undefined && (section.cropX < 0 || section.cropX > 1)) problems.push(`${name}: cropX must be 0–1`)
-    const snapped = snapSection(section.start, section.end, ctx.words, ctx.seconds)
+    const whole = snapToSentences(sentences(source ?? 0, ctx.words), section.start, section.end, {
+      maxBack: SECTION_LIMITS.maxBack,
+      maxForward: SECTION_LIMITS.maxForward,
+      limit: ctx.seconds,
+      blocked: ctx.excluded,
+      minStart: 0
+    })
+    if (whole.problem !== null) problems.push(`${name} ${whole.problem}; move it so both ends fall on whole sentences`)
+    const snapped = snapSection(whole.start, whole.end, ctx.words, ctx.seconds)
     if (snapped.end - snapped.start < SECTION_LIMITS.minSection) {
       problems.push(`${name} lasts ${fmt(snapped.end - snapped.start)}s; make it at least ${SECTION_LIMITS.minSection}s`)
     }

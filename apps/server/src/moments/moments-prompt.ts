@@ -1,7 +1,7 @@
 import { RANKING_LIMITS, rankingSeconds as plannedSeconds, type Transcript } from "@viral/contracts"
 import { creatorBriefLine } from "../projects/creator-brief.ts"
 import { type BriefVideo, videosSections } from "../projects/videos-brief.ts"
-import { sentencesOf } from "./moment-rules.ts"
+import { sentencesOf } from "../transcribe/sentences.ts"
 
 // The stage's job and tool contract; what makes a good ranking comes from the approach-ranking skill.
 export const momentsPrompt = (maxSeconds: number, entries: number) => {

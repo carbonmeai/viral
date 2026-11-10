@@ -41,7 +41,7 @@ export const describeSectionsChange = (before: CutPlan, after: CutPlan, videoNam
 }
 
 export const sectionsChecks = (plan: CutPlan): ReadonlyArray<ChatCheck> => [
-  passed("Every section starts and ends on a whole word"),
+  passed("Every section starts and ends on a whole sentence"),
   passed("The hook comes first"),
   passed("No sections overlap, none inside an ad or end screen"),
   passed(`${seconds(length(plan))}, inside ${SECTION_LIMITS.total[0]}–${SECTION_LIMITS.total[1]}s`),

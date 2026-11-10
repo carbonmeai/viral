@@ -97,3 +97,14 @@ test("the agent's V numbers become positions, and a V2 section is checked agains
   assert.match(text, /section 2 \(payoff V2 1\.0–3\.0s\) touches an excluded range of V2 \(2\.0–4\.0s\)/)
   assert.match(text, /section 3 \(payoff V2 25\.0–40\.0s\) is outside V2 \(0–30\.0s\)/)
 })
+
+test("a section that cuts a sentence stretches to keep it whole, or moves past the part it can't keep", () => {
+  // "We tried it. It totally worked and everyone cheered. Then we went home." a word every half second from 10 s
+  const said = "We tried it. It totally worked and everyone cheered. Then we went home.".split(" ")
+    .map((w, i) => ({ w, s: 10 + i * 0.5, e: 10 + i * 0.5 + 0.4 }))
+  const videos = [{ words: said, seconds: 60, excluded: [] }]
+  // 11.6 starts inside "It totally…" (11.5) and 14.2 ends inside it (14.4): both stretch to the whole sentence
+  const { value, problems } = checkSections({ hookText: null, sections: [{ beat: "hook", start: 11.6, end: 14.2, note: "" }] }, videos)
+  assert.deepEqual(problems.filter((p) => p.includes("sentence")), [])
+  assert.equal(value.sections[0]!.text, "It totally worked and everyone cheered.")
+})
