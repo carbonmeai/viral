@@ -10,7 +10,9 @@ import {
   isKeyProvider,
   type KeyModels,
   type ModelEval,
-  type TokenPrice
+  seesImages,
+  type TokenPrice,
+  VISION_STAGES
 } from "@viral/contracts"
 
 const NAMES: Record<AgentProvider, string> = {
@@ -142,7 +144,15 @@ export interface ModelOption {
   readonly description: string | undefined
   readonly note: string | undefined
   readonly group: string | undefined
+  // greyed out: the step looks at images and this model doesn't take them
+  readonly disabled?: boolean
 }
+
+// Whether a step looks at images (shots, sections, ranking moments, thumbnail), so it needs a model that sees them.
+export const isVisionStage = (stage: AgentStage | null) => stage !== null && VISION_STAGES.includes(stage)
+
+// Why a model is greyed out for an image step, in the menu.
+export const NO_IMAGES = "Doesn’t take images"
 
 export type Badge = "Sees images" | "Fast" | "Cheapest" | "Recommended"
 
@@ -164,14 +174,22 @@ const MORE_LIMIT = 150
 
 // The models a key provider's picker offers: Viral's curated ones first (description, badges, cost), then the rest of
 // what your key lists under "More". A model you picked that's in neither still shows, so the menu tells the truth.
+// On an image step a model that doesn't take images (by Viral's catalog and families, the vendor's list, or the
+// models remembered from it in `seen`) is greyed out, unless it's the one chosen.
 export const keyModelOptions = (
   provider: AgentProvider,
   stage: AgentStage | null,
   live: KeyModels | undefined,
   evals: ReadonlyArray<ModelEval>,
-  current: string | null
+  current: string | null,
+  seen: ReadonlyArray<string> = []
 ): ReadonlyArray<ModelOption> => {
   if (!isKeyProvider(provider)) return []
+  const vision = isVisionStage(stage)
+  const blind = (id: string, listed: boolean | null) =>
+    vision && id !== current && listed !== true && !seesImages({ provider, model: id }, seen)
+  const greyed = (id: string, listed: boolean | null, note: string | undefined) =>
+    blind(id, listed) ? { disabled: true, note: NO_IMAGES } : { note }
   const curated = catalogFor(provider).map((m): ModelOption => {
     const e = findEval(evals, { provider, model: m.id })
     const badges = badgesFor(provider, m.id, stage)
@@ -179,18 +197,19 @@ export const keyModelOptions = (
       value: m.id,
       label: m.label,
       description: [m.description, ...badges].join(" · "),
-      note: e === undefined ? priceLine(m.price) : evalCost(e),
+      ...greyed(m.id, null, e === undefined ? priceLine(m.price) : evalCost(e)),
       group: "Suggested"
     }
   })
   const known = new Set(curated.map((m) => m.value))
   const more = (live?.models ?? []).filter((m) => !known.has(m.id)).slice(0, MORE_LIMIT).map((m): ModelOption => {
     const e = findEval(evals, { provider, model: m.id })
+    const sees = m.vision === true || seesImages({ provider, model: m.id }, seen)
     return {
       value: m.id,
       label: m.label === m.id ? m.id : m.label,
-      description: m.label === m.id ? (m.vision === true ? "Sees images" : undefined) : [m.id, ...(m.vision === true ? ["Sees images"] : [])].join(" · "),
-      note: e === undefined ? undefined : evalCost(e),
+      description: m.label === m.id ? (sees ? "Sees images" : undefined) : [m.id, ...(sees ? ["Sees images"] : [])].join(" · "),
+      ...greyed(m.id, m.vision, e === undefined ? undefined : evalCost(e)),
       group: "More from your key"
     }
   })

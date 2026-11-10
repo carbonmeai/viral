@@ -86,3 +86,24 @@ test("the model picker: curated models first with badges and cost, then the rest
   // a model you typed that no list has still shows
   assert.equal(keyModelOptions("anthropic", "ads", live, [], "claude-x").at(-1)!.value, "claude-x")
 })
+
+test("on an image step, models that don't take images are greyed out with why; others and text steps aren't", () => {
+  const live = {
+    provider: "openrouter" as const,
+    models: [
+      { id: "qwen/qwen3-vl", label: "Qwen3 VL", vision: true },
+      { id: "deepseek/deepseek-v4", label: "DeepSeek V4", vision: false },
+      { id: "z/remembered", label: "Z", vision: null }
+    ],
+    problem: null,
+    fetchedAt: null
+  }
+  const options = keyModelOptions("openrouter", "thumbnail", live, [], null, ["openrouter:z/remembered"])
+  const of = (id: string) => options.find((o) => o.value === id)!
+  assert.equal(of("anthropic/claude-haiku-5.5").disabled, undefined, "the catalog's Haiku sees images")
+  assert.equal(of("qwen/qwen3-vl").disabled, undefined, "the vendor's list says it sees images")
+  assert.equal(of("z/remembered").disabled, undefined, "remembered from the vendor's list")
+  assert.deepEqual({ disabled: of("deepseek/deepseek-v4").disabled, note: of("deepseek/deepseek-v4").note }, { disabled: true, note: "Doesn’t take images" })
+  assert.equal(keyModelOptions("openrouter", "thumbnail", live, [], "deepseek/deepseek-v4").find((o) => o.value === "deepseek/deepseek-v4")!.disabled, undefined, "the chosen one stays pickable")
+  assert.ok(keyModelOptions("openrouter", "script", live, [], null).every((o) => o.disabled === undefined), "text steps take any model")
+})

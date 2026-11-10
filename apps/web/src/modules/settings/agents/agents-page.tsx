@@ -6,14 +6,14 @@ import {
   type AgentRoute,
   type AgentStage,
   type AppSettings,
-  canRunStage,
   catalogFor,
   CLI_MODELS,
   type CliModels,
   isKeyProvider,
   type KeyModels,
   type KeyProvider,
-  type ModelEval
+  type ModelEval,
+  seesImages
 } from "@viral/contracts"
 import type { SelectOption } from "@viral/ui/primitives/select"
 import { Button } from "@viral/ui/primitives/button"
@@ -33,6 +33,7 @@ import {
   BILLED_TO,
   evalLabel,
   evalLine,
+  isVisionStage,
   keyModelOptions,
   modelLabel,
   PROVIDERS,
@@ -59,10 +60,11 @@ const STAGES: ReadonlyArray<{ readonly stage: AgentStage; readonly label: string
 type Ready = Readonly<Record<AgentProvider, boolean>>
 
 // A provider's first model to pick when it's chosen: a key provider starts on the catalog model recommended for the
-// step (or for every step), OpenCode on its first model; Codex and the Claude CLI on their default.
+// step (or for every step), OpenCode on its first model; Codex and the Claude CLI on their default. An image step
+// only starts on a model that sees images.
 const firstModel = (provider: AgentProvider, catalog: ReadonlyArray<CliModels>, stage: AgentStage | null) => {
   if (isKeyProvider(provider)) {
-    const models = catalogFor(provider)
+    const models = catalogFor(provider).filter((m) => !isVisionStage(stage) || m.badges.includes("vision"))
     return (models.find((m) => m.recommendedFor.includes(stage ?? "default")) ?? models[0])?.id ?? null
   }
   return provider === "opencode" ? catalog.find((c) => c.provider === "opencode")?.models[0]?.id ?? null : null
@@ -97,6 +99,7 @@ export function AgentsPage() {
                   {...s}
                   own={value.stageAgents[s.stage]}
                   route={value.routes[s.stage]}
+                  seen={value.visionModels}
                   ready={ready}
                   catalog={catalog}
                   evals={evalList}
@@ -140,15 +143,23 @@ function DefaultGroup({ settings, ready, catalog, evals, detailed }: {
       </SettingRow>
       <SettingRow
         label="Model"
-        sub={error ?? ([billed, stat].filter((x) => x !== undefined && x !== null).join(" · ") || (current.provider === "claude-cli"
+        sub={error ?? ([
+          billed,
+          stat,
+          // a default that can't see images leaves the image steps on the Claude CLI; say so
+          current.provider === "claude-cli" || seesImages(current, settings.visionModels)
+            ? null
+            : "Doesn’t take images, so the steps that look at them (shots, sections, ranking moments, thumbnail) run on the Claude CLI"
+        ].filter((x) => x !== undefined && x !== null).join(" · ") || (current.provider === "claude-cli"
           ? "CLI default keeps each step’s own model (Haiku for research, ads and metadata)."
-          : "Steps that look at images (shots, sections, ranking moments, thumbnail) stay on the Claude CLI for now."))}
+          : "Runs every step, including the ones that look at images."))}
       >
         <ModelPicker
           label="Default model"
           provider={current.provider}
           stage={null}
           value={current.model}
+          seen={settings.visionModels}
           catalog={catalog}
           evals={evals}
           onChange={(model) => set({ provider: current.provider, model })}
@@ -160,12 +171,13 @@ function DefaultGroup({ settings, ready, catalog, evals, detailed }: {
 
 type StageProvider = "default" | AgentProvider
 
-function StageRow({ stage, label, sub, own, route, ready, catalog, evals }: {
+function StageRow({ stage, label, sub, own, route, seen, ready, catalog, evals }: {
   readonly stage: AgentStage
   readonly label: string
   readonly sub: string
   readonly own: AgentChoice | null
   readonly route: AgentRoute
+  readonly seen: ReadonlyArray<string>
   readonly ready: Ready
   readonly catalog: ReadonlyArray<CliModels>
   readonly evals: ReadonlyArray<ModelEval>
@@ -177,8 +189,10 @@ function StageRow({ stage, label, sub, own, route, ready, catalog, evals }: {
       .then(() => setError(null))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn’t save"))
   const runsOn = `${providerName(route.provider)} · ${modelLabel(route.provider, route.model, catalog)}`
-  const note = route.inherited
-    ? route.forcedCli ? `Claude CLI only for now (it looks at images) · ${modelLabel("claude-cli", null)}` : `Uses the default: ${runsOn}`
+  const note = route.forcedCli
+    ? `It looks at images, which ${route.inherited ? "the default" : "its choice"} doesn’t take, so it runs on the Claude CLI · ${modelLabel("claude-cli", null)}`
+    : route.inherited
+    ? `Uses the default: ${runsOn}`
     : `Its own choice: ${runsOn}`
 
   return (
@@ -189,6 +203,7 @@ function StageRow({ stage, label, sub, own, route, ready, catalog, evals }: {
           provider={own.provider}
           stage={stage}
           value={own.model}
+          seen={seen}
           catalog={catalog}
           evals={evals}
           onChange={(model) => set({ provider: own.provider, model })}
@@ -203,8 +218,8 @@ function StageRow({ stage, label, sub, own, route, ready, catalog, evals }: {
         }}
         options={[
           { value: "default", label: "Use default" },
-          // the image steps offer only providers that can see images in Viral (the Claude CLI, for now)
-          ...providerOptions(ready, own?.provider ?? null).filter((o) => o.value === own?.provider || canRunStage(o.value, stage))
+          // on an image step, the apps that can't look at images in Viral (Codex, OpenCode) are greyed out with why
+          ...providerOptions(ready, own?.provider ?? null, isVisionStage(stage))
         ]}
       />
     </SettingRow>
@@ -212,13 +227,21 @@ function StageRow({ stage, label, sub, own, route, ready, catalog, evals }: {
 }
 
 // The Provider menu: signed-in apps, then your API keys. One that isn't set up is greyed out with where to set it
-// up; while chosen it stays pickable, so the page tells the truth.
-const providerOptions = (ready: Ready, chosen: AgentProvider | null): ReadonlyArray<SelectOption<AgentProvider>> => {
+// up; on an image step, so are Codex and OpenCode, which can't look at images in Viral (a key provider's models that
+// can are picked in its Model menu). While chosen an option stays pickable, so the page tells the truth.
+const providerOptions = (ready: Ready, chosen: AgentProvider | null, vision = false): ReadonlyArray<SelectOption<AgentProvider>> => {
+  const blind = (p: AgentProvider) => vision && (p === "codex" || p === "opencode")
   const option = (group: string) => (p: AgentProvider): SelectOption<AgentProvider> => ({
     value: p,
     label: providerName(p),
     group,
-    ...(ready[p] || p === chosen ? {} : { disabled: true, note: isKeyProvider(p) ? "Add a key in Accounts" : "Set up in Accounts" })
+    ...(p === chosen
+      ? {}
+      : blind(p)
+      ? { disabled: true, note: "Can’t look at images in Viral" }
+      : ready[p]
+      ? {}
+      : { disabled: true, note: isKeyProvider(p) ? "Add a key in Accounts" : "Set up in Accounts" })
   })
   return [...SIGNED_IN.map(option("Signed-in apps")), ...API_KEYS.map(option("Your API keys"))]
 }
@@ -241,7 +264,8 @@ const knownModels = (
   catalog: ReadonlyArray<CliModels>,
   live: KeyModels | undefined,
   evals: ReadonlyArray<ModelEval>,
-  value: string | null
+  value: string | null,
+  seen: ReadonlyArray<string> = []
 ): ReadonlyArray<SelectOption<string>> => {
   const account = (name: "codex" | "opencode") => catalog.find((c) => c.provider === name)?.models.map((m) => ({ value: m.id, label: m.label })) ?? []
   switch (provider) {
@@ -256,9 +280,10 @@ const knownModels = (
     case "google":
     case "openrouter":
     case "ai-gateway":
-      return keyModelOptions(provider, stage, live, evals, value).map((m) => ({
+      return keyModelOptions(provider, stage, live, evals, value, seen).map((m) => ({
         value: m.value,
         label: m.label,
+        ...(m.disabled === true ? { disabled: true } : {}),
         ...(m.description === undefined ? {} : { description: m.description }),
         ...(m.note === undefined ? {} : { note: m.note }),
         ...(m.group === undefined ? {} : { group: m.group })
@@ -267,32 +292,34 @@ const knownModels = (
 }
 
 // A model for a provider: the known ones, or any other id typed in.
-function ModelPicker({ label, provider, stage, value, catalog, evals, onChange }: {
+function ModelPicker({ label, provider, stage, value, seen, catalog, evals, onChange }: {
   readonly label: string
   readonly provider: AgentProvider
   readonly stage: AgentStage | null
   readonly value: string | null
+  readonly seen: ReadonlyArray<string>
   readonly catalog: ReadonlyArray<CliModels>
   readonly evals: ReadonlyArray<ModelEval>
   readonly onChange: (model: string | null) => void
 }) {
   return isKeyProvider(provider)
-    ? <KeyModelPicker label={label} provider={provider} stage={stage} value={value} catalog={catalog} evals={evals} onChange={onChange} />
+    ? <KeyModelPicker label={label} provider={provider} stage={stage} value={value} seen={seen} catalog={catalog} evals={evals} onChange={onChange} />
     : <ModelChooser label={label} provider={provider} value={value} known={knownModels(provider, stage, catalog, undefined, evals, value)} onChange={onChange} />
 }
 
-function KeyModelPicker({ label, provider, stage, value, catalog, evals, onChange }: {
+function KeyModelPicker({ label, provider, stage, value, seen, catalog, evals, onChange }: {
   readonly label: string
   readonly provider: KeyProvider
   readonly stage: AgentStage | null
   readonly value: string | null
+  readonly seen: ReadonlyArray<string>
   readonly catalog: ReadonlyArray<CliModels>
   readonly evals: ReadonlyArray<ModelEval>
   readonly onChange: (model: string | null) => void
 }) {
   // the vendor's own list from your key, read only while this provider is shown
   const live = Option.getOrUndefined(AsyncResult.value(useAtomValue(keyModelsAtom(provider))))
-  return <ModelChooser label={label} provider={provider} value={value} known={knownModels(provider, stage, catalog, live, evals, value)} onChange={onChange} />
+  return <ModelChooser label={label} provider={provider} value={value} known={knownModels(provider, stage, catalog, live, evals, value, seen)} onChange={onChange} />
 }
 
 function ModelChooser({ label, provider, value, known, onChange }: {
