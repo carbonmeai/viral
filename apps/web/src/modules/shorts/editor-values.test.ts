@@ -164,3 +164,23 @@ test("a skipped line is jumped over: the narration picks up after it, and a styl
   // with soft joins the clip waits for a breath: 0.25 s, at most half way to the next word (1.5)
   assert.equal(layoutTimeline(script, words, 4, { softJoins: true }).pauses[0]!.at, 1.45)
 })
+
+test("the closing question is cut out of the narration and plays on the end card after the outro", () => {
+  // the take goes on "… It hurt. Would you try it? Tell …" (words 6–10, from 3.2 s)
+  const take = [...words, ...["Would", "you", "try", "it?", "Tell"].map((w, i) => ({ w, s: 3.2 + i * 0.3, e: 3.2 + i * 0.3 + 0.25 }))]
+  const closing: Script = { ...script, beats: [...script.beats, { _tag: "Cta", question: "Would you try it?" }] }
+  const layout = layoutTimeline(closing, take, 4.6, { endCard: true })
+  // the story is laid out exactly as a take that ends where the closing line begins
+  const plain = layoutTimeline(script, words, 3.08)
+  assert.deepEqual(layout.reals, plain.reals)
+  assert.equal(layout.outroStart, plain.outroStart)
+  // the line: 0.12 s before "Would" (3.2) to the end of "Tell" (4.65); the card: 0.35 s + the line (+0.3 s, the take's
+  // end at most) + 0.6 s
+  const t = plain.total
+  assert.deepEqual(layout.closing, { start: t, end: t + 0.35 + (4.6 - 3.08) + 0.6, label: "Would you try it?", from: 3.08, to: 4.65, card: true })
+  assert.equal(layout.total, layout.closing?.end)
+  // the style has it off: the line is still cut out, and no card plays
+  const off = layoutTimeline(closing, take, 4.6)
+  assert.equal(off.closing?.card, false)
+  assert.equal(off.total, plain.total)
+})

@@ -154,7 +154,17 @@ export interface TimelineLayout {
   // where the voiceover pauses for a real line (voiceover seconds), for how long, and the line's video; with `skip`, it
   // picks up that many seconds later, jumping over a line the real line says anyway
   readonly pauses: ReadonlyArray<Pause>
+  // the closing question (the script's Cta beat): its line in the voiceover (`from`, `to`), cut out of the narration;
+  // with the style's end card, where the card plays on the short's clock (`start`, `end`, after the outro); null when
+  // the script has none
+  readonly closing: (TimelineSegment & { readonly from: number; readonly to: number; readonly card: boolean }) | null
 }
+
+// The end card's timing, as end_card.py plays it: the short holds its last frame while the card fades in (0.35 s), the
+// narrator's closing line, then 0.6 s of air. A cut-down short's card holds 3 s, silent.
+export const END_CARD_LEAD = 0.35
+export const END_CARD_TAIL = 0.6
+export const CUT_END_CARD_SECONDS = 3
 
 export interface Pause {
   readonly at: number
@@ -191,10 +201,18 @@ const RESUME_LEAD = 0.08
 export const layoutTimeline = (
   script: Script,
   words: ReadonlyArray<TranscriptWord>,
-  voiceoverSeconds: number,
-  options: { readonly softJoins?: boolean } = {}
+  takeSeconds: number,
+  options: { readonly softJoins?: boolean; readonly endCard?: boolean } = {}
 ): TimelineLayout => {
   const ends = narrationEnds(script, words)
+  // the closing question's line is the take's last words; the story's narration ends just before it (as assemble cuts it)
+  const question = script.beats.at(-1)?._tag === "Cta" ? (script.beats.at(-1) as { readonly question: string }).question : null
+  const closingFirst = question === null ? null : (ends.at(-1) ?? -1) + 1
+  const closingLine = closingFirst === null || closingFirst <= 0 || words[closingFirst] === undefined
+    ? null
+    : { from: Math.max(words[closingFirst - 1]!.e, words[closingFirst]!.s - 0.12), to: words.at(-1)!.e }
+  // the story's part of the take
+  const voiceoverSeconds = closingLine === null ? takeSeconds : closingLine.from
   const lastNarration = script.beats.findLastIndex((b) => b._tag === "Narration")
   const inserts: Array<{ at: number; dur: number; label: string; source: number; skip: number }> = []
   const outro: Array<{ dur: number; label: string; source: number }> = []
@@ -211,6 +229,7 @@ export const layoutTimeline = (
       firstWord = end + 1
       return
     }
+    if (beat._tag === "Cta") return
     const clip = { dur: Math.max(0, beat.end - beat.start), label: beat.quote, source: beat.source ?? 0 }
     if (i > lastNarration || narrated < 0) {
       outro.push(clip)
@@ -240,8 +259,18 @@ export const layoutTimeline = (
     reals.push({ start: t, end: t + clip.dur, label: clip.label, kind: "outro", source: clip.source })
     t += clip.dur
   }
+  const card = options.endCard === true && closingLine !== null
+  const closing = closingLine === null || question === null ? null : {
+    start: t,
+    end: card ? t + END_CARD_LEAD + (Math.min(takeSeconds, closingLine.to + 0.3) - closingLine.from) + END_CARD_TAIL : t,
+    label: question,
+    from: closingLine.from,
+    to: closingLine.to,
+    card
+  }
   return {
-    total: t,
+    total: closing?.end ?? t,
+    closing,
     narration: spans.map((s) => ({ start: shifted(s.from), end: shifted(s.to), label: s.label, from: s.from, to: s.to })),
     reals,
     outroStart,

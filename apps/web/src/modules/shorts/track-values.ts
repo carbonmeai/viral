@@ -1,5 +1,6 @@
+import { closingLine } from "@viral/contracts"
 import type { CaptionCue } from "./caption-cues.ts"
-import type { TimelineLayout } from "./editor-values.ts"
+import { CUT_END_CARD_SECONDS, END_CARD_LEAD, type TimelineLayout } from "./editor-values.ts"
 import { ROLE_NAMES, type RankingDraft, entryBlocks } from "./ranking/ranking-values.ts"
 import { BEATS, type EditSection, sectionBlocks } from "./sections/sections-values.ts"
 import type { ShotBlock } from "./shots/shots-values.ts"
@@ -110,7 +111,7 @@ export interface NarratedTracks extends Common {
   readonly format: "narrated"
   readonly layout: TimelineLayout | null
   // the script's beats in order, to tell which line each narration and real-line block is
-  readonly beats: ReadonlyArray<{ readonly _tag: "Narration" | "Real" }>
+  readonly beats: ReadonlyArray<{ readonly _tag: "Narration" | "Real" | "Cta" }>
   readonly shots: {
     readonly blocks: ReadonlyArray<ShotBlock>
     readonly sourceOf: (k: number) => number
@@ -134,6 +135,8 @@ export interface NarratedTracks extends Common {
 export interface CutDownTracks extends Common {
   readonly format: "cut-down"
   readonly sections: ReadonlyArray<EditSection> | null
+  // the end card's question when the style ends with one (shown after the last section, 3 s, silent); null = none
+  readonly endCard?: string | null
   readonly stillOf: (k: number) => string | null
 }
 
@@ -189,6 +192,9 @@ const narratedTracks = (input: NarratedTracks): ShortTimeline => {
   const realBeats = input.beats.flatMap((b, i) => (b._tag === "Real" ? [i] : []))
   const inserts = layout.reals.filter((r) => r.kind === "insert").length
   const narrationEnd = layout.narration.at(-1)?.end ?? layout.outroStart
+  // the end card after the outro (the style's comment question): on the first video's lane, its closing line on the voice's
+  const ctaBeat = input.beats.findIndex((b) => b._tag === "Cta")
+  const card = layout.closing !== null && layout.closing.card ? layout.closing : null
   const videoTracks = input.videos.map((video, v): Track => {
     const shots = input.shots === null ? [] : input.shots.blocks.filter((b) => input.shots!.sourceOf(b.k) === v).map((b, i): Clip => ({
       id: `shot-${b.k}-${i}`,
@@ -212,12 +218,23 @@ const narratedTracks = (input: NarratedTracks): ShortTimeline => {
       wave: null,
       target: { _tag: "Real", beat: realBeats[i] ?? -1 }
     }])
+    const endCard: ReadonlyArray<Clip> = card === null || v !== 0 ? [] : [{
+      id: "end-card",
+      start: card.start,
+      end: card.end,
+      label: "End card",
+      title: `End card · “${card.label}” · SUBSCRIBE`,
+      color: "var(--t-cap)",
+      frame: null,
+      wave: null,
+      target: { _tag: "Narration", beat: ctaBeat }
+    }]
     return track({
       id: `video:${video.id}`,
       kind: "video",
       label: video.name,
       video: v,
-      clips: [...shots, ...reals].sort((a, b) => a.start - b.start),
+      clips: [...shots, ...reals, ...endCard].sort((a, b) => a.start - b.start),
       note: input.shots === null && v === 0 ? "Shots are picked at the Shots step" : null,
       noteSpan: input.shots === null ? { start: 0, end: narrationEnd } : null
     })
@@ -236,8 +253,18 @@ const narratedTracks = (input: NarratedTracks): ShortTimeline => {
       color: COLORS.voice,
       frame: null,
       wave: input.voiceUrl === null ? null : { url: input.voiceUrl, from: n.from, to: n.to },
-      target: { _tag: "Narration", beat: narrationBeats[i] ?? -1 }
-    }))
+      target: { _tag: "Narration" as const, beat: narrationBeats[i] ?? -1 }
+    })).concat(card === null ? [] : [{
+      id: "vo-closing",
+      start: card.start + END_CARD_LEAD,
+      end: card.start + END_CARD_LEAD + (card.to - card.from),
+      label: card.label,
+      title: `Closing question · ${closingLine(card.label)}`,
+      color: COLORS.voice,
+      frame: null,
+      wave: input.voiceUrl === null ? null : { url: input.voiceUrl, from: card.from, to: card.to },
+      target: { _tag: "Narration" as const, beat: ctaBeat }
+    }])
   })
   const { music } = input
   const musicTrack = music._tag !== "Bed"
@@ -276,7 +303,9 @@ const cutDownTracks = (input: CutDownTracks): ShortTimeline => {
   if (input.sections === null || input.sections.length === 0) return { total: 0, tracks: [], empty: "The timeline appears once the sections are planned." }
   const sections = input.sections
   const blocks = sectionBlocks(sections)
-  const total = Math.max(blocks.at(-1)?.end ?? 0, 0.001)
+  const sectionsEnd = blocks.at(-1)?.end ?? 0
+  const question = input.endCard ?? null
+  const total = Math.max(sectionsEnd + (question === null ? 0 : CUT_END_CARD_SECONDS), 0.001)
   const nameOf = (v: number) => input.videos[v]?.name ?? `Video ${v + 1}`
   const colorOf = (v: number) => input.videos[v]?.color ?? "var(--t-shot)"
   const videoTracks = input.videos.map((video, v) =>
@@ -294,8 +323,18 @@ const cutDownTracks = (input: CutDownTracks): ShortTimeline => {
         color: video.color,
         frame: input.stillOf(b.k),
         wave: null,
-        target: { _tag: "Section", k: b.k }
-      }))
+        target: { _tag: "Section" as const, k: b.k }
+      })).concat(question === null || v !== 0 ? [] : [{
+        id: "end-card",
+        start: sectionsEnd,
+        end: total,
+        label: "End card",
+        title: `End card · “${question}” · SUBSCRIBE (no narrator in a cut-down)`,
+        color: "var(--t-cap)",
+        frame: null,
+        wave: null,
+        target: { _tag: "Section" as const, k: sections.length - 1 }
+      }])
     })
   )
   const sound = track({

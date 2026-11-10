@@ -118,11 +118,12 @@ export const narratedWords = (
 
 // ---- Before the render: each format's captions worked out from the words ----
 
-// A narrated short's: the voiceover's words on the short's clock and each real line's quote spread over its clip.
+// A narrated short's: the voiceover's words on the short's clock and each real line's quote spread over its clip. The
+// closing question isn't captioned: the end card shows it.
 export const narratedShortCues = (layout: TimelineLayout, voiceover: ReadonlyArray<TranscriptWord>, style: CaptionStyle) =>
   narratedCues(
     narratedWords(
-      voiceover.filter((w) => !skippedAt(layout, w.s + 0.001)),
+      voiceover.filter((w) => !skippedAt(layout, w.s + 0.001) && (layout.closing === null || w.s < layout.closing.from)),
       (t) => shortTimeOf(layout, t),
       layout.reals.map((r) => spreadWords(r.label, r.start, r.end - r.start))
     ),

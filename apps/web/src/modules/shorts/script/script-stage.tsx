@@ -1,4 +1,4 @@
-import type { Preset, Script } from "@viral/contracts"
+import { CLOSING_ASK, type Preset, type Script } from "@viral/contracts"
 import { Button, IconButton } from "@viral/ui/primitives/button"
 import { cn } from "@viral/ui/cn"
 import { Pause, Pencil, Play } from "lucide-react"
@@ -36,7 +36,9 @@ function GrowingTextarea({ value, onChange, label }: { readonly value: string; r
 // The script as a document in the Script panel: the headline as it will look, then each line in playing order.
 // Narration is what the narrator says (select a line to edit it while the script waits for you); real lines play
 // in the creator's own voice (▶ plays them from their video, badged its colour and short name in a short from
-// several videos). `editSignal` changing starts editing the selected line (else the first narration line).
+// several videos). The closing question (the style's comment question) comes last: the narrator says it with the ask
+// after it, over the end card; its words are outside the word count. `editSignal` changing starts editing the selected
+// line (else the first narration line).
 export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected, onSelect, editSignal }: {
   readonly script: Script
   readonly preset: Preset
@@ -68,7 +70,9 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
     void gate.edit({ ...script, beats }).then(setProblems)
   }
   const save = (i: number) => {
-    const beats = script.beats.map((b, k) => k === i && b._tag === "Narration" ? { ...b, text: draft.trim() } : b)
+    const beats = script.beats.map((b, k) =>
+      k !== i ? b : b._tag === "Narration" ? { ...b, text: draft.trim() } : b._tag === "Cta" ? { ...b, question: draft.trim() } : b
+    )
     void gate.edit({ ...script, beats }).then((refused) => {
       setProblems(refused)
       if (refused.length === 0) setEditing(null)
@@ -116,6 +120,55 @@ export function ScriptStage({ script, preset, videoUrlOf, videos, gate, selected
                   </IconButton>
                 </span>
                 <span className="text-[13.5px] leading-[1.5] text-fg-1 italic">“{beat.quote}”</span>
+              </div>
+            )
+          }
+          if (beat._tag === "Cta") {
+            return (
+              <div
+                key={i}
+                onClick={() => onSelect(isSel ? null : i)}
+                className={cn("mt-2 grid cursor-pointer gap-1 rounded-ctl px-2.5 py-2", isSel ? "bg-panel shadow-[inset_0_0_0_1px_var(--lemon)]" : "hover:bg-panel")}
+              >
+                <span className="flex min-h-5 items-center gap-1.5 text-[11px] tracking-[.03em] text-fg-3">
+                  <span className="font-medium text-t-cap uppercase">Closing question</span>
+                  <span title="After the payoff, over a held last frame: the question in yellow and a red SUBSCRIBE button">· on the end card</span>
+                  <Detail><span className="ml-auto">not counted</span></Detail>
+                </span>
+                {editing === i ? (
+                  <div className="grid gap-2" onClick={(e) => e.stopPropagation()}>
+                    <GrowingTextarea label="Closing question" value={draft} onChange={setDraft} />
+                    <span className="text-xs text-fg-3">The narrator adds “{CLOSING_ASK}”</span>
+                    {problems.length === 0 ? null : (
+                      <ul className="m-0 grid gap-1 pl-4 text-xs text-danger">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                      <Button variant="primary" disabled={gate.busy || draft.trim() === ""} onClick={() => save(i)}>Save the question</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-[13.5px] leading-[1.5]">
+                      {beat.question} <span className="text-fg-3">{CLOSING_ASK}</span>
+                    </div>
+                    {isSel ? (
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          disabled={gate.request === null}
+                          title={gate.request === null ? "Edits go in while the script is waiting for you" : undefined}
+                          onClick={() => startEdit(i, beat.question)}
+                        >
+                          <Pencil />Edit
+                        </Button>
+                      </div>
+                    ) : null}
+                    {isSel && problems.length > 0 ? (
+                      <ul className="m-0 grid gap-1 pl-4 text-xs text-danger">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
+                    ) : null}
+                  </>
+                )}
               </div>
             )
           }

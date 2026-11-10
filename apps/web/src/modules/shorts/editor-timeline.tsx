@@ -21,7 +21,9 @@ const inputOf = (e: EditorState, videos: ReadonlyArray<TrackVideo>): TracksInput
   }
   if (ws.project.format === "cut-down") {
     const sections = e.timelineSections
-    return { format: "cut-down", videos, captions: e.captions, sections: sections?.sections ?? null, stillOf: e.stillOf(sections) }
+    // the end card's question (the style's comment question): the approved plan's, shown after the last section
+    const question = ws.preset.config.commentQuestion === true ? ws.cutPlan?.plan.question ?? null : null
+    return { format: "cut-down", videos, captions: e.captions, sections: sections?.sections ?? null, stillOf: e.stillOf(sections), endCard: question }
   }
   const { fitted, shotBlocks } = e
   const bed = fitted?.bed ?? null

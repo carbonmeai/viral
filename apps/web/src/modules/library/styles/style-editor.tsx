@@ -170,6 +170,15 @@ export function StyleEditor({ preset, frame, usedBy }: { readonly preset: Preset
             </SettingRow>
           </SettingsGroup>
 
+          <SettingsGroup title="Ending">
+            <SettingRow
+              label="End with a comment question"
+              sub="After the payoff, one question for the comments and a SUBSCRIBE button on a held last frame. The narrator asks it; a cut-down shows the card only. For new scripts and sections."
+            >
+              <Switch label="End with a comment question" checked={draft.commentQuestion === true} onChange={(commentQuestion) => edit({ commentQuestion })} />
+            </SettingRow>
+          </SettingsGroup>
+
           <SettingsGroup title="Music and sound">
             <SettingRow label="Music level" sub="Under the narration. Music is optional: a short without a track is voice only.">
               <RangeField label="Music level" value={draft.music.gain} min={0} max={1} step={0.01} format={percent} onChange={(gain) => music({ gain })} />

@@ -45,7 +45,7 @@ export function ScriptPreview({ e, script }: { readonly e: EditorState; readonly
   const videoThumb = overview?.videos.find((v) => v.source.id === e.ws.source.id)?.thumb ?? null
   const src = shot !== null && real === null ? e.shotFrame(shot) : still ?? videoThumb
   const preset = e.ws.preset
-  const text = beat === undefined ? "" : beat._tag === "Real" ? beat.quote : beat.text
+  const text = beat === undefined ? "" : beat._tag === "Real" ? beat.quote : beat._tag === "Cta" ? beat.question : beat.text
   return (
     <div className="grid min-h-0 flex-1 place-items-center">
       <ShotPreview

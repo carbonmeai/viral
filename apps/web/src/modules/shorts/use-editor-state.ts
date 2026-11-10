@@ -221,9 +221,12 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   const voiceUrl = ws.voiceover?.path === null || ws.voiceover === null ? null : artifactPathUrl(serverUrl, projectOwner, ws.voiceover.path)
   const layout = useMemo(
     () => ws.script !== null && ws.voiceover !== null && ws.voiceover.words.length > 0
-      ? layoutTimeline(ws.script.script, ws.voiceover.words, ws.voiceover.voiceover.durationS, { softJoins: ws.preset.config.softJoins === true })
+      ? layoutTimeline(ws.script.script, ws.voiceover.words, ws.voiceover.voiceover.durationS, {
+        softJoins: ws.preset.config.softJoins === true,
+        endCard: ws.preset.config.commentQuestion === true
+      })
       : null,
-    [ws.script, ws.voiceover, ws.preset.config.softJoins]
+    [ws.script, ws.voiceover, ws.preset.config.softJoins, ws.preset.config.commentQuestion]
   )
   // the short's videos (the first one first): each one's file, and a still of it, by position
   const videoOf = (source: number) => ws.videos[source] ?? ws.videos[0]
@@ -245,7 +248,7 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     return clip?.frame === null || clip === undefined || ws.shotPlan === null ? null : artifactFileUrl(serverUrl, projectOwner, "shot-plan", ws.shotPlan.version, clip.frame)
   }
   const shotBlocks = ws.shotPlan !== null && layout !== null && ws.voiceover !== null
-    ? timelineShots(shotSpans(ws.shotPlan.plan, ws.voiceover.words, ws.voiceover.voiceover.durationS), layout)
+    ? timelineShots(shotSpans(ws.shotPlan.plan, ws.voiceover.words, layout.closing?.from ?? ws.voiceover.voiceover.durationS), layout)
     : null
   // selects a shot (clamped to the plan), closing the frame picker
   const selectShot = (next: number) => {
@@ -429,7 +432,9 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   }), [])
   const toggleTransport = () => transport.current?.toggle()
   const seekTransport = (shortSeconds: number) => transport.current?.seek(shortSeconds)
-  const beatTag = beat === null ? null : ws.script?.script.beats[beat]?._tag ?? null
+  // the closing question is spoken narration on the timeline
+  const tagOfBeat = beat === null ? undefined : ws.script?.script.beats[beat]?._tag
+  const beatTag = tagOfBeat === undefined ? null : tagOfBeat === "Real" ? "Real" as const : "Narration" as const
   const timelineSelected: ClipTarget | null = open === "shots" ? { _tag: "Shot", k: shotK }
     : open === "sections" && sections !== null ? { _tag: "Section", k: Math.min(sectionK, sections.sections.length - 1) }
     : open === "moments" ? { _tag: "Entry", rank: rankingRank, shot: null }

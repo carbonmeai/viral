@@ -161,3 +161,32 @@ test("picking, the ruler and hidden lanes", () => {
   assert.equal(rulerStep(131), 15)
   assert.deepEqual(visibleTracks(timeline.tracks, new Set(["captions", "video:heidi"])).map((t) => t.id), ["video:candy", "voice", "music"])
 })
+
+test("the end card: after the outro on the first video's lane, its closing line on the voice's; a cut-down's card alone", () => {
+  const take = [...words, ...["Which", "hand?", "Tell"].map((w, i) => ({ w, s: 4.7 + i * 0.4, e: 5 + i * 0.4 }))]
+  const closing: Script = { ...script, beats: [...script.beats, { _tag: "Cta", question: "Which hand?" }] }
+  const withCard = layoutTimeline(closing, take, 6, { endCard: true })
+  const timeline = tracksFor({
+    format: "narrated",
+    videos: candyHeidi,
+    captions: null,
+    layout: withCard,
+    beats: closing.beats,
+    shots: null,
+    realFrame: () => null,
+    voiceUrl: "vo.wav",
+    music: { _tag: "None" }
+  })
+  const card = lane(timeline, "video:candy").clips.find((c) => c.id === "end-card")!
+  assert.deepEqual([card.start, card.end, card.target], [withCard.closing!.start, withCard.total, { _tag: "Narration", beat: 4 }])
+  assert.equal(lane(timeline, "video:heidi").clips.some((c) => c.id === "end-card"), false)
+  const line = lane(timeline, "voice").clips.at(-1)!
+  assert.equal(line.label, "Which hand?")
+  assert.equal(line.start, card.start + 0.35)
+  assert.deepEqual(line.wave, { url: "vo.wav", from: withCard.closing!.from, to: withCard.closing!.to })
+
+  const sections = [section("a", 0, 10, 14, "hook"), section("c", 0, 50, 55, "payoff")]
+  const cut = tracksFor({ format: "cut-down", videos: candyHeidi, captions: null, sections, stillOf: () => null, endCard: "Would you?" })
+  assert.equal(cut.total, 9 + 3)
+  assert.deepEqual(lane(cut, "video:candy").clips.at(-1)!.label, "End card")
+})
