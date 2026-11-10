@@ -141,6 +141,23 @@ export const SfxCue = Schema.Struct({
 })
 export type SfxCue = typeof SfxCue.Type
 
+// The end card (a style's comment question): the question in yellow at the top and a red SUBSCRIBE pill near the bottom,
+// over a held frame from just before the short's end (drawn without captions), joined with a 0.35 s crossfade, then the
+// whole file levelled to `lufs` again. A narrated short plays the narrator's closing line under it (voiceover
+// `vo_start`–`vo_end`, cut out of the narration by `narration_end`); a cut-down short holds the card `seconds`, silent.
+// Absent = no end card, the render exactly as before.
+export const EndCard = Schema.Struct({
+  question: Schema.String,
+  // the closing line in the voiceover (seconds); absent = no voice, the card alone
+  vo_start: Schema.optionalKey(Seconds),
+  vo_end: Schema.optionalKey(Seconds),
+  // how long the card holds without a voice (default 3)
+  seconds: Schema.optionalKey(Seconds),
+  // the crossfade into it (default 0.35)
+  crossfade: Schema.optionalKey(Seconds)
+})
+export type EndCard = typeof EndCard.Type
+
 export const NarratedPlan = Schema.Struct({
   slug: Schema.String,
   title: Schema.optionalKey(Schema.String),
@@ -205,6 +222,7 @@ export const NarratedPlan = Schema.Struct({
   // a breath after an insert's word before the clip (seconds, at most half way to the next word); absent = the
   // clip starts as the word ends
   insert_pad: Schema.optionalKey(Seconds),
+  cta: Schema.optionalKey(EndCard),
   lufs: Schema.optionalKey(Schema.Finite)
 })
 export type NarratedPlan = typeof NarratedPlan.Type

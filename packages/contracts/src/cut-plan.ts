@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { EndCard } from "./narrated-plan.ts"
 import { PiecesBySource, SourceIndex, VideoNumber } from "./sources.ts"
 
 // The story beat a section of a cut-down short plays (story-arc skill).
@@ -25,7 +26,9 @@ export type CutSection = typeof CutSection.Type
 export const SectionsProposal = Schema.Struct({
   // the open loop over the hook, readable with the sound off; null for none
   hookText: Schema.NullOr(Schema.String),
-  sections: Schema.Array(CutSection)
+  sections: Schema.Array(CutSection),
+  // the closing question on the end card, when the style ends with one ("Would you have quit?"); absent or null = none
+  question: Schema.optionalKey(Schema.NullOr(Schema.String))
 })
 export type SectionsProposal = typeof SectionsProposal.Type
 
@@ -43,7 +46,11 @@ export const ProposedSection = Schema.Struct({
   note
 })
 export type ProposedSection = typeof ProposedSection.Type
-export const ProposedSections = Schema.Struct({ hookText: SectionsProposal.fields.hookText, sections: Schema.Array(ProposedSection) })
+export const ProposedSections = Schema.Struct({
+  hookText: SectionsProposal.fields.hookText,
+  sections: Schema.Array(ProposedSection),
+  question: SectionsProposal.fields.question
+})
 export type ProposedSections = typeof ProposedSections.Type
 
 // The approved cut plan: sections snapped to word boundaries, each with the words it says and its own frame
@@ -56,7 +63,9 @@ export const CutPlan = Schema.Struct({
     frame: Schema.NullOr(Schema.String)
   })),
   // the frames stitched into one image in playing order
-  storyboard: Schema.NullOr(Schema.String)
+  storyboard: Schema.NullOr(Schema.String),
+  // the end card's question (the style's comment question); absent or null = none
+  question: Schema.optionalKey(Schema.NullOr(Schema.String))
 })
 export type CutPlan = typeof CutPlan.Type
 
@@ -97,6 +106,8 @@ export const CutRenderPlan = Schema.Struct({
     crop_x: Schema.optionalKey(Schema.Finite),
     framing: Schema.optionalKey(Schema.Literals(["crop", "blur"]))
   })),
+  // the end card after the last section (the card alone, no narrator); absent = none, the render exactly as before
+  cta: Schema.optionalKey(EndCard),
   lufs: Schema.optionalKey(Schema.Finite)
 })
 export type CutRenderPlan = typeof CutRenderPlan.Type

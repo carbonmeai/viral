@@ -27,7 +27,7 @@ export interface NarratedRender {
   readonly footage: FootageCounts
 }
 
-const NarratedStep = Schema.Literals(["shots", "outro", "overlays", "encode"])
+const NarratedStep = Schema.Literals(["shots", "outro", "overlays", "encode", "end-card"])
 const NarratedLine = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("progress"), step: NarratedStep, done: Schema.Int, total: Schema.Int }),
   Schema.Struct({ type: Schema.Literal("log"), message: Schema.String }),
@@ -39,6 +39,8 @@ const NarratedLine = Schema.fromJsonString(Schema.Union([
     shots: Schema.Int,
     narration_s: Schema.Finite,
     outro_s: Schema.Finite,
+    // the end card's length, part of duration_s (a style's comment question)
+    end_card_s: Schema.optionalKey(Schema.Finite),
     footage: Schema.optionalKey(FootageCounts)
   })
 ]))
@@ -55,6 +57,8 @@ const narratedPct = (step: typeof NarratedStep.Type, done: number, total: number
       return 82
     case "encode":
       return 85
+    case "end-card":
+      return 92 + 6 * fraction
   }
 }
 
@@ -68,7 +72,7 @@ export interface CutRender {
   readonly footage: FootageCounts
 }
 
-const CutStep = Schema.Literals(["sections", "overlays", "encode"])
+const CutStep = Schema.Literals(["sections", "overlays", "encode", "end-card"])
 const CutLine = Schema.fromJsonString(Schema.Union([
   Schema.Struct({ type: Schema.Literal("progress"), step: CutStep, done: Schema.Int, total: Schema.Int }),
   Schema.Struct({
@@ -77,6 +81,7 @@ const CutLine = Schema.fromJsonString(Schema.Union([
     captions: Schema.String,
     duration_s: Schema.Finite,
     sections: Schema.Int,
+    end_card_s: Schema.optionalKey(Schema.Finite),
     footage: Schema.optionalKey(FootageCounts)
   })
 ]))
@@ -92,6 +97,8 @@ const cutPct = (step: typeof CutStep.Type, done: number, total: number) => {
       return 72
     case "encode":
       return 75 + 20 * fraction
+    case "end-card":
+      return 95 + 4 * fraction
   }
 }
 

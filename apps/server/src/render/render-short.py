@@ -33,6 +33,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from end_card import append_end_card
 from source_pieces import Pieces
 
 W, H, FPS = 1080, 1920, 30
@@ -407,6 +408,20 @@ def main() -> None:
              *audio, "-movflags", "+faststart", str(out)])
     progress("encode", 1, 1)
 
+    # the end card (a style's comment question): the card alone over a held frame of the clean cut (Decision 6: no
+    # narrator in a cut-down), silent
+    end_card = None
+    if plan.get("cta"):
+        progress("end-card", 0, 1)
+        credit_card = None
+        if plan.get("credit"):
+            credit_card = tmp / "credit_card.png"
+            credit_png(plan["credit"], credit_card)
+        end_card = append_end_card(out, joined, plan["cta"], tmp, W=W, H=H, fps=FPS, x264_preset=X264_PRESET,
+                                   lufs=float(plan.get("lufs", -14)), run=run, duration=lambda p: probe(p)[2],
+                                   credit=credit_card)
+        progress("end-card", 1, 1)
+
     # srt (uploadable as captions)
     srt = []
     for n, chunk in enumerate(chunk_words(timed_words), 1):
@@ -415,8 +430,12 @@ def main() -> None:
 
     if not args.keep_temp:
         shutil.rmtree(tmp, ignore_errors=True)
-    emit({"type": "done", "output": str(out), "captions": str(out.with_suffix(".srt")), "duration_s": round(total, 3),
-          "sections": len(parts), "footage": pieces.counts()})
+    done = {"type": "done", "output": str(out), "captions": str(out.with_suffix(".srt")), "duration_s": round(total, 3),
+            "sections": len(parts), "footage": pieces.counts()}
+    if end_card is not None:
+        done["duration_s"] = round(total + end_card["seconds"], 3)
+        done["end_card_s"] = end_card["seconds"]
+    emit(done)
 
 
 if __name__ == "__main__":

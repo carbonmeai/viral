@@ -15,7 +15,9 @@ resolve against the plan file's folder. A short from several videos lists V2… 
 from a 480p scan plays from its 1080p pieces (`pieces_by_source`, source_pieces.py) wherever they cover a clip.
 
 Ported from the viral-shorts skill's render_narrated.py. Its 10 Nov joins are opt-in plan keys here (`resume_word`
-on an insert, `insert_pad`, `soft_joins`), so a plan without them renders exactly as before. Reporting changed: stdout carries one JSON object per line for the server to decode:
+on an insert, `insert_pad`, `soft_joins`), so a plan without them renders exactly as before. The comment-question end
+card (`cta`, end_card.py: the narrator's closing line under the question and a SUBSCRIBE pill over a held frame, cut out
+of the narration by `narration_end`) is opt-in the same way. Reporting changed: stdout carries one JSON object per line for the server to decode:
   {"type": "progress", "step": "shots", "done": 3, "total": 31}
   {"type": "log", "message": "..."}
   {"type": "error", "code": "excluded-range", "message": "..."}   (then exit 1)
@@ -32,6 +34,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from end_card import append_end_card
 from music_bed import arrangement_of, build_music  # needs numpy (in this script's dependencies)
 from source_pieces import Pieces
 
@@ -706,14 +709,36 @@ def main() -> None:
     else:
         shutil.copy(joined, out)
 
+    # the end card (a style's comment question): the narrator's closing line under the question and a SUBSCRIBE pill,
+    # over a held frame of the clean cut (no captions or headline); its words join the srt, not the burned captions
+    end_card = None
+    if plan.get("cta"):
+        progress("end-card", 0, 1)
+        credit_card = None
+        if plan.get("credit"):
+            credit_card = tmp / "credit_card.png"
+            credit_png(plan["credit"], lay, credit_card)
+        end_card = append_end_card(out, joined, plan["cta"], tmp, W=lay.W, H=lay.H, fps=FPS, x264_preset=X264_PRESET,
+                                   lufs=float(plan.get("lufs", -14)), run=run, duration=duration, voiceover=vo,
+                                   voice_gain=float(plan.get("voice_gain", 1.0)), credit=credit_card)
+        if end_card["voice_at"] is not None:
+            a, at = float(plan["cta"]["vo_start"]), end_card["voice_at"]
+            b = float(plan["cta"].get("vo_end", vo_dur))
+            caption_words += [{"w": w["w"], "s": at + w["s"] - a, "e": at + w["e"] - a} for w in vo_words if a <= w["s"] < b]
+        progress("end-card", 1, 1)
+
     # srt for CapCut / YouTube
     srt = [f"{i + 1}\n{_ts(w['s'])} --> {_ts(w['e'])}\n{w['w']}\n" for i, w in enumerate(caption_words)]
     out.with_suffix(".srt").write_text("\n".join(srt))
     if not args.keep_temp:
         shutil.rmtree(tmp, ignore_errors=True)
-    emit({"type": "done", "output": str(out), "captions": str(out.with_suffix(".srt")), "duration_s": round(total, 3),
-          "shots": len(parts), "narration_s": round(narr_end, 3), "inserts_s": round(sum(i["dur"] for i in inserts), 3),
-          "outro_s": round(total - shifted(narr_end), 3), "footage": pieces.counts()})
+    done = {"type": "done", "output": str(out), "captions": str(out.with_suffix(".srt")), "duration_s": round(total, 3),
+            "shots": len(parts), "narration_s": round(narr_end, 3), "inserts_s": round(sum(i["dur"] for i in inserts), 3),
+            "outro_s": round(total - shifted(narr_end), 3), "footage": pieces.counts()}
+    if end_card is not None:
+        done["duration_s"] = round(total + end_card["seconds"], 3)
+        done["end_card_s"] = end_card["seconds"]
+    emit(done)
 
 
 def _ts(t: float) -> str:
