@@ -41,7 +41,8 @@ export const Change = Schema.Struct({
 export type Change = typeof Change.Type
 
 // A rule the server checked the result against, in plain words.
-export const ChatCheck = Schema.Struct({ text: Schema.String, ok: Schema.Boolean })
+// `at`: the moment of the short a check is about (the render's read-back), so the chat can seek there
+export const ChatCheck = Schema.Struct({ text: Schema.String, ok: Schema.Boolean, at: Schema.optionalKey(Schema.Finite) })
 export type ChatCheck = typeof ChatCheck.Type
 
 // A step without its own agent (voice, music, render, style) answers through these existing actions: from the small

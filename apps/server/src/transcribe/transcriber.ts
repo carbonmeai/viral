@@ -70,17 +70,22 @@ export const chooseProvider = (inputs: ProviderInputs): Effect.Effect<Transcript
   }))
 }
 
+export interface TranscribeOptions {
+  readonly prefer?: TranscriptProvider
+  readonly model?: string
+}
+
 // Word-timed transcription into <outDir>/transcript.json (+ transcript.txt). Providers: Grok STT when an
 // xAI key is available, otherwise local mlx-whisper on Apple Silicon. VIRAL_TRANSCRIBER=grok|whisper-local
 // forces one.
 export class Transcriber extends Context.Service<Transcriber, {
   // `prefer`: the provider to use when it's available (voiceovers keep to the one the approved takes used);
-  // VIRAL_TRANSCRIBER still wins.
+  // VIRAL_TRANSCRIBER still wins. `model`: the Whisper model when Whisper transcribes (Grok has one).
   transcribe(
     video: string,
     outDir: string,
     progress: Progress,
-    options?: { readonly prefer?: TranscriptProvider }
+    options?: TranscribeOptions
   ): Effect.Effect<TranscribeResult, TranscribeError>
 }>()("@viral/server/transcribe/transcriber") {
   static readonly layer = Layer.effect(
@@ -109,7 +114,7 @@ export class Transcriber extends Context.Service<Transcriber, {
         })
       })
 
-      const withWhisper = Effect.fn("Transcriber.whisper")(function*(video: string, outDir: string, progress: Progress) {
+      const withWhisper = Effect.fn("Transcriber.whisper")(function*(video: string, outDir: string, progress: Progress, model: string | undefined) {
         const Line = Schema.fromJsonString(Schema.Union([
           Schema.Struct({ type: Schema.Literal("progress"), step: Schema.Literals(["audio", "transcribe"]) }),
           Schema.Struct({
@@ -120,7 +125,7 @@ export class Transcriber extends Context.Service<Transcriber, {
           })
         ]))
         return yield* scripts.run(
-          [path.join(import.meta.dirname, "transcribe-whisper.py"), video, outDir],
+          [path.join(import.meta.dirname, "transcribe-whisper.py"), video, outDir, ...(model === undefined ? [] : ["--model", model])],
           Schema.decodeEffect(Line),
           (line): Effect.Effect<TranscribeResult | undefined> =>
             line.type === "progress"
@@ -186,11 +191,11 @@ export class Transcriber extends Context.Service<Transcriber, {
         video: string,
         outDir: string,
         progress: Progress,
-        options?: { readonly prefer?: TranscriptProvider }
+        options?: TranscribeOptions
       ) {
         const provider = yield* pickProvider(options?.prefer)
         yield* progress(0, `transcribing with ${provider}`)
-        return yield* provider === "grok" ? withGrok(video, outDir, progress) : withWhisper(video, outDir, progress)
+        return yield* provider === "grok" ? withGrok(video, outDir, progress) : withWhisper(video, outDir, progress, options?.model)
       })
 
       return Transcriber.of({ transcribe })

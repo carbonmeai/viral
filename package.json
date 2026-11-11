@@ -10,7 +10,7 @@
     "typecheck": "effect-tsgo tsc -p tsconfig.json && effect-tsgo tsc -p packages/ui/tsconfig.json && effect-tsgo tsc -p apps/web/tsconfig.json && effect-tsgo tsc -p apps/desktop/tsconfig.json",
     "dev:server": "node --env-file-if-exists=.env --watch apps/server/src/main.ts",
     "cli": "node apps/cli/src/main.ts",
-    "test": "VIRAL_X264_PRESET=ultrafast node --env-file-if-exists=.env --test --test-concurrency=8 --test-timeout=120000 \"apps/**/*.test.ts\" \"packages/**/*.test.ts\"",
+    "test": "VIRAL_X264_PRESET=ultrafast VIRAL_READ_BACK=off node --env-file-if-exists=.env --test --test-concurrency=8 --test-timeout=120000 \"apps/**/*.test.ts\" \"packages/**/*.test.ts\"",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
     "repos:sync": "node scripts/sync-repos.ts",
     "fixtures:sync": "node scripts/sync-fixtures.ts",

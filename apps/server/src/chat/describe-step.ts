@@ -24,6 +24,7 @@ import { Artifacts } from "../artifacts/artifacts.ts"
 import { describeMetadataChange, metadataChecks, metadataSummary } from "../metadata/metadata-changes.ts"
 import { describeRankingChange, rankingChecks, rankingSummary } from "../moments/ranking-changes.ts"
 import { describeMusicChange, musicChecks, musicSummary } from "../music-bed/music-changes.ts"
+import { readBackChatChecks, readBackNote } from "../render/read-back.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { describeScriptChange, scriptChecks, scriptSummary } from "../script/script-changes.ts"
 import { describeSectionsChange, sectionsChecks, sectionsSummary } from "../sections/sections-changes.ts"
@@ -163,7 +164,8 @@ export const describeStep = Effect.fn("describeStep")(function*(project: Project
         if (r.checks.lufs !== null) checks.push(passed(`Loudness ${r.checks.lufs.toFixed(0)} LUFS`))
         checks.push(passed("Every shot's first and last frame drawn for checking"))
       }
-      return note(`The render is done: ${seconds(r.durationS)}, ${plural(r.shots, "shot")}.`, checks)
+      checks.push(...readBackChatChecks(r.readBack))
+      return note(`The render is done: ${seconds(r.durationS)}, ${plural(r.shots, "shot")}.${readBackNote(r.readBack)}`, checks)
     }
     default:
       return null
