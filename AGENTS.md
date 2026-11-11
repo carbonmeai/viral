@@ -65,17 +65,22 @@ apps/server/src/
                        snaps each quote in its own video, keeps each video's ads out, needs every proposal to use ≥2
                        videos that each have a beat, and stores set positions (0-based `source`/`sources`). For a
                        set found from an idea it also says what a video is `missing` ("no after"), for Replace this
-                       video. A set found from an idea that reads as a ranking (looksLikeRanking) gets exactly one
-                       `ranking` proposal using every video; other sets and single videos never get one
-                       (SINGLE_VIDEO_APPROACHES). "Make this short" can make any proposal as a ranking
-                       (CreateProjectFromSetProposal `approach`; every video in the set)
+                       video. A set found from an idea that reads as a ranking (looksLikeRanking) opens with a
+                       `narrated-ranking` proposal (the default ranking, M3) and may offer the list `ranking` too, each
+                       using every video; other sets and single videos never get one (SINGLE_VIDEO_APPROACHES). "Make
+                       this short" can make any proposal as "Ranking (narrated)" or "Ranking (list)"
+                       (CreateProjectFromSetProposal `approach`; isRankingApproach: every video in the set)
   research/            research mode (R1): a video set from an idea (source_set_research: idea, 3/5/7/10 videos, length
                        60|180|any) that starts with no videos; its run is research → (each video read) → set-story.
                        The research stage (Haiku by default, `finding-source-videos` skill) has `search_youtube`
                        (yt-dlp --flat-playlist, 8 results) and `video_details` (description, chapters, start of the
                        English captions; never a download), 20 of each, one request at a time 1.5 s apart, and stops
                        asking once YouTube refuses (youtube.ts, research-tools.ts). The server looks every pick up and
-                       checks it (shortlist-rules.ts: exists, not live, ≤20 min, once, exact count, ≤3 backups), saves
+                       checks it (shortlist-rules.ts: exists, not live, ≤20 min, once, exact count, ≤3 backups; a ranking
+                       idea's picks also clear the skill's vetting, rankingProblems: no compilation, 1–6 min, someone
+                       talking in the captions (picks are looked up with captions), and >1M views when enough found
+                       videos clear that). A ranking idea finds the "Top N" it names, else 5 (videosForIdea); its length
+                       estimate is a narrated ranking's (narratedRankingSeconds: 5 entries ≈ 2:12). It saves
                        thumbnails to sets/<id>/research/thumbs/, and records the `shortlist` set artifact behind the gate
                        "Download these videos?" (ShortlistGate; an Edit is checked again). Approving (researches.ts
                        adopt) adds each video (rights unconfirmed, channel kept, a note; a library video with the same
@@ -228,7 +233,9 @@ apps/server/src/
   presets/             style profiles; one default, seeded on first start. Built-ins (added by name when missing, never
                        overwritten, so a change reaches new libraries only): Viral recap (the default) and Headline
                        full-bleed narrated by Marcus, Fast hype with Adam, Story recap (Viral recap with band 1280,
-                       captions 0.78, softJoins and voiceLevel −10 LUFS / 1.7). Two opt-ins, absent = as before:
+                       captions 0.78, softJoins and voiceLevel −10 LUFS / 1.7), Ranking narrated (Viral recap with
+                       captions low at 0.855 in the blur under the picture, softJoins, voiceLevel; a narrated ranking
+                       made without a style gets it). Two opt-ins, absent = as before:
                        `softJoins` (assemble writes soft_joins + insert_pad 0.25) and `voiceLevel` (the voice stage
                        loudnorms the take, assemble writes voice_gain). `commentQuestion` ("End with a comment question",
                        on in the built-ins of new libraries; a library's existing styles stay off until switched on in the
@@ -272,6 +279,12 @@ apps/server/src/
                        (0.8–8), whole sentences (every narrated approach: a quote widens to the sentences it's in; one
                        too long to play whole is a problem), and story-recap's `ending` (150–220 words, 5–8 real lines
                        plus the payoff as one 10–25 s take; real lines at the end less than 3 s apart merge into it).
+                       scriptLimitsFor(approach, videos): a narrated ranking's limits grow with its entries (one per
+                       video; rankingLimits) and carry `ranking`: checkCountdown wants a narrated hook, then entries
+                       opening on "Number N" from N down to 1 (rankingEntries in contracts/script.ts; a hook line like
+                       "Number one had already given up." stays in the hook), 1–2 real lines per entry from its own
+                       video (#1's reveal take after the narration not counted), a video in one entry only, each entry
+                       about 15–32 s (narration at 3.2 words/s + its real lines), #1's reveal as the 10–25 s ending.
                        A Narration beat can be `skipped`: voiced in the take, jumped over in the short because the real
                        line just before it says it (placeReals gives that insert a resumeWord; the creator toggles it
                        at the gate without a new take). The closing question is its own beat type, `Cta` ({question},
@@ -322,6 +335,8 @@ apps/server/src/
   shots/               the shots stage: a vision agent anchors b-roll to voiceover words from the contact sheets,
                        asking for 1-per-second detail sheets (`contact_sheet` tool); the server places the
                        script's real lines as inserts/outro, checks the plan, and draws storyboard.png for the gate.
+                       A narrated ranking's shots (ShotContext.entries from entriesOnTake) come from each entry's own
+                       video and a new shot starts on each entry's "Number" (its rank card); the hook's may be any video.
                        After an insert whose next line is skipped, the narration resumes on the word after it: a shot
                        must start there, none in the skipped words.
                        Several videos: each video's sheets, ads and transcript; `contact_sheet {video}`; each shot
@@ -330,8 +345,8 @@ apps/server/src/
                        shot plans: frames/shot-NN.jpg…) and stitched from those, so clients can offer any frame
   agent-skills/        the app's skill pack (skills/<name>/SKILL.md) + SkillPack, which loads it. Ported from the
                        creator's own viral-shorts skills (story-arc: format by kind of video, whole sentences, the
-                       closing comment question). approach-story-recap and approach-narrated-ranking are written ahead
-                       of their approaches: loaded, but no stage uses them yet
+                       closing comment question). approach-story-recap (M1) and approach-narrated-ranking (M3) are the
+                       newest approaches' skills
   agent-session/       runs every agent stage: isolated session, skills in the prompt, one
                        propose_* tool whose Effect Schema is also its input schema, read-only stage folders,
                        per-stage model, cost + session recording, resume; AgentSession.replay for tests.
@@ -413,6 +428,9 @@ apps/server/src/
                        `seconds`, silent). render-end-card.test.ts renders both. render-narrated.py plays each clip from its
                        own video (`source` index into [source, ...sources]) and checks it against that video's ranges;
                        render-narrated-videos.test.ts renders two generated videos and checks colour and pitch.
+                       A narrated ranking's opt-in `rank_cards` ({rank, word, word_text}): the skill's "#N" text on each
+                       entry's "Number" word (size 0.3, y 0.16 of the band, 1.6 s, red #E8202A, #1 yellow #FFD400),
+                       placed by assemble (entriesOnTake), never by the agent; render-rank-cards.test.ts.
                        render-ranking.py is the skill's final ranking style (title with a red accent, the numbered list
                        1 gold / 2 silver / 3 bronze / last red filling in with label + emoji as each entry plays, each
                        clip's own sound to the style's LUFS, window or fill framing, the videos' own subtitles kept, an
@@ -483,7 +501,9 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        plan)); below about 1100px it's an overlay the top bar opens. The multi-track timeline (264px, under rail, panel and player;
                        display only: no undo, cut or snap yet) is editor-timeline.tsx → track-values.ts tracksFor (pure,
                        tested: a lane per video with its dot and short name, never V1/V2, holding the shots and real
-                       lines / sections / ranking moments it gives, each with its still tiled; then Voice (narration
+                       lines / sections / ranking moments it gives, each with its still tiled (a narrated ranking adds
+                       an Entries lane on top, "#N · video" from each "Number" to the next, and the #N cards marked on
+                       the voice lane); then Voice (narration
                        with vo.wav's waveform, use-audio-peaks.ts decodes a file once per page), a ranking's Entries
                        and Sound / a cut-down's Sound per section, Music (the bed's or the arrangement's parts, the
                        drop marked; "No music" lanes otherwise) and Captions pinned under the video lanes) drawn by
@@ -565,9 +585,12 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        order and title in Detailed; every change goes through CheckRankingEdit (snapped to whole
                        sentences) and answers the gate as one Edit. The Render step shows a ranking's checks
                        (loudness, black frames, each shot's first/last frame) and sends back to Ranking.
-                       make-short-dialog.tsx can offer "As suggested" / "Ranking" / "Story recap" (SET_APPROACHES) and
+                       make-short-dialog.tsx can offer "As suggested" / "Ranking (narrated)" / "Ranking (list)" / "Story recap" (SET_APPROACHES) and
                        passes the choice to onMake; the Styles editor has the "Ranking credit" switch (rankingVia) and,
                        under Voice, "Level with the clips" (voiceLevel) and "Soft joins" (softJoins).
+                       Script step of a narrated ranking (scriptLimits.ranking): lines grouped under the Hook and each
+                       entry's "#N" (card colour, its video, about how long, + #1's reveal; countdown-values.ts), the
+                       ending real take labelled "Reveal", and a Countdown block in Rules.
                        Script step: a skipped line shows "skipped, the real line says it" and toggles with "Let the real
                        line say it" / "Narrator says it" at the gate; the Rules view has a payoff-take meter for
                        story-recap. editor-values.ts lays a skipped line out as a jump (a pause's `skip`) and a soft-joins
