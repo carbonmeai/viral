@@ -1,7 +1,6 @@
-import type { ProposedThumbnailDesign, RankingPlan, ThumbnailDesign, ThumbnailPick } from "@viral/contracts"
+import type { ProposedThumbnailDesign, ThumbnailDesign, ThumbnailPick } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 import { clipSource, sourceField, sourceLabel } from "../projects/source-context.ts"
-import { rankingMoments } from "./ranking-thumbnail.ts"
 import type { ThumbnailContext } from "./thumbnail-rules.ts"
 
 // An AI thumbnail's design (the short-thumbnail skill): which real frames go to the image model and what the four
@@ -88,20 +87,6 @@ export const checkDesign = (design: ThumbnailDesign, sources: ReadonlyArray<Thum
   said("how the person looks (face, hair, clothes)", design.person)
   said("the background", design.background)
   return { value: design, problems }
-}
-
-// A ranking's design: #1's real before and after frames are among the reactions or the hero, from #1's video.
-export const rankingDesignBrief = (plan: RankingPlan, several: boolean) => {
-  const moments = rankingMoments(plan)
-  if (moments === null) return ""
-  const video = several ? `V${moments.source + 1} ` : ""
-  const ranges = (shots: typeof moments.after) => shots.map((s) => `${video}${fmt(s.start)}–${fmt(s.end)}s`).join(" or ")
-  return [
-    `This short is a ranking of ${plan.entries.length}: "${plan.title.lead}${plan.title.accent}", #1 is "${moments.entry.label}".`,
-    `Follow the skill's ranking adaptation: the words are "TOP 1" (or "TOP ${plan.entries.length}"), and the bottom band shows #1's real BEFORE ` +
-    `(${ranges(moments.before)}) and AFTER (${ranges(moments.after)}) side by side as the two "reactions"` +
-    `${several ? ` (video: ${moments.source + 1})` : ""}. Make sure the after frame isn't a replay of the before.`
-  ].join("\n")
 }
 
 const ORDINAL = ["", "once", "TWICE", "THREE TIMES"]

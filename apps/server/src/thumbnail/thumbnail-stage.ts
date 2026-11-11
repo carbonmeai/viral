@@ -12,6 +12,7 @@ import {
   PublishedShort,
   RankingPlan,
   Script,
+  ShotPlan,
   StoryMap,
   ThumbConfig,
   Thumbnail,
@@ -33,12 +34,21 @@ import type { Range } from "../sources/piece-ranges.ts"
 import { SourcePieces } from "../sources/source-pieces.ts"
 import { loadShortStory } from "../video-sets/short-story.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
-import { checkDesign, checkPick, fromProposedDesign, rankingDesignBrief } from "./thumbnail-design.ts"
+import { checkDesign, checkPick, fromProposedDesign } from "./thumbnail-design.ts"
 import { type Round, ThumbnailImages } from "./thumbnail-images.ts"
 import { AI_THUMBNAIL_PROMPT, buildThumbnailBrief, THUMBNAIL_PROMPT } from "./thumbnail-prompt.ts"
 import { Tools } from "../tools/tools.ts"
 import { cutoutSummary, drawThumbnail } from "./thumbnail-draw.ts"
-import { checkRankingThumbnail, rankingThumbnailBrief, tiltInset } from "./ranking-thumbnail.ts"
+import {
+  checkRankingDesign,
+  checkRankingThumbnail,
+  narratedRankingMoments,
+  rankingDesignBrief,
+  type RankingMoments,
+  rankingMoments,
+  rankingThumbnailBrief,
+  tiltInset
+} from "./ranking-thumbnail.ts"
 import { ThumbnailRenderer } from "./thumbnail-renderer.ts"
 import {
   checkConfig,
@@ -158,7 +168,7 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
       })
 
       // The agent's self-check: the thumbnail's problems, or a draft drawn so it can look at it.
-      const previewTool = (videos: ReadonlyArray<ThumbnailContext & ThumbnailVideo>, root: string, attempt: number, ranking: RankingPlan | null) => {
+      const previewTool = (videos: ReadonlyArray<ThumbnailContext & ThumbnailVideo>, root: string, attempt: number, ranking: RankingMoments | null) => {
         let drawn = 0
         return agentTool({
           name: "preview_thumbnail",
@@ -181,9 +191,9 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
       }
 
       // a ranking's thumbnail is #1's after with #1's before as a tilted inset
-      const withRanking = (checked: ReturnType<typeof checkThumbnail>, ranking: RankingPlan | null) =>
+      const withRanking = (checked: ReturnType<typeof checkThumbnail>, ranking: RankingMoments | null) =>
         ranking === null ? checked : { ...checked, problems: [...checked.problems, ...checkRankingThumbnail(checked.value, ranking)] }
-      const configFor = (proposal: ThumbnailProposal, videos: ReadonlyArray<ThumbnailContext & ThumbnailVideo>, ranking: RankingPlan | null) =>
+      const configFor = (proposal: ThumbnailProposal, videos: ReadonlyArray<ThumbnailContext & ThumbnailVideo>, ranking: RankingMoments | null) =>
         ranking === null ? thumbConfig(proposal, videos) : tiltInset(thumbConfig(proposal, videos))
 
       // a video's overview contact sheets, as lines for the brief, and their folder for the agent to read
@@ -204,15 +214,22 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         const published = yield* latestData(ctx.owner, "metadata", PublishedShort)
         const story = yield* latestData(v1.owner, "story-map", StoryMap)
         const label = (source: number | undefined) => c.several ? `V${(source ?? 0) + 1}, ` : ""
-        const ranking = c.project.format === "ranking" ? Option.getOrNull(yield* latestData(ctx.owner, "ranking-plan", RankingPlan)) : null
-        const lines = ranking !== null
-          ? [...ranking.entries].sort((a, b) => a.rank - b.rank).map((e) => `#${e.rank} ${e.label} ${e.emoji} (${label(e.source)}${e.shots.map((s) => s.role).join(" → ")})`)
+        const rankingPlan = c.project.format === "ranking" ? Option.getOrNull(yield* latestData(ctx.owner, "ranking-plan", RankingPlan)) : null
+        const script = c.project.format === "narrated" ? Option.getOrNull(yield* latestData(ctx.owner, "script", Script)) : null
+        // a ranking (list or narrated): #1's after is the hero, #1's before the inset or the second image
+        const ranking: RankingMoments | null = rankingPlan !== null
+          ? rankingMoments(rankingPlan)
+          : c.project.approach === "narrated-ranking" && script !== null
+          ? narratedRankingMoments(script, Option.getOrNull(yield* latestData(ctx.owner, "shot-plan", ShotPlan)), c.project.sourceIds.length, c.project.title)
+          : null
+        const lines = rankingPlan !== null
+          ? [...rankingPlan.entries].sort((a, b) => a.rank - b.rank).map((e) => `#${e.rank} ${e.label} ${e.emoji} (${label(e.source)}${e.shots.map((s) => s.role).join(" → ")})`)
           : c.project.format === "cut-down"
           ? Option.match(yield* latestData(ctx.owner, "cut-plan", CutPlan), {
             onNone: () => [],
             onSome: (p) => p.sections.map((s) => `CREATOR (${label(s.source)}${s.beat}): "${s.text}"`)
           })
-          : Option.match(yield* latestData(ctx.owner, "script", Script), {
+          : Option.match(Option.fromNullishOr(script), {
             onNone: () => [],
             onSome: (s) => s.beats.flatMap((b) => b._tag === "Cta" ? [] : b._tag === "Narration" ? [`NARRATOR: ${b.text}`] : [c.several ? `REAL (V${(b.source ?? 0) + 1}): "${b.quote}"` : `REAL: "${b.quote}"`])
           })
@@ -290,7 +307,10 @@ export class ThumbnailStage extends Context.Service<ThumbnailStage, {
         const videos = c.sources.map((s) => ({ index: s.index, path: s.path, source: s.source }))
         const roundDir = path.join(projectDir, "thumbnail-rounds", `${ctx.stageRunId}-${ctx.attempt}`)
         const brief = ranking === null ? baseBrief : `${baseBrief}\n\n${rankingDesignBrief(ranking, c.several)}`
-        const checkProposed = (proposed: ProposedThumbnailDesign) => checkDesign(fromProposedDesign(proposed), c.sources)
+        const checkProposed = (proposed: ProposedThumbnailDesign) => {
+          const checked = checkDesign(fromProposedDesign(proposed), c.sources)
+          return ranking === null ? checked : { ...checked, problems: [...checked.problems, ...checkRankingDesign(checked.value, ranking)] }
+        }
         const problemsText = (problems: ReadonlyArray<string>) => `Fix these first:\n${problems.map((p) => `- ${p}`).join("\n")}`
         let round: Round | null = null
         let previews = 0
