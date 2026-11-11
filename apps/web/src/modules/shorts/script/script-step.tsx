@@ -4,6 +4,7 @@ import { Pencil } from "lucide-react"
 import { narratedWords, realLines } from "../editor-values.ts"
 import { Panel } from "../panel.tsx"
 import { NothingToInspect, NotYet } from "../step-parts.tsx"
+import { nameOf, useShortVideos } from "../short-videos.tsx"
 import type { EditorState } from "../use-editor-state.ts"
 import { ScriptRules, type ScriptTab } from "./script-inspector.tsx"
 import { ScriptPreview } from "./script-preview.tsx"
@@ -22,6 +23,7 @@ export const scriptNote = (e: EditorState) => e.ws.script === null ? null : `${e
 export function ScriptStepPanel({ e }: { readonly e: EditorState }) {
   const { ws } = e
   const gate = e.gateFor("script")
+  const names = useShortVideos()
   const views = (
     <Segmented<ScriptTab>
       label="Script view"
@@ -47,7 +49,10 @@ export function ScriptStepPanel({ e }: { readonly e: EditorState }) {
       ) : (
         <>
           <div className="min-h-0 flex-1 overflow-auto">
-            <ScriptStage script={script} preset={ws.preset} videoUrlOf={e.videoUrlOf} videos={ws.videos.length} gate={gate} selected={e.beat} onSelect={e.setBeat} editSignal={e.editSignal} />
+            <ScriptStage script={script} preset={ws.preset} videoUrlOf={e.videoUrlOf} videos={ws.videos.length} gate={gate} selected={e.beat} onSelect={e.setBeat} editSignal={e.editSignal}
+              countdown={ws.scriptLimits?.ranking?.entries ?? null}
+              videoName={(v) => nameOf(names, v)}
+            />
           </div>
           <div className="flex shrink-0 items-center gap-2 px-3.5 py-2.5 shadow-[inset_0_1px_0_var(--line)]">
             <span className="min-w-0 truncate text-xs text-fg-2">

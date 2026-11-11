@@ -1,4 +1,4 @@
-import { APPROACHES, type ApproachName, type ProjectFormat } from "@viral/contracts"
+import { APPROACHES, type ApproachName, isRankingApproach, type ProjectFormat } from "@viral/contracts"
 
 // The format card you picked on Home before starting a set, kept per set in this browser so the set page can
 // highlight the matching suggestion. A hint only: Viral still suggests three shorts.
@@ -22,5 +22,7 @@ export const madeAsFor = (setId: string): ProjectFormat | null => {
   }
 }
 
-// Whether a suggestion is the format you asked for.
-export const matchesMadeAs = (hint: ProjectFormat | null, approach: ApproachName) => hint !== null && APPROACHES[approach].format === hint
+// Whether a suggestion is the format you asked for (the Ranking card matches both rankings: the narrated one is a
+// narrated short).
+export const matchesMadeAs = (hint: ProjectFormat | null, approach: ApproachName) =>
+  hint !== null && (hint === "ranking" ? isRankingApproach(approach) : APPROACHES[approach].format === hint && !isRankingApproach(approach))

@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { rankingCues, sectionCues } from "./caption-cues.ts"
 import { layoutTimeline } from "./editor-values.ts"
+import { countdownOf } from "./script/countdown-values.ts"
 import type { RankingDraft } from "./ranking/ranking-values.ts"
 import type { EditSection } from "./sections/sections-values.ts"
 import { timelineShots, shotSpans } from "./shots/shots-values.ts"
@@ -189,4 +190,34 @@ test("the end card: after the outro on the first video's lane, its closing line 
   const cut = tracksFor({ format: "cut-down", videos: candyHeidi, captions: null, sections, stillOf: () => null, endCard: "Would you?" })
   assert.equal(cut.total, 9 + 3)
   assert.deepEqual(lane(cut, "video:candy").clips.at(-1)!.label, "End card")
+})
+
+// A narrated ranking of two: "Two dogs. Number two, Rex. Number one, Max." with a real line in each entry
+test("a narrated ranking: an Entries lane from each \"Number\" to the next, and the #N cards on the voice lane", () => {
+  const rankWords = ["Two", "dogs.", "Number", "two,", "Rex.", "Number", "one,", "Max."].map((w, i) => ({ w, s: i * 0.5, e: i * 0.5 + 0.4 }))
+  const ranked: Script = {
+    headline: null,
+    beats: [
+      { _tag: "Narration", text: "Two dogs." },
+      { _tag: "Narration", text: "Number two, Rex." },
+      { _tag: "Real", quote: "Good boy.", start: 10, end: 11 },
+      { _tag: "Narration", text: "Number one, Max." },
+      { _tag: "Real", quote: "Best dog.", start: 20, end: 22, source: 1 }
+    ]
+  }
+  const rankLayout = layoutTimeline(ranked, rankWords, 4)
+  const entries = countdownOf(ranked, 2)!.entries.map((e) => ({ rank: e.rank, beat: e.start, source: e.source }))
+  const timeline = tracksFor({
+    format: "narrated", videos: candyHeidi, captions: null, layout: rankLayout, beats: ranked.beats, shots: null,
+    realFrame: () => null, countdown: entries, voiceUrl: null, music: { _tag: "None" }
+  })
+  const lanes = lane(timeline, "entries")
+  assert.equal(timeline.tracks[0]!.id, "entries", "the Entries lane on top")
+  assert.deepEqual(lanes.clips.map((c) => [c.label, c.start, c.end, c.target]), [
+    ["#2 · Extreme candy", 1, 3.5, { _tag: "Narration", beat: 1 }],
+    ["#1 · Heidi", 3.5, timeline.total, { _tag: "Narration", beat: 3 }]
+  ])
+  assert.deepEqual(lane(timeline, "voice").marks, [{ at: 1, label: "#2" }, { at: 3.5, label: "#1" }])
+  // not a ranking: no lane, no marks
+  assert.equal(narrated({ _tag: "None" }).tracks.some((t) => t.id === "entries"), false)
 })

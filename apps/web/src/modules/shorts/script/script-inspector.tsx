@@ -7,6 +7,7 @@ import { InspectorBlock } from "../editor-frame.tsx"
 import { VideoDot } from "../../sets/video-badge.tsx"
 import { narratedWords, payoffSeconds, realLines, realsByVideo } from "../editor-values.ts"
 import type { GateControls } from "../gate.ts"
+import { countdownOf, rankCardColor } from "./countdown-values.ts"
 import { StepDetails } from "../step-details.tsx"
 
 // The Script panel's views: the lines themselves, or the rules they're checked against (and the headline)
@@ -58,6 +59,23 @@ export function ScriptRules({ script, limits, preset, videos, stages, gate }: {
           )}
         </>
       )}
+      {limits?.ranking === undefined ? null : (
+        <InspectorBlock title={`Countdown · ${limits.ranking.entries} entries`}>
+          {(countdownOf(script, limits.ranking.entries)?.entries ?? []).map((entry) => {
+            const ok = entry.seconds >= limits.ranking!.entrySeconds[0] && entry.seconds <= limits.ranking!.entrySeconds[1]
+            return (
+              <span key={entry.start} className="flex min-w-0 items-center gap-2 text-sm text-fg-1">
+                <b className="w-7 font-[Anton,Impact,sans-serif] font-normal" style={{ color: rankCardColor(entry.rank) }}>#{entry.rank}</b>
+                {entry.source === null ? <span className="text-fg-3">no real line</span> : <><VideoDot index={entry.source} /><span className="truncate">{videos[entry.source]}</span></>}
+                <span className={`ml-auto tabular-nums ${ok ? "text-fg-2" : "text-wait"}`}>~{Math.round(entry.seconds)}s</span>
+              </span>
+            )
+          })}
+          <span className="text-xs text-fg-2">
+            Counted down #{limits.ranking.entries} to #1, each about 20–25 s ({limits.ranking.entrySeconds[0]}–{limits.ranking.entrySeconds[1]}) with {limits.ranking.realsPerEntry[0]}–{limits.ranking.realsPerEntry[1]} real lines from its own video.
+          </span>
+        </InspectorBlock>
+      )}
       {videos.length < 2 ? null : (
         <InspectorBlock title="Real lines by video">
           {realsByVideo(script, videos.length).map((count, i) => (
@@ -76,6 +94,7 @@ export function ScriptRules({ script, limits, preset, videos, stages, gate }: {
           ...(limits?.wholeSentences === true ? ["Every real line is whole sentences (a pause over 1.5 s ends one)"] : []),
           `Real lines ${limits?.realSeconds[0] ?? 0.8}–${limits?.realSeconds[1] ?? 8} s each${limits?.ending == null ? "" : `; the payoff one take of ${limits.ending.seconds[0]}–${limits.ending.seconds[1]} s`}`,
           ...(limits?.realsOnlyAtEnd ? ["Real lines only after the narration"] : []),
+          ...(limits?.ranking === undefined ? [] : [`Every entry opens on “Number N”, #${limits.ranking.entries} down to #1, one per video`]),
           "Headline under 8 words"
         ].map((rule) => (
           <span key={rule} className="flex items-start gap-1.5 text-sm text-fg-1"><Check className="mt-0.5 size-3.5 shrink-0 text-ok-dot" />{rule}</span>

@@ -118,6 +118,9 @@ export interface NarratedTracks extends Common {
     readonly frameOf: (k: number) => string | null
   } | null
   readonly realFrame: (kind: "insert" | "outro", index: number) => string | null
+  // a narrated ranking's entries in playing order: each rank, the script beat that opens it ("Number N") and its video
+  // (null when it has no real line yet); absent or null = not a ranking
+  readonly countdown?: ReadonlyArray<{ readonly rank: number; readonly beat: number; readonly source: number | null }> | null
   readonly voiceUrl: string | null
   readonly music:
     | { readonly _tag: "None" }
@@ -266,6 +269,34 @@ const narratedTracks = (input: NarratedTracks): ShortTimeline => {
       target: { _tag: "Narration" as const, beat: ctaBeat }
     }])
   })
+  // a narrated ranking: an Entries lane (each entry from its "Number" to the next, in its video's colour) and the "#N"
+  // cards marked on the voice lane where the narrator says "Number"
+  const countdown = (input.countdown ?? []).flatMap((entry) => {
+    const k = narrationBeats.indexOf(entry.beat)
+    const line = layout.narration[k]
+    return line === undefined ? [] : [{ ...entry, start: line.start }]
+  })
+  const entriesEnd = card === null ? total : card.start
+  const entriesTrack = countdown.length === 0 ? [] : [track({
+    id: "entries",
+    kind: "entries",
+    label: "Entries",
+    clips: countdown.map((entry, k) => {
+      const name = entry.source === null ? "no real line yet" : input.videos[entry.source]?.name ?? `Video ${entry.source + 1}`
+      return {
+        id: `entry-${entry.rank}-${k}`,
+        start: entry.start,
+        end: Math.max(entry.start + 0.05, countdown[k + 1]?.start ?? entriesEnd),
+        label: `#${entry.rank} · ${name}`,
+        title: `#${entry.rank} · ${name}${entry.rank === 1 ? " · its reveal ends the short" : ""}`,
+        color: entry.source === null ? COLORS.entries : input.videos[entry.source]?.color ?? COLORS.entries,
+        frame: null,
+        wave: null,
+        target: { _tag: "Narration" as const, beat: entry.beat }
+      }
+    })
+  })]
+  const voiceWithCards = countdown.length === 0 ? voice : { ...voice, marks: countdown.map((entry) => ({ at: entry.start, label: `#${entry.rank}` })) }
   const { music } = input
   const musicTrack = music._tag !== "Bed"
     ? track({
@@ -294,7 +325,7 @@ const narratedTracks = (input: NarratedTracks): ShortTimeline => {
       })),
       marks: music.drop === null ? [] : [{ at: music.drop.at, label: music.drop.word === null ? "drop" : `drop · “${music.drop.word}”` }]
     })
-  return { total, tracks: [...videoTracks, voice, musicTrack, captionsTrack(input.captions, total)], empty: null }
+  return { total, tracks: [...entriesTrack, ...videoTracks, voiceWithCards, musicTrack, captionsTrack(input.captions, total)], empty: null }
 }
 
 // A cut-down short: each video's sections (with their stills), the creator's own sound per section, and the captions;

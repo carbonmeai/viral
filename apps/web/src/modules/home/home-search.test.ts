@@ -18,6 +18,8 @@ test("the old pages land on Home: /waiting filtered to waiting, /videos/new on t
 
 test("a format card's hint matches the suggestions made that way", () => {
   assert.ok(matchesMadeAs("ranking", "ranking"))
+  assert.ok(matchesMadeAs("ranking", "narrated-ranking"), "the Ranking card matches the narrated ranking too")
+  assert.ok(!matchesMadeAs("narrated", "narrated-ranking"), "a narrated ranking isn't what the Narrated card asked for")
   assert.ok(matchesMadeAs("narrated", "claim-interleaved"))
   assert.ok(matchesMadeAs("narrated", "question-recap"))
   assert.ok(!matchesMadeAs("cut-down", "question-recap"))

@@ -335,7 +335,10 @@ function SetContent({ data, progress, tab, onTab, refresh }: {
         initialBrief={set.brief}
         description="The set's brief comes along. Change it for this short if you like; every step reads it first."
         approaches={SET_APPROACHES}
-        initialApproach={story?.proposals[asking ?? -1]?.approach === "ranking" ? "ranking" : null}
+        initialApproach={(() => {
+          const proposed = story?.proposals[asking ?? -1]?.approach
+          return proposed === "ranking" || proposed === "narrated-ranking" ? proposed : null
+        })()}
         onCancel={() => setAsking(null)}
         onMake={(brief, approach) => {
           if (asking !== null) make(asking, brief, approach)

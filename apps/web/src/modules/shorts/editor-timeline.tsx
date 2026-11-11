@@ -8,6 +8,7 @@ import { shortTimeOf } from "./editor-values.ts"
 import { bedBlocks } from "./music/music-values.ts"
 import { MultiTrack } from "./multi-track.tsx"
 import { entryBlocks } from "./ranking/ranking-values.ts"
+import { countdownOf } from "./script/countdown-values.ts"
 import { sectionBlocks } from "./sections/sections-values.ts"
 import { nameOf, useShortVideos } from "./short-videos.tsx"
 import { type TracksInput, tracksFor, type TrackVideo } from "./track-values.ts"
@@ -39,6 +40,9 @@ const inputOf = (e: EditorState, videos: ReadonlyArray<TrackVideo>): TracksInput
       frameOf: e.shotFrame
     },
     realFrame: e.realFrame,
+    countdown: ws.script === null || ws.scriptLimits?.ranking === undefined
+      ? null
+      : (countdownOf(ws.script.script, ws.scriptLimits.ranking.entries)?.entries ?? []).map((entry) => ({ rank: entry.rank, beat: entry.start, source: entry.source })),
     voiceUrl: e.voiceUrl,
     music: ws.project.musicTrackId === null
       ? { _tag: "None" }

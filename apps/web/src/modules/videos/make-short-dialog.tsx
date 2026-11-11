@@ -23,10 +23,16 @@ const STORY_RECAP: ApproachChoice = {
 // Offered on a video's proposals: as suggested, or as a story recap (the creator's best-performing format).
 export const VIDEO_APPROACHES: ReadonlyArray<ApproachChoice> = [{ value: null, label: "As suggested" }, STORY_RECAP]
 
-// Offered on a video set's proposals: as suggested, as a ranking of every video, or as a story recap.
+// Offered on a video set's proposals: as suggested, as a ranking of every video (narrated, the default ranking, or the
+// list of clips with their own sound), or as a story recap.
 export const SET_APPROACHES: ReadonlyArray<ApproachChoice> = [
   { value: null, label: "As suggested" },
-  { value: "ranking", label: "Ranking", hint: "An entry per video, each clip's own sound, #1 last." },
+  {
+    value: "narrated-ranking",
+    label: "Ranking (narrated)",
+    hint: "A narrator counts down an entry per video (“Number five…”), each a 20–25 s mini-story with 1–2 real lines, #1's reveal as the ending."
+  },
+  { value: "ranking", label: "Ranking (list)", hint: "An entry per video, each clip's own sound and a numbered list, #1 last. For clips that explain themselves." },
   STORY_RECAP
 ]
 
@@ -68,7 +74,7 @@ export function MakeShortDialog({ title, open, busy, onCancel, onMake, initialBr
         <>
           <Button onClick={onCancel}>Cancel</Button>
           <Button variant="primary" disabled={busy} onClick={() => onMake(trimmed === "" ? null : trimmed, approaches.length === 0 ? null : approach)}>
-            <Sparkles />{busy ? "Making…" : approach === "ranking" ? "Make a ranking" : "Make this short"}
+            <Sparkles />{busy ? "Making…" : approach === "ranking" || approach === "narrated-ranking" ? "Make a ranking" : "Make this short"}
           </Button>
         </>
       }
