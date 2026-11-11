@@ -165,9 +165,12 @@ apps/server/src/
                        answers with a 1-based `video` per layer or frame (ProposedThumbnail → ThumbnailProposal `source`); the
                        config keeps V1 as `source`, the others in `sources` and a layer `source` index (all absent for one
                        video, so single-video configs are byte-identical), and each layer is cut from its own video.
-                       A ranking (ranking-thumbnail.ts): bold, the hero inside #1's after, the face layer inside #1's
-                       before (drawn as a tilted inset), "TOP N" over the subject; AI: #1's before and after as the
-                       bottom band, "TOP 1"
+                       A ranking, list or narrated (ranking-thumbnail.ts, RankingMoments): bold, the hero inside #1's
+                       after, the face layer inside #1's before (drawn as a tilted inset), "TOP N" over the subject;
+                       AI: the hero inside #1's after and one reaction inside #1's before (checked), "TOP 1". A list
+                       ranking's #1 has shots by role; a narrated ranking's after is #1's reveal take (its last real
+                       line, as the shots placed it) and its before #1's earliest b-roll from its video ahead of the
+                       reveal (else #1's first real line)
   script-runner/       runs the domains' uv Python scripts (JSON-line stdout protocol, stderr drained)
   secrets/             API keys: model keys (anthropic, openai, google, openrouter, gateway) and voice keys (elevenlabs,
                        xai). An env var (.env) wins (SECRETS lists them; google also reads GEMINI_API_KEY), else the saved
@@ -445,6 +448,22 @@ apps/server/src/
                        and reports `footage` counts. The RenderedShort's `footage` rows (render gate, CLI, Render step
                        "Footage") say per scanned video how many clips were 1080p and why any weren't; a fallback is
                        also a progress warning. render-pieces.test.ts runs it end to end against the fake yt-dlp.
+                       The read-back (M5, viral-shorts step 7 "transcribe the FINAL mp4 and read every line"): after
+                       every render (narrated, story-recap, narrated ranking, cut-down, list ranking) the stage
+                       transcribes the mp4's audio into <render>/read-back/ (Transcriber, local Whisper preferred so it
+                       stays free; the default model, large-v3-turbo, is already on disk for voice takes, ~6 s for a
+                       minute; VIRAL_READ_BACK_MODEL picks another) and finds silences (ffmpeg silencedetect −40 dB).
+                       read-back.ts (pure) lays out what the short should say, in the renderer's order: the take's
+                       words around each insert (skipped lines left out), each real clip's words from its video's
+                       transcript in the played seconds, the closing line; it aligns that with what was heard (LCS,
+                       numbers spelt out, a long word may be a letter off) and checks: words heard, narration (runs of
+                       3+ missing words), real clips (whole sentences in their video, heard), skipped lines absent,
+                       every join (nothing lost or garbled), the closing question + subscribe when the style's switch
+                       is on (a cut-down's card is silent), a narrated ranking's "Number N"…"Number 1" order, and no
+                       silence over 1.2 s (except a cut-down's silent card). Each check is pass or warn with the
+                       short's moment; RenderedShort.readBack keeps them (or `problem` when it couldn't run). Warnings
+                       never block approval. VIRAL_READ_BACK=off skips it (`bun run test` sets it;
+                       render-read-back.test.ts turns it on with a replayed transcriber).
                        Two goldens: the original candy short
                        (must stay identical) and a features render (VIRAL_UPDATE_GOLDEN=1 refreshes it on purpose)
 apps/cli/              dev client over RPC, one <domain>-command.ts per command group
@@ -561,7 +580,10 @@ apps/web/src/          the UI (vite-plus, React 19, TanStack Router, Effect atom
                        PreviewMusicArrangement bed on the stage, Apply calls ArrangeMusic and follows the re-run
 
                        render/: the Render step (the mp4 in a 9:16 player the timeline's playhead follows; the
-                       check sheet toggled under it; sending back to Shots/Sections/Ranking or Style from the chat:
+                       check sheet toggled under it, "Check sheet · N to look at" when the read-back warns; its "Read
+                       back" block lists what was heard, warnings first, each time a button that plays the short from
+                       there (read-back-values.ts); the chat's render card lists the same checks with their times;
+                       sending back to Shots/Sections/Ranking or Style from the chat:
                        a chip, or your words through the intent agent). publish/: the post
                        text (choose or write a title, edit the description and hashtags from ⋯, copy it all; saved on
                        the short with SetPostText), "Publish again" with what it will update, the files, and a
