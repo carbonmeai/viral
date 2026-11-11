@@ -119,6 +119,8 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
   // Render, Publish and Thumbnail: the inspector's tab, where the player is, and the thumbnail's words as you edit
   // them
   const [renderCheck, setRenderCheck] = useState(false)
+  // a moment of the finished short to show (a read-back check clicked): the player opens and jumps there
+  const [renderSeek, setRenderSeek] = useState<{ readonly at: number; readonly n: number } | null>(null)
   const [playTime, setPlayTime] = useState<number | null>(null)
   const [thumbWords, setThumbWords] = useState<ThumbnailWords | null>(null)
   const [thumbProblems, setThumbProblems] = useState<ReadonlyArray<string>>([])
@@ -479,6 +481,13 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     seekTransport(at)
   }
 
+  // a read-back check clicked (in the Render step or the chat): the rendered short, at that moment
+  const seekRender = (at: number) => {
+    if (open !== "render") onStep("render")
+    setRenderCheck(false)
+    setRenderSeek((s) => ({ at, n: (s?.n ?? 0) + 1 }))
+  }
+
   // the post text you chose and edited, saved on the short, and publishing it again
   const publish = usePublish(ws, refresh)
   const going = liveRun?.status === "running" || liveRun?.status === "waiting"
@@ -563,6 +572,8 @@ export function useEditorState({ ws, progress, step, onStep, refresh }: {
     // render, publish, thumbnail
     renderCheck,
     setRenderCheck,
+    renderSeek,
+    seekRender,
     playTime,
     setPlayTime,
     thumbWords,

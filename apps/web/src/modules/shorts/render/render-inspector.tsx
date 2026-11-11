@@ -1,8 +1,10 @@
-import type { ProjectFormat, RenderedShort, StageName, StageRun } from "@viral/contracts"
+import type { ProjectFormat, ReadBack, RenderedShort, StageName, StageRun } from "@viral/contracts"
+import { Check, TriangleAlert } from "lucide-react"
 import { Detail } from "../../system/detail.tsx"
 import { Facts, InspectorBlock } from "../editor-frame.tsx"
 import { StepDetails } from "../step-details.tsx"
 import { footageLines, footageSummary } from "./footage-values.ts"
+import { readBackView } from "./read-back-values.ts"
 
 // Where a render's problem is fixed: a wrong shot (or section) goes back to that step's agent; a style problem
 // (captions, headline, framing, music) is laid out again with the short's current style.
@@ -18,15 +20,18 @@ export const sendBackTargets = (format: ProjectFormat): ReadonlyArray<{ readonly
 // Checking a render: the check sheet (a frame a second, so every shot can be checked against what's said), the
 // render's numbers, where its footage came from and what Viral checked in the mp4. It opens under the player; sending
 // the render back with a note is the chat column's.
-export function RenderCheck({ render, checkSheetUrl, checkFrameUrl, stages }: {
+export function RenderCheck({ render, checkSheetUrl, checkFrameUrl, stages, onSeek }: {
   readonly render: RenderedShort
   readonly checkSheetUrl: string | null
   // a ranking's check frame (an absolute path next to the render) as a URL, when the render's file is in the library
   readonly checkFrameUrl?: ((file: string) => string) | null
   readonly stages: ReadonlyArray<StageRun>
+  // a read-back check's moment clicked: watch the short there
+  readonly onSeek?: (at: number) => void
 }) {
   return (
     <div className="grid content-start gap-5">
+      {render.readBack === undefined ? null : <ReadBackBlock readBack={render.readBack} {...(onSeek === undefined ? {} : { onSeek })} />}
       <InspectorBlock title="Check it" action={<span className="font-normal text-fg-3">a frame a second</span>}>
         {checkSheetUrl === null
           ? <span className="text-xs text-fg-2">This render has no check sheet.</span>
@@ -51,6 +56,47 @@ export function RenderCheck({ render, checkSheetUrl, checkFrameUrl, stages }: {
       </Detail>
       <StepDetails stages={stages} names={["assemble", "render"]} />
     </div>
+  )
+}
+
+// The final-video check: the finished short transcribed and read back against its plan (the narration, every real
+// clip, the closing line, a ranking's countdown, the joins and any silence). Things to look at come first; clicking a
+// moment plays the short from there. A warning never stops you approving.
+function ReadBackBlock({ readBack, onSeek }: { readonly readBack: ReadBack; readonly onSeek?: (at: number) => void }) {
+  const view = readBackView(readBack)
+  const tone = view.tone === "warn" ? "font-normal text-wait" : view.tone === "ok" ? "font-normal text-ok" : "font-normal text-fg-3"
+  return (
+    <InspectorBlock title="Read back" action={<span className={tone}>{view.summary}</span>}>
+      {view.rows.length === 0 ? <span className="text-xs text-fg-2">The finished short wasn't read back: {view.note}.</span> : (
+        <ul className="grid gap-1.5" aria-label="What the read-back found">
+          {view.rows.map((row, i) => (
+            <li key={i} className="flex items-start gap-2 text-[13px] leading-snug">
+              {row.ok
+                ? <Check aria-label="Passed" className="mt-[2px] size-[14px] shrink-0 text-ok" />
+                : <TriangleAlert aria-label="Look at this" className="mt-[2px] size-[14px] shrink-0 text-wait" />}
+              <span className={row.ok ? "min-w-0 flex-1 text-fg-2" : "min-w-0 flex-1 text-fg-1"}>{row.text}</span>
+              {row.at === null || row.time === null ? null : onSeek === undefined
+                ? <span className="shrink-0 text-xs text-fg-3 tabular-nums">{row.time}</span>
+                : (
+                  <button
+                    type="button"
+                    onClick={() => onSeek(row.at!)}
+                    title={`Watch from ${row.time}`}
+                    className="shrink-0 rounded-[6px] bg-ctl px-1.5 py-0.5 text-xs text-fg-2 tabular-nums hover:bg-ctl-hover hover:text-fg"
+                  >
+                    {row.time}
+                  </button>
+                )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {view.rows.length === 0 ? null : (
+        <span className="text-xs text-fg-3">
+          Transcribed from the finished mp4 ({view.note}). Warnings are for your eye; they never stop you approving.
+        </span>
+      )}
+    </InspectorBlock>
   )
 }
 

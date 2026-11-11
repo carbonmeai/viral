@@ -5,6 +5,7 @@ import { homeFileUrl } from "../../../lib/media-url.ts"
 import { checkFrameMedia } from "../ranking/ranking-values.ts"
 import { NotYet } from "../step-parts.tsx"
 import type { EditorState } from "../use-editor-state.ts"
+import { checkToggleLabel } from "./read-back-values.ts"
 import { RenderCheck } from "./render-inspector.tsx"
 import { ShortPlayer } from "./short-player.tsx"
 
@@ -21,6 +22,7 @@ export function RenderStepStage({ e }: { readonly e: EditorState }) {
             checkSheetUrl={render.media.checkSheet === null ? null : homeFileUrl(serverUrl, render.media.checkSheet)}
             checkFrameUrl={render.media.video === null ? null : (file) => homeFileUrl(serverUrl, checkFrameMedia(render.media.video!, file))}
             stages={e.stages}
+            onSeek={e.seekRender}
           />
         </div>
       </div>
@@ -28,7 +30,7 @@ export function RenderStepStage({ e }: { readonly e: EditorState }) {
   }
   return render.media.video === null
     ? <div className="grid flex-1 place-items-center text-fg-2">The render's file isn't in the library.</div>
-    : <ShortPlayer url={homeFileUrl(serverUrl, render.media.video)} onTime={e.setPlayTime} transport={e.transportLink} />
+    : <ShortPlayer url={homeFileUrl(serverUrl, render.media.video)} onTime={e.setPlayTime} transport={e.transportLink} seekTo={e.renderSeek} />
 }
 
 export const renderNote = (e: EditorState) => e.ws.render === null ? null : `${e.ws.render.render.durationS.toFixed(1)}s · ${e.ws.render.render.shots} shots`
@@ -38,7 +40,7 @@ export function RenderToggle({ e }: { readonly e: EditorState }) {
   if (e.ws.render === null) return null
   return (
     <Button variant="ghost" onClick={() => e.setRenderCheck(!e.renderCheck)}>
-      {e.renderCheck ? <><Play />Watch the short</> : <><Film />Check sheet</>}
+      {e.renderCheck ? <><Play />Watch the short</> : <><Film />{checkToggleLabel(e.ws.render.render.readBack)}</>}
     </Button>
   )
 }

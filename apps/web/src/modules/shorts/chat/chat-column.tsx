@@ -118,7 +118,8 @@ export function ChatColumn({ e, onAsk }: { readonly e: EditorState; readonly onA
               approve: e.approvePending,
               ask,
               editItMyself: e.editItMyself,
-              stopAndRedo: entry.seq === lastYou ? stopAndRedo : null
+              stopAndRedo: entry.seq === lastYou ? stopAndRedo : null,
+              seek: e.seekRender
             }}
           />
         ))}

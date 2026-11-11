@@ -1,10 +1,11 @@
 import type { Change, ChatCheck, ChatEntry, ChatItem, RunRequest } from "@viral/contracts"
 import { Button } from "@viral/ui/primitives/button"
 import { Skeleton } from "@viral/ui/primitives/skeleton"
-import { Check, CircleAlert, Pencil, RotateCcw, X } from "lucide-react"
+import { Check, CircleAlert, Pencil, RotateCcw, TriangleAlert, X } from "lucide-react"
 import type { ReactNode } from "react"
 import { useDetailed } from "../../system/detail.tsx"
 import { type EditorStepId, whatToCheck } from "../editor-values.ts"
+import { momentOf } from "../render/read-back-values.ts"
 import { costText, gateState, providerName, shortModel, stageName, STEP_NAMES } from "./chat-values.ts"
 
 // What the items can do: answer the gate a card shows, and say yes to "Stop and redo".
@@ -16,6 +17,8 @@ export interface ChatItemActions {
   readonly editItMyself: (() => void) | null
   // your latest message only: say yes to "Stop and redo"
   readonly stopAndRedo: ((entry: ChatEntry) => void) | null
+  // a check with a moment (the render's read-back): watch the rendered short there
+  readonly seek?: (at: number) => void
 }
 
 const EDITABLE: ReadonlySet<string> = new Set(["script", "shots", "sections", "moments", "thumbnail"])
@@ -39,14 +42,27 @@ function Meta({ who, provider, model, cost, extra }: {
   )
 }
 
-function Checks({ checks }: { readonly checks: ReadonlyArray<ChatCheck> }) {
+// What the server checked. A check with a moment (the render's read-back) is a warning, not a failure, and its time
+// plays the short from there.
+function Checks({ checks, onSeek }: { readonly checks: ReadonlyArray<ChatCheck>; readonly onSeek?: ((at: number) => void) | undefined }) {
   if (checks.length === 0) return null
   return (
     <span className="grid gap-[3px] text-xs text-fg-2">
-      {checks.map((c) => (
-        <span key={c.text} className="flex items-start gap-1.5">
-          {c.ok ? <Check className="mt-[2px] size-[13px] shrink-0 text-ok" /> : <X className="mt-[2px] size-[13px] shrink-0 text-danger" />}
-          {c.text}
+      {checks.map((c, i) => (
+        <span key={`${i}-${c.text}`} className="flex items-start gap-1.5">
+          {c.ok
+            ? <Check className="mt-[2px] size-[13px] shrink-0 text-ok" />
+            : c.at === undefined
+            ? <X className="mt-[2px] size-[13px] shrink-0 text-danger" />
+            : <TriangleAlert className="mt-[2px] size-[13px] shrink-0 text-wait" />}
+          <span className="min-w-0 flex-1">{c.text}</span>
+          {c.at === undefined ? null : onSeek === undefined
+            ? <span className="shrink-0 text-fg-3 tabular-nums">{momentOf(c.at)}</span>
+            : (
+              <button type="button" onClick={() => onSeek(c.at!)} title={`Watch from ${momentOf(c.at)}`} className="shrink-0 rounded-[5px] bg-ctl px-1 text-fg-2 tabular-nums hover:bg-ctl-hover hover:text-fg">
+                {momentOf(c.at)}
+              </button>
+            )}
         </span>
       ))}
     </span>
@@ -166,7 +182,7 @@ export function ChatItemView({ entry, items, actions }: {
           {item.earlier ? null : item.change !== null
             ? <ChangeCard change={item.change} checks={item.checks} />
             : item.checks.length > 0
-            ? <Card title="The server checked it"><Checks checks={item.checks} /></Card>
+            ? <Card title={item.stage === "render" ? "The server checked the finished short" : "The server checked it"}><Checks checks={item.checks} onSeek={actions.seek} /></Card>
             : null}
         </div>
       )

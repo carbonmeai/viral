@@ -4,12 +4,22 @@ import { type TransportLink, useTransport } from "../transport.ts"
 
 // The finished short in a 9:16 frame, playable and scrubbable (its captions are burned in). It reports where it
 // is, so the timeline's playhead follows it, and the timeline's play button and seeking drive it (`transport`).
-export function ShortPlayer({ url, onTime, transport }: {
+// `seekTo`: a moment to jump to (a read-back check clicked); a new `n` jumps again, even to the same moment.
+export function ShortPlayer({ url, onTime, transport, seekTo }: {
   readonly url: string
   readonly onTime?: (seconds: number | null) => void
   readonly transport?: TransportLink
+  readonly seekTo?: { readonly at: number; readonly n: number } | null
 }) {
   const video = useRef<HTMLVideoElement | null>(null)
+  const jumped = useRef<number | null>(null)
+  const jump = () => {
+    const el = video.current
+    if (el === null || seekTo === undefined || seekTo === null || jumped.current === seekTo.n || el.readyState < 1) return
+    jumped.current = seekTo.n
+    el.currentTime = seekTo.at
+  }
+  useEffect(jump)
   const [now, setNow] = useState(0)
   const [length, setLength] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -36,7 +46,10 @@ export function ShortPlayer({ url, onTime, transport }: {
           preload="metadata"
           aria-label="The rendered short"
           className="absolute inset-0 size-full object-contain"
-          onLoadedMetadata={(e) => setLength(e.currentTarget.duration)}
+          onLoadedMetadata={(e) => {
+            setLength(e.currentTarget.duration)
+            jump()
+          }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
