@@ -2,6 +2,7 @@ import type { Script, StageRun } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
+  payoffSeconds,
   editorSteps,
   layoutTimeline,
   narratedWords,
@@ -183,4 +184,12 @@ test("the closing question is cut out of the narration and plays on the end card
   const off = layoutTimeline(closing, take, 4.6)
   assert.equal(off.closing?.card, false)
   assert.equal(off.total, plain.total)
+})
+
+test("the payoff take is the last real line before the closing question", () => {
+  const script: Script = {
+    headline: null,
+    beats: [{ _tag: "Narration", text: "Then." }, { _tag: "Real", quote: "Wow.", start: 10, end: 22.5 }, { _tag: "Cta", question: "Which one got you?" }]
+  }
+  assert.equal(payoffSeconds(script), 12.5)
 })

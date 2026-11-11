@@ -105,7 +105,8 @@ export const narratedWords = (script: Script) =>
 export const realLines = (script: Script) => script.beats.filter((b) => b._tag === "Real").length
 // How long the real take that ends the script plays (0 when it ends on narration): the payoff of a story recap.
 export const payoffSeconds = (script: Script) => {
-  const last = script.beats.at(-1)
+  // the closing question comes after the payoff, so it's skipped
+  const last = script.beats.filter((b) => b._tag !== "Cta").at(-1)
   return last?._tag === "Real" ? Math.max(0, last.end - last.start) : 0
 }
 
