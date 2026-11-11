@@ -8,7 +8,7 @@ export const SET_USAGE = `  set create <source-id>,<source-id>[,…] --brief "<w
                                           (2–10 videos, in the order you'd tell it in)
   set run <id> [--again]                  (reads each video, then proposes shorts across them; --again proposes anew)
   set story <id> | list | rename <id> <name> | delete <id>
-  set make <id> <n> [--brief "<another brief>"] [--as ranking|question-recap|claim-interleaved|story-recap|cut-down]
+  set make <id> <n> [--brief "<another brief>"] [--as narrated-ranking|ranking|question-recap|claim-interleaved|story-recap|cut-down]
                                           (a short from proposal n, with the set's brief; --as makes it another way:
                                           a ranking has an entry for every video in the set)`
 

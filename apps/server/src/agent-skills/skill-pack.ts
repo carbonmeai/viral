@@ -11,7 +11,6 @@ export const SkillName = Schema.Literals([
   "approach-claim-interleaved",
   "approach-cut-down",
   "approach-ranking",
-  // written ahead of their approaches, which aren't in the catalog yet: no stage loads them
   "approach-story-recap",
   "approach-narrated-ranking",
   "short-metadata",

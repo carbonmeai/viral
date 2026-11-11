@@ -1,5 +1,5 @@
 import type { ApproachName, SetStoryBeat, StoryMap, TranscriptWord } from "@viral/contracts"
-import type { Range, ShotDraft } from "./shot-rules.ts"
+import type { EntryOnTake, Range, ShotDraft } from "./shot-rules.ts"
 import { creatorBriefLine } from "../projects/creator-brief.ts"
 import { type BriefVideo, VIDEOS_NOTE, videosSections } from "../projects/videos-brief.ts"
 import { beatLine } from "../video-sets/short-story.ts"
@@ -52,6 +52,8 @@ export interface ShotsBrief {
   readonly videos?: ReadonlyArray<ShotsVideo>
   // with several videos: the story beats in them, `source` = position
   readonly beats?: ReadonlyArray<SetStoryBeat>
+  // a narrated ranking: each entry's first word and video
+  readonly entries?: ReadonlyArray<EntryOnTake>
 }
 
 export interface ShotsVideo extends BriefVideo {
@@ -90,6 +92,13 @@ export const buildShotsBrief = (brief: ShotsBrief) => {
   const framing = `Approach: ${brief.approach}. Framing: ${brief.framing}` +
     (brief.framing === "full" ? " (the 16:9 footage is cropped to fill 9:16; set cropX when the subject is off-centre, fit for graphics)." : ".")
   const pace = `Aim for shots of about ${brief.shotSeconds}s on average; none longer than 3s.`
+  const entries = brief.entries === undefined || brief.entries.length === 0 ? "" : [
+    "This short is a narrated ranking (approach-narrated-ranking). Each entry's shots come from its own video, in its order: the before, the care, the after; start a new shot on the entry's first word, where its rank card appears (top of the frame, so keep the subject clear of the top). The hook's shots may tease any entry.",
+    ...brief.entries.map((e, k) => {
+      const next = brief.entries![k + 1]
+      return `- #${e.rank}: words ${e.word}–${next === undefined ? brief.words.length - 1 : next.word - 1}${e.source === null ? "" : `, from V${e.source + 1}`}`
+    })
+  ].join("\n")
   const voiceover = `Voiceover words (index:word@seconds):\n${lines.join("\n")}`
 
   if (videos !== null) {
@@ -103,6 +112,7 @@ export const buildShotsBrief = (brief: ShotsBrief) => {
       `Videos:\n${list}`,
       `${framing} Each shot names its video (\`video\`: its V number); \`contact_sheet\` takes it too. The first time a video plays, the narration should be introducing it.`,
       pace,
+      entries,
       voiceover,
       brief.beats === undefined || brief.beats.length === 0 ? "" : `Story beats across the videos:\n${brief.beats.map(beatLine).join("\n")}`,
       inline ? "" : "The transcripts are long, so each video has an outline: find moments with `search_transcript` and read around them with `read_transcript`.",

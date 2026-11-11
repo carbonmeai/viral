@@ -49,7 +49,7 @@ const AGENT_STAGES: Partial<Record<StageName, AgentStageView<unknown>>> = {
     schema: Script as never,
     summary: scriptSummary,
     change: describeScriptChange,
-    checks: (s, p) => scriptChecks(s, p.approach)
+    checks: (s, p) => scriptChecks(s, p.approach, p.sourceIds.length)
   }),
   shots: view<ShotPlan>({ kind: "shot-plan", schema: ShotPlan as never, summary: shotsSummary, change: describeShotsChange, checks: shotsChecks }),
   sections: view<CutPlan>({ kind: "cut-plan", schema: CutPlan as never, summary: sectionsSummary, change: describeSectionsChange, checks: sectionsChecks }),

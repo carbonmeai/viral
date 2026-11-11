@@ -54,7 +54,7 @@ test("the cut-down, ranking, metadata and research skills carry the new rules", 
   assert.match(body("short-metadata"), /Number one will get you\./)
   assert.match(body("finding-source-videos"), /## Videos for a ranking \(required\)/)
   assert.match(body("finding-source-videos"), /news clips \(ET, E! News, AP,\s+broadcasters\) draw copyright claims/)
-  // written ahead of their approaches: loaded, but in no stage yet
+  // the story-recap and narrated-ranking approaches' skills (M0 wrote them, M1 and M3 wired them)
   assert.match(body("approach-story-recap"), /150–220 narrated words/)
   assert.match(body("approach-narrated-ranking"), /Five entries by default/)
 })

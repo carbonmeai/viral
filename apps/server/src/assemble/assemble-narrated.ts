@@ -51,6 +51,9 @@ export interface NarratedInput {
   // does, and its question for the end card when the style ends with one (null = the style has it off, so the line is
   // only cut out); null when the take has no closing line
   readonly closing?: { readonly narrationEnd: number; readonly voEnd: number; readonly question: string | null } | null
+  // a narrated ranking's entries: each rank and the voiceover word its "Number" is said on (its rank card); absent or
+  // empty = no cards
+  readonly rankCards?: ReadonlyArray<{ readonly rank: number; readonly word: number }>
 }
 
 const marker = (m: ShotPlan["markers"][number], words: ReadonlyArray<TranscriptWord>, labels: boolean): ReadonlyArray<NarratedAnnotation> => {
@@ -151,6 +154,9 @@ export const assembleNarrated = (input: NarratedInput): NarratedPlan => {
     })),
     outro: shots.outro.map((clip) => ({ start: clip.start, end: clip.end, ...from(clip.source), note: clip.quote })),
     ...(annotations.length === 0 ? {} : { annotations }),
+    ...(input.rankCards === undefined || input.rankCards.length === 0
+      ? {}
+      : { rank_cards: input.rankCards.map((c) => ({ rank: c.rank, word: c.word, word_text: words[c.word]?.w ?? "" })) }),
     ...music,
     // the style's opt-ins, written only when on so a plan without them renders exactly as before
     ...(preset.softJoins === true ? { soft_joins: true, insert_pad: INSERT_PAD } : {}),

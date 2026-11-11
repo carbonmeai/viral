@@ -1,6 +1,6 @@
 import { type ApproachName, type Change, type ChatCheck, closingOf, type Script, type ScriptBeat } from "@viral/contracts"
 import { align, capped, changed, changeOf, countHeadline, noted, passed, plural } from "../chat/change-lines.ts"
-import { narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
+import { narrationWords, scriptLimitsFor } from "./script-rules.ts"
 
 const textOf = (beat: ScriptBeat) =>
   beat._tag === "Real" ? `“${beat.quote}”`
@@ -43,8 +43,8 @@ export const describeScriptChange = (before: Script, after: Script, videoName: (
 }
 
 // The rules checkScript holds a passing script to, in plain words, with this script's numbers.
-export const scriptChecks = (script: Script, approach: ApproachName): ReadonlyArray<ChatCheck> => {
-  const limits = SCRIPT_LIMITS[approach]
+export const scriptChecks = (script: Script, approach: ApproachName, videos: number = 1): ReadonlyArray<ChatCheck> => {
+  const limits = scriptLimitsFor(approach, videos)
   const words = narrationWords(script)
   return [
     ...(limits === undefined ? [] : [
@@ -56,6 +56,10 @@ export const scriptChecks = (script: Script, approach: ApproachName): ReadonlyAr
     ...(limits?.ending == null ? [] : [passed(`Ends on one real take of ${limits.ending.seconds[0]}–${limits.ending.seconds[1]}s`)]),
     passed("None inside an ad, a sponsor read or an end screen"),
     ...(limits?.realsOnlyAtEnd === true ? [passed("Real lines only after the narration")] : []),
+    ...(limits?.ranking === undefined ? [] : [
+      passed(`Counts down #${limits.ranking.entries} to #1, one entry per video, each opening on "Number N"`),
+      passed(`${limits.ranking.realsPerEntry[0]}–${limits.ranking.realsPerEntry[1]} real lines in each entry, from its own video, about ${limits.ranking.entrySeconds[0]}–${limits.ranking.entrySeconds[1]}s an entry`)
+    ]),
     passed("Headline under 8 words"),
     ...(closingOf(script) === null ? [] : [passed("Ends with the closing question, outside the word and real-line counts")])
   ]

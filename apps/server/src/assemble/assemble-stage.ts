@@ -14,7 +14,7 @@ import { Projects } from "../projects/projects.ts"
 import { sourceLabel } from "../projects/source-context.ts"
 import { type StageContext, type StageDefinition, StageFailure } from "../runs/stages.ts"
 import { Settings } from "../settings/settings.ts"
-import { closingWord, narrationEndOf, narrationEnds } from "../shots/shot-rules.ts"
+import { closingWord, entriesOnTake, narrationEndOf, narrationEnds } from "../shots/shot-rules.ts"
 import { assembleCut } from "./assemble-cut.ts"
 import { assembleRanking } from "./assemble-ranking.ts"
 import { assembleNarrated } from "./assemble-narrated.ts"
@@ -135,7 +135,9 @@ export class AssembleStage extends Context.Service<AssembleStage, {
           credit: creditLine(videos.map((v) => v.source), appearanceOrder({ _tag: "Narrated", plan: shots })),
           music: track === null ? null : { track, file: path.join(home.music, track.path) },
           dropWord,
-          closing
+          closing,
+          // a narrated ranking: a "#N" card where the narrator says each entry's "Number"
+          ...(project.approach === "narrated-ranking" ? { rankCards: entriesOnTake(script, words, project.sourceIds.length) } : {})
         })
         if (track !== null && assembled.music === undefined) {
           yield* ctx.progress(null, `"${track.title}" has no BPM or drop yet, so this short goes without music`)

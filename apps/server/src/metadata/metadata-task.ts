@@ -61,7 +61,9 @@ const videoLines = (input: MetadataInput) => {
 export const metadataTask = (input: MetadataInput): CheckedTask<typeof ShortMetadata> => ({
   stage: "metadata",
   instructions: METADATA_PROMPT,
-  skills: input.ranking === undefined || input.ranking === null ? ["short-metadata"] : ["short-metadata", "approach-ranking"],
+  skills: input.ranking === undefined || input.ranking === null
+    ? ["short-metadata"]
+    : ["short-metadata", input.approach === "narrated-ranking" ? "approach-narrated-ranking" : "approach-ranking"],
   brief: [
     creatorBriefLine(input.creatorBrief),
     input.ranking === undefined || input.ranking === null ? "" : rankingLines(input.ranking.entries),

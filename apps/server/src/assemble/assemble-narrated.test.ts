@@ -143,3 +143,15 @@ test("the closing line is cut out of the narration and plays under the end card 
   assert.equal("narration_end" in none, false)
   assert.equal("cta" in none, false)
 })
+
+test("a narrated ranking's rank cards go in the plan on each entry's word; none otherwise", () => {
+  const ranking = BUILT_IN_PRESETS.find((p) => p.name === "Ranking narrated")!.config
+  const plan = assembleNarrated({ ...input(ranking), rankCards: [{ rank: 2, word: 0 }, { rank: 1, word: 4 }] })
+  Schema.decodeSync(NarratedPlan)(plan, { onExcessProperty: "error" })
+  assert.deepEqual(plan.rank_cards, [{ rank: 2, word: 0, word_text: "This" }, { rank: 1, word: 4, word_text: "Then" }])
+  assert.equal(plan.caption_y, 0.855, "captions low, in the blur under the picture")
+  assert.equal(plan.main_height, 1216)
+  assert.equal(plan.voice_gain, 1.7)
+  assert.equal("rank_cards" in assembleNarrated(input(recap)), false)
+  assert.equal("rank_cards" in assembleNarrated({ ...input(recap), rankCards: [] }), false)
+})

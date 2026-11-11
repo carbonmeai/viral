@@ -49,6 +49,21 @@ export interface ScriptBrief {
   readonly beats?: ReadonlyArray<SetStoryBeat>
   // the style ends with a comment question: the script ends with a Cta beat; absent or false = no Cta beat
   readonly closingQuestion?: boolean
+  // a narrated ranking: how many entries it counts down (one per video); absent = not a ranking
+  readonly ranking?: { readonly entries: number } | null
+}
+
+const RANK_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+
+// A narrated ranking's countdown, said in the brief so the agent knows the shape the server checks.
+export const rankingPart = (entries: number) => {
+  const word = (n: number) => RANK_WORDS[n] ?? String(n)
+  return [
+    `This short is a narrated ranking of ${entries} entries, one per video (approach-narrated-ranking). After a narrated hook that teases #1, count down: every entry's first narrated line starts with "Number ${word(entries)}," then "Number ${word(entries - 1)},", … "Number one," last (the rank as a word; no other line starts with "Number").`,
+    "Each entry is its video's mini-story: the shocking before, the care, the reveal, with real numbers from that video. It runs about 20–25 s: about 30–45 narrated words plus 1–2 real lines (whole sentences, from that entry's own video only) where they answer the narrator.",
+    "#1's reveal ends the story: after the last narrated line, one real take of 10–25 s from #1's video over the after (lines less than 3 s apart join into one take).",
+    "Rank by how dramatic the turnaround is. Videos found for a ranking are already in playing order (V1 first, the last video #1); keep that order unless the transcripts show a clearly stronger #1."
+  ].join(" ")
 }
 
 // Whether to write the closing question, said last in the brief.
@@ -75,6 +90,7 @@ const severalVideosPrompt = (brief: ScriptBrief, videos: ReadonlyArray<BriefVide
     inline ? "" : "The transcripts are long, so each video has an outline: find lines with `search_transcript` and read around them with `read_transcript` before you quote them.",
     ...sections,
     "Write the script for this short, following the approach skill. Never use anything in a video's excluded ranges. Every real line names its video (`video`: its V number) and gives that video's seconds; introduce each new video with a narrated line the first time it plays.",
+    brief.ranking == null ? "" : rankingPart(brief.ranking.entries),
     closingPart(brief)
   ].filter((part) => part !== "").join("\n\n")
 }

@@ -1,7 +1,7 @@
-import type { Script } from "@viral/contracts"
+import { openingRank, rankingEntries, type Script } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { checkScript, SCRIPT_LIMITS } from "./script-rules.ts"
+import { checkScript, rankingLimits, SCRIPT_LIMITS, scriptLimitsFor } from "./script-rules.ts"
 
 const w = (word: string, s: number) => ({ w: word, s, e: s + 0.3 })
 const transcript = [w("It's", 100), w("like", 100.3), w("glue.", 100.6), w("Use", 300), w("code", 300.3), w("candy.", 300.6)]
@@ -206,4 +206,80 @@ test("the closing question goes last, once, as one short question without the as
   assert.match(check([narration(70), ...fourReals, cta("Would you eat it? Subscribe for more?")]), /asks more than one question/)
   assert.match(check([narration(70), ...fourReals, cta("Which one? Tell us in the comments?")]), /write only the question; the narrator adds/)
   assert.match(check([narration(70), ...fourReals, cta("Why?")]), /the closing question is 1 words; keep it to 3–14/)
+})
+
+// ---- the narrated ranking (approach-narrated-ranking): five entries counted down, one per video ----
+
+const RANKS = ["zero", "one", "two", "three", "four", "five"]
+// "Number five, word word …": the entry's opening line, `n` words after the rank
+const opening = (rank: number, n: number) => ({ _tag: "Narration" as const, text: `Number ${RANKS[rank]}, ${Array.from({ length: n }, () => "word").join(" ")}` })
+const line = (source: number, start = 10) => ({ _tag: "Real" as const, quote: "cotton ball", start, end: start + 1, ...(source === 0 ? {} : { source }) })
+// every video says one short sentence at 10 s; V5 (#1) also has its 24-word reveal at 100 s
+const sentence = say(10, "She looked like a cotton ball.")
+const reveal = say(100, `${Array.from({ length: 23 }, () => "wow").join(" ")} end.`)
+const rankingSources = [0, 1, 2, 3, 4].map((i) => ({ words: i === 4 ? [...sentence, ...reveal] : sentence, excluded: [] }))
+const revealTake = { _tag: "Real" as const, quote: "wow wow wow", start: 100, end: 101, source: 4 }
+const countdown = (order = [5, 4, 3, 2, 1]) => [
+  narration(12),
+  ...order.flatMap((rank) => [opening(rank, 45), line(5 - rank)]),
+  // #1's last narrated line, then its reveal take
+  { _tag: "Narration" as const, text: "One month later." },
+  revealTake
+]
+const ranking = rankingLimits(5)
+
+test("narrated ranking: limits grow with the entries", () => {
+  assert.deepEqual(ranking.narrationWords, [118, 264])
+  assert.deepEqual(ranking.reals, [5, 11])
+  assert.equal(scriptLimitsFor("narrated-ranking", 3)?.ranking?.entries, 3)
+  assert.equal(scriptLimitsFor("claim-interleaved", 5)?.ranking, undefined)
+})
+
+test("narrated ranking: a countdown #5 → #1 with a real line per entry from its own video and #1's reveal passes", () => {
+  const { problems, script } = checkScript({ headline: null, beats: countdown() }, ranking, rankingSources)
+  assert.deepEqual(problems, [])
+  assert.deepEqual(rankingEntries(script.beats, 5).entries.map((e) => e.rank), [5, 4, 3, 2, 1])
+  const last = script.beats.at(-1)!
+  assert.ok(last._tag === "Real" && last.end - last.start > 10, "the reveal widened to its whole sentence, over 10 s")
+})
+
+test("narrated ranking: the hook may tease #1 without starting the countdown", () => {
+  const beats = [{ _tag: "Narration" as const, text: "These five animals had no chance." }, { _tag: "Narration" as const, text: "Number one had already given up." }, ...countdown().slice(1)]
+  const { hookEnd, entries } = rankingEntries(beats, 5)
+  assert.equal(hookEnd, 2)
+  assert.deepEqual(entries.map((e) => e.rank), [5, 4, 3, 2, 1])
+  assert.equal(openingRank("“Number 3.”"), 3)
+  assert.equal(openingRank("The number five"), null)
+})
+
+test("narrated ranking: wrong order, a missing entry, and no countdown at all are problems", () => {
+  const order = checkScript({ headline: null, beats: countdown([5, 3, 4, 2, 1]) }, ranking, rankingSources).problems.join("\n")
+  assert.match(order, /the countdown goes #5, #3, #4, #2, #1; it must be #5, #4, #3, #2, #1/)
+  const missing = checkScript({ headline: null, beats: countdown([5, 4, 2, 1]) }, ranking, rankingSources).problems.join("\n")
+  assert.match(missing, /the countdown goes #5, #4, #2, #1/)
+  const none = checkScript({ headline: null, beats: [narration(200), line(0), revealTake] }, ranking, rankingSources).problems.join("\n")
+  assert.match(none, /counts down 5 entries, one per video: open each entry on a narrated line starting "Number five"/)
+})
+
+test("narrated ranking: each entry has 1–2 real lines from its own video, a video is one entry, and an entry runs 15–32 s", () => {
+  const beats = countdown()
+  // #4 has none, #3 has three, #2 borrows V1's line, and the hook plays a real line
+  const bad = [
+    narration(12), line(0),
+    opening(5, 45), line(0),
+    opening(4, 45),
+    opening(3, 20), line(2), line(2), line(2),
+    opening(2, 45), line(0),
+    ...beats.slice(-4)
+  ]
+  const text = checkScript({ headline: null, beats: bad }, ranking, rankingSources).problems.join("\n")
+  assert.match(text, /the hook \(everything before "Number five"\) is narration only/)
+  assert.match(text, /entry #4 has 0 real lines; each entry cuts in 1–2/)
+  assert.match(text, /entry #3 has 3 real lines/)
+  assert.match(text, /entries #5 and #2 both use V1; each video is one entry/)
+  assert.match(text, /entry #4 runs about 14\.7s \(47 narrated words/)
+  const mixed = [...beats.slice(0, 3), line(3), ...beats.slice(3)]
+  assert.match(checkScript({ headline: null, beats: mixed }, ranking, rankingSources).problems.join("\n"), /entry #5's real lines come from V1 and V4/)
+  const long = [narration(12), opening(5, 100), line(0), ...beats.slice(3)]
+  assert.match(checkScript({ headline: null, beats: long }, ranking, rankingSources).problems.join("\n"), /entry #5 runs about 35\.0s .*keep each entry about 20–25 s \(15–32\)/)
 })

@@ -1,4 +1,4 @@
-import { type ArtifactOwner, CutPlan, type Project, RankingPlan, ShotPlan } from "@viral/contracts"
+import { type ArtifactOwner, CutPlan, type Project, RankingPlan, rankingEntries, Script, ShotPlan } from "@viral/contracts"
 import { Effect, Option, Schema } from "effect"
 import type { Artifacts } from "../artifacts/artifacts.ts"
 
@@ -63,7 +63,7 @@ export const loadAppearanceOrder = Effect.fn("loadAppearanceOrder")(function*(pr
 // A ranking's sources list for the description: each rank with its label, channel and link, #1 first ("#1 Horse who
 // gave up: The Dodo, https://…"). Your own footage is listed without a channel.
 export const rankingSources = (
-  plan: Pick<RankingPlan, "entries">,
+  plan: { readonly entries: ReadonlyArray<Pick<RankingPlan["entries"][number], "rank" | "label" | "source">> },
   sources: ReadonlyArray<Credited & { readonly url: string | null; readonly title: string | null }>
 ) =>
   [...plan.entries].sort((a, b) => a.rank - b.rank).map((entry) => {
@@ -73,12 +73,37 @@ export const rankingSources = (
     return `#${entry.rank} ${entry.label}${parts.length === 0 ? "" : `: ${parts.join(", ")}`}`
   })
 
-// The latest ranking plan's sources list, or none for other shorts (and before there's a plan).
+// A narrated ranking's entries as the sources list wants them: each rank, its video (the one its real lines come from)
+// and that video's title as the label. Entries with no real line are left out.
+export const narratedRankingEntries = (
+  script: Script,
+  count: number,
+  sources: ReadonlyArray<{ readonly title: string | null }>
+): ReadonlyArray<Pick<RankingPlan["entries"][number], "rank" | "label" | "source">> =>
+  rankingEntries(script.beats, count).entries.flatMap((entry) => {
+    const real = script.beats.slice(entry.start, entry.end).find((b) => b._tag === "Real")
+    if (real?._tag !== "Real") return []
+    const source = real.source ?? 0
+    return [{ rank: entry.rank, label: sources[source]?.title ?? `Video ${source + 1}`, ...(real.source === undefined ? {} : { source: real.source }) }]
+  })
+
+// The latest ranking plan's sources list (a narrated ranking's from its script), or none for other shorts (and before
+// there's a plan).
 export const loadRankingSources = Effect.fn("loadRankingSources")(function*(
   project: Project,
   artifacts: Artifacts["Service"],
   sources: ReadonlyArray<Credited & { readonly url: string | null; readonly title: string | null }>
 ) {
+  if (project.approach === "narrated-ranking") {
+    const script = Option.flatMap(yield* artifacts.latest({ _tag: "Project", id: project.id }, "script"), (a) => Schema.decodeUnknownOption(Script)(a.data))
+    return Option.match(script, {
+      onNone: () => null,
+      onSome: (s) => {
+        const entries = narratedRankingEntries(s, project.sourceIds.length, sources)
+        return entries.length === 0 ? null : rankingSources({ entries }, sources)
+      }
+    })
+  }
   if (project.format !== "ranking") return null
   const plan = Option.flatMap(yield* artifacts.latest({ _tag: "Project", id: project.id }, "ranking-plan"), (a) => Schema.decodeUnknownOption(RankingPlan)(a.data))
   return Option.match(plan, { onNone: () => null, onSome: (p) => rankingSources(p, sources) })

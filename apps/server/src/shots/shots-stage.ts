@@ -29,7 +29,7 @@ import { fitsInline } from "../projects/videos-brief.ts"
 import { transcriptTools } from "../set-story/transcript-tools.ts"
 import { loadShortStory } from "../video-sets/short-story.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
-import { checkShots, fromProposedShots, narrationEnds, placeReals, type ShotContext, type ShotDraft, storyTake } from "./shot-rules.ts"
+import { checkShots, entriesOnTake, fromProposedShots, narrationEnds, placeReals, type ShotContext, type ShotDraft, storyTake } from "./shot-rules.ts"
 import { buildShotsBrief, SHOTS_PROMPT } from "./shots-prompt.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "shots", code, message })
@@ -148,7 +148,9 @@ export class ShotsStage extends Context.Service<ShotsStage, {
         const excluded = v1.excluded
         const sourceSeconds = v1.seconds
         const reals = placeReals(script, words)
-        const shotContext: ShotContext = { words, voiceoverSeconds: take.seconds, sources, inserts: reals.inserts }
+        // a narrated ranking: each entry's shots come from its own video, starting on its "Number"
+        const entries = project.approach === "narrated-ranking" ? entriesOnTake(script, words, project.sourceIds.length) : null
+        const shotContext: ShotContext = { words, voiceoverSeconds: take.seconds, sources, inserts: reals.inserts, ...(entries === null ? {} : { entries }) }
         return { project, source, sources, sourceOwner: v1.owner, video, videos, script, words, excluded, sourceSeconds, reals, shotContext }
       })
 
@@ -275,6 +277,7 @@ export class ShotsStage extends Context.Service<ShotsStage, {
           sourceSeconds: c.sourceSeconds,
           sheets: overviews[0]!.sheets,
           transcript: transcripts.timedText(transcript),
+          ...(c.shotContext.entries === undefined ? {} : { entries: c.shotContext.entries }),
           ...(several ? { videos: briefVideos, beats: shortStory?.beats ?? [] } : {})
         })
         // long transcripts come as outlines, read further with the transcript tools

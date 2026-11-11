@@ -29,7 +29,14 @@ export const ScriptLimits = Schema.Struct({
   // the payoff as one long real take after the narration (story-recap); null = the ending is like any real line
   ending: Schema.NullOr(Schema.Struct({ seconds: Schema.Tuple([Schema.Finite, Schema.Finite]) })),
   // real lines are moved to whole sentences (a pause over 1.5 s ends one)
-  wholeSentences: Schema.Boolean
+  wholeSentences: Schema.Boolean,
+  // a narrated ranking's countdown: how many entries (one per video, "Number N" counted down to 1), the real lines in
+  // each (#1's reveal take not counted), and about how long each entry runs; absent = not a ranking
+  ranking: Schema.optionalKey(Schema.Struct({
+    entries: Schema.Int,
+    realsPerEntry: Schema.Tuple([Schema.Int, Schema.Int]),
+    entrySeconds: Schema.Tuple([Schema.Finite, Schema.Finite])
+  }))
 })
 export type ScriptLimits = typeof ScriptLimits.Type
 

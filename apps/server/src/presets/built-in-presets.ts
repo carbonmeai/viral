@@ -65,6 +65,17 @@ const STORY_RECAP: PresetConfig = {
   voiceLevel: { lufs: -10, gain: 1.7 }
 }
 
+// The creator's approved narrated ranking (rescues5, "Top 5 Animal Comebacks"): Viral recap's band (1216) with the
+// captions low at 0.855, in the blur under the picture, away from the videos' own burned-in subtitles; soft joins and
+// the voice levelled with the clips (played at 1.7), no music. Narrated rankings get it when made without a style.
+const RANKING_NARRATED: PresetConfig = {
+  ...VIRAL_RECAP,
+  captions: { ...VIRAL_RECAP.captions, y: 0.855 },
+  softJoins: true,
+  voiceLevel: { lufs: -10, gain: 1.7 }
+}
+export const RANKING_NARRATED_PRESET_NAME = "Ranking narrated"
+
 // Ensured by name on every start: missing ones are added, ones you've edited (or already have) are left alone, so a
 // change here reaches new libraries only (a library's existing styles keep the comment question off until it's switched
 // on in the Style editor).
@@ -72,7 +83,8 @@ export const BUILT_IN_PRESETS: ReadonlyArray<{ readonly name: string; readonly c
   { name: "Viral recap", config: VIRAL_RECAP },
   { name: "Headline full-bleed", config: HEADLINE_FULL_BLEED },
   { name: "Fast hype", config: FAST_HYPE },
-  { name: "Story recap", config: STORY_RECAP }
+  { name: "Story recap", config: STORY_RECAP },
+  { name: RANKING_NARRATED_PRESET_NAME, config: RANKING_NARRATED }
 ]
 
 // The default when no preset is marked default yet.

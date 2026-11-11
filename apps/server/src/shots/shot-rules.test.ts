@@ -1,7 +1,7 @@
 import type { Script, ShotProposal } from "@viral/contracts"
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { checkShots, closingWord, narrationEndOf, narrationEnds, placeReals, storyTake } from "./shot-rules.ts"
+import { checkShots, closingWord, entriesOnTake, narrationEndOf, narrationEnds, placeReals, storyTake } from "./shot-rules.ts"
 
 // "This guy tasted the spicy cold mix. It hurt. So he tried again." at one word per second
 const heard = ["This", "guy", "tasted", "the", "spicy", "cold", "mix.", "It", "hurt.", "So", "he", "tried", "again."]
@@ -129,4 +129,37 @@ test("the closing question is the take's last words: the shots see the story onl
   // without a closing question the take is the story
   assert.equal(closingWord(script, words), null)
   assert.deepEqual(storyTake(script, words, 13), { words, seconds: 13 })
+})
+
+// A narrated ranking of two: "Two dogs. Number two, Rex. Number one, Max." at one word per second, each entry with a
+// real line from its own video
+const rankHeard = ["Two", "dogs.", "Number", "two,", "Rex.", "Number", "one,", "Max."]
+const rankWords = rankHeard.map((w, i) => ({ w, s: i, e: i + 0.8 }))
+const ranked: Script = {
+  headline: null,
+  beats: [
+    { _tag: "Narration", text: "Two dogs." },
+    { _tag: "Narration", text: "Number two, Rex." },
+    { _tag: "Real", quote: "Good boy.", start: 10, end: 11 },
+    { _tag: "Narration", text: "Number one, Max." },
+    { _tag: "Real", quote: "Best dog.", start: 20, end: 21, source: 1 }
+  ]
+}
+
+test("entriesOnTake: each entry's rank, its \"Number\" word and its video", () => {
+  assert.deepEqual(entriesOnTake(ranked, rankWords, 2), [{ rank: 2, word: 2, source: 0 }, { rank: 1, word: 5, source: 1 }])
+  assert.deepEqual(entriesOnTake(script, words), [], "no countdown, no entries")
+})
+
+test("a ranking's shots come from each entry's own video and start on its \"Number\"", () => {
+  const entries = entriesOnTake(ranked, rankWords, 2)
+  const rankCtx = { words: rankWords, voiceoverSeconds: 8, sources: [{ seconds: 100, excluded: [] }, { seconds: 100, excluded: [] }], ...placeReals(ranked, rankWords), entries }
+  const good: ShotProposal = { shots: [{ word: 0, src: 5, note: "hook", source: 1 }, { word: 2, src: 5, note: "rex" }, { word: 5, src: 5, note: "max", source: 1 }], markers: [] }
+  assert.deepEqual(checkShots(good, rankCtx).problems, [])
+  const bad: ShotProposal = { shots: [{ word: 0, src: 5, note: "hook" }, { word: 3, src: 5, note: "rex", source: 1 }, { word: 6, src: 5, note: "max" }], markers: [] }
+  const text = checkShots(bad, rankCtx).problems.join("\n")
+  assert.match(text, /shot 2 \(word 3 "two,"\) is in entry #2, so it plays from V1 \(that entry's video\), not V2/)
+  assert.match(text, /shot 3 \(word 6 "one,"\) is in entry #1, so it plays from V2/)
+  assert.match(text, /start a new shot on word 2 "Number", where entry #2 begins/)
+  assert.match(text, /start a new shot on word 5 "Number", where entry #1 begins/)
 })

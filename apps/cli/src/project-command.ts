@@ -15,7 +15,7 @@ import { Client } from "./client.ts"
 import { follow } from "./run-command.ts"
 import { show } from "./show.ts"
 
-export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <title> [--approach question-recap|claim-interleaved|story-recap|cut-down|ranking]
+export const PROJECT_USAGE = `  project create <source-id>[,<source-id>…] <title> [--approach question-recap|claim-interleaved|story-recap|cut-down|ranking|narrated-ranking]
                  [--preset <id>] [--music <track-id>] [--brief "<what it should achieve>"]
                                           (several videos in order, need a brief)
   project from-proposal <source-id> <n> [--as <approach>]

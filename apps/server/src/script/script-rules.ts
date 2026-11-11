@@ -1,4 +1,4 @@
-import type { ApproachName, ProposedScript, Script, ScriptBeat, ScriptLimits, SourceIndex } from "@viral/contracts"
+import { type ApproachName, type ProposedScript, rankingEntries, type Script, type ScriptBeat, type ScriptLimits, type SourceIndex } from "@viral/contracts"
 import { clipSource, type SourceContext, sourceField, sourceLabel } from "../projects/source-context.ts"
 import { findQuote, spanOf } from "../transcribe/quote-match.ts"
 import { wholeSentencesOf } from "../transcribe/sentences.ts"
@@ -41,6 +41,29 @@ export const SCRIPT_LIMITS: Partial<Record<ApproachName, ScriptLimits>> = {
     wholeSentences: true
   }
 }
+
+// A narrated ranking (the skill's "Top 5 Animal Comebacks"): one entry per video, each about 20–25 s (its narration plus
+// 1–2 real lines that answer the narrator), #1's reveal as one real take of 10–25 s after the narration. The word budget
+// grows with the entries: the hook, then roughly 22–48 narrated words an entry (rescues5: 214 words for five). A real
+// line during a ranking may run longer than in a single-video short (rescues5's donkey line is 13.9 s).
+const RANKING_REAL_SECONDS: readonly [number, number] = [0.8, 14]
+export const RANKING_ENTRY_SECONDS: readonly [number, number] = [15, 32]
+// how fast the narrator reads, to estimate an entry's length before there's a take (Marcus: 3.1–3.3 words a second)
+export const ENTRY_WORDS_PER_SECOND = 3.2
+
+export const rankingLimits = (entries: number): ScriptLimits => ({
+  narrationWords: [entries * 22 + 8, entries * 48 + 24],
+  reals: [entries, entries * 2 + 1],
+  realsOnlyAtEnd: false,
+  realSeconds: RANKING_REAL_SECONDS,
+  ending: { seconds: [10, 25] },
+  wholeSentences: true,
+  ranking: { entries, realsPerEntry: [1, 2], entrySeconds: RANKING_ENTRY_SECONDS }
+})
+
+// The limits a short's script is checked against: its approach's, and for a narrated ranking, one entry per video.
+export const scriptLimitsFor = (approach: ApproachName, videos: number): ScriptLimits | undefined =>
+  approach === "narrated-ranking" ? rankingLimits(Math.max(videos, 2)) : SCRIPT_LIMITS[approach]
 
 const HEADLINE_WORDS = 8
 
@@ -236,5 +259,62 @@ const checkStory = (
   if (script.headline !== null && countWords(script.headline.join(" ")) > HEADLINE_WORDS) {
     problems.push(`the headline is longer than ${HEADLINE_WORDS} words`)
   }
+  if (limits.ranking !== undefined) problems.push(...checkCountdown(beats, limits.ranking, limits.ending !== null))
   return { script: { headline: script.headline, beats }, problems }
+}
+
+const RANK_NAMES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+const said = (rank: number) => `"Number ${RANK_NAMES[rank] ?? rank}"`
+
+// A narrated ranking's countdown (the approach-narrated-ranking skill): after a narrated hook, one entry per video,
+// opening on "Number N" from N down to 1, each with 1–2 real lines from its own video (#1's reveal take is in #1's
+// entry, not counted) and about 20–25 s long. `beats`: the snapped script without its closing question.
+export const checkCountdown = (
+  beats: ReadonlyArray<ScriptBeat>,
+  ranking: NonNullable<ScriptLimits["ranking"]>,
+  endsOnTake: boolean
+): ReadonlyArray<string> => {
+  const n = ranking.entries
+  const { hookEnd, entries } = rankingEntries(beats, n)
+  const expected = Array.from({ length: n }, (_, i) => n - i)
+  if (entries.length === 0) {
+    return [`a narrated ranking counts down ${n} entries, one per video: open each entry on a narrated line starting ${said(n)}, … down to ${said(1)}`]
+  }
+  const problems: Array<string> = []
+  const ranks = entries.map((e) => e.rank)
+  if (ranks.join(",") !== expected.join(",")) {
+    problems.push(`the countdown goes ${ranks.map((r) => `#${r}`).join(", ")}; it must be ${expected.map((r) => `#${r}`).join(", ")}: one entry per video, each opening on a narrated line starting ${said(n)}, then ${said(n - 1)}, … ${said(1)} last`)
+  }
+  if (beats.slice(0, hookEnd).some((b) => b._tag === "Real")) {
+    problems.push(`the hook (everything before ${said(n)}) is narration only; real lines go inside the entries`)
+  }
+  // the reveal take: the real lines after the last narrated line, at the end of the last entry
+  const lastNarration = beats.findLastIndex((b) => b._tag === "Narration")
+  const owner = new Map<number, number>()
+  for (const entry of entries) {
+    const name = `entry #${entry.rank}`
+    const inside = beats.slice(entry.start, entry.end).map((beat, k) => ({ beat, i: entry.start + k }))
+    const reals = inside.filter(({ beat, i }) => beat._tag === "Real" && !(endsOnTake && i > lastNarration))
+    const [minReals, maxReals] = ranking.realsPerEntry
+    if (reals.length < minReals || reals.length > maxReals) {
+      problems.push(`${name} has ${reals.length} real ${reals.length === 1 ? "line" : "lines"}; each entry cuts in ${minReals}–${maxReals} that answer the narrator${entry.rank === 1 && endsOnTake ? " (#1's reveal take after the narration isn't counted)" : ""}`)
+    }
+    const videos = [...new Set(inside.flatMap(({ beat }) => beat._tag === "Real" ? [beat.source ?? 0] : []))]
+    if (videos.length > 1) {
+      problems.push(`${name}'s real lines come from ${videos.map((v) => sourceLabel(v)).join(" and ")}; every real line of an entry comes from that entry's own video`)
+    } else if (videos.length === 1) {
+      const other = owner.get(videos[0]!)
+      if (other !== undefined) problems.push(`entries #${other} and #${entry.rank} both use ${sourceLabel(videos[0]!)}; each video is one entry`)
+      else owner.set(videos[0]!, entry.rank)
+    }
+    const words = inside.reduce((w, { beat }) => w + (beat._tag === "Narration" && beat.skipped !== true ? countWords(beat.text) : 0), 0)
+    const clips = reals.reduce((t, { beat }) => t + (beat._tag === "Real" ? beat.end - beat.start : 0), 0)
+    const seconds = words / ENTRY_WORDS_PER_SECOND + clips
+    const [min, max] = ranking.entrySeconds
+    if (seconds < min || seconds > max) {
+      problems.push(`${name} runs about ${fmt(seconds)}s (${words} narrated words ≈ ${fmt(words / ENTRY_WORDS_PER_SECOND)}s + ${fmt(clips)}s of real lines${entry.rank === 1 && endsOnTake ? ", before the reveal take" : ""}); keep each entry about 20–25 s (${min}–${max})`)
+    }
+  }
+  if (endsOnTake && entries.at(-1)?.rank !== 1 && ranks.includes(1)) problems.push(`#1 comes last, so its reveal take ends the short`)
+  return problems
 }

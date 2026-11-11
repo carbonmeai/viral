@@ -87,6 +87,8 @@ export class MetadataStage extends Context.Service<MetadataStage, {
         // what the short says: the narrated script, a cut-down short's sections in the creator's words, or a ranking's
         // entries #1 first (each with its video and what its clips show)
         const ranking = project.format === "ranking" ? yield* latest("ranking-plan", RankingPlan) : null
+        // a narrated ranking's post text follows the same ranking rules (its countdown is in the script)
+        const entries = ranking !== null ? ranking.entries.length : project.approach === "narrated-ranking" ? project.sourceIds.length : null
         const lines = ranking !== null
           ? [
             `On-screen title: "${ranking.title.lead}${ranking.title.accent}", ${ranking.entries.length} entries, played in the order ${ranking.order.join(", ")} (#1 last)`,
@@ -114,10 +116,10 @@ export class MetadataStage extends Context.Service<MetadataStage, {
           ...(several
             ? { videos: videoSummaries, acrossVideos: Option.getOrNull(Option.map(setStory, (s) => s.summary)) }
             : {}),
-          ...(ranking === null ? {} : { ranking: { entries: ranking.entries.length } })
+          ...(entries === null ? {} : { ranking: { entries } })
         }), (proposed) => {
           const checked = checkMetadata(proposed)
-          return Effect.succeed(ranking === null ? checked : { ...checked, problems: [...checked.problems, ...checkRankingMetadata(checked.value)] })
+          return Effect.succeed(entries === null ? checked : { ...checked, problems: [...checked.problems, ...checkRankingMetadata(checked.value)] })
         }).pipe(Effect.mapError((e) => fail(e.code, e.message)))
 
         // publish: the finished files side by side in ~/.viral/renders/, posted with the agent's text (new titles

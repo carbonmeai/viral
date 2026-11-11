@@ -96,8 +96,8 @@ export class ProjectsRpcs extends RpcGroup.make(
     error: Schema.Union([SourceNotFound, ProposalNotFound])
   }),
   // Creates a short from one of a video set's proposals: its approach and title, the videos it uses (in set
-  // order), and the set's brief unless you give another. `approach` makes it another way instead ("ranking": a
-  // ranking of every video in the set).
+  // order), and the set's brief unless you give another. `approach` makes it another way instead ("narrated-ranking" or
+  // "ranking": a ranking of every video in the set).
   Rpc.make("CreateProjectFromSetProposal", {
     payload: {
       setId: SourceSetId,

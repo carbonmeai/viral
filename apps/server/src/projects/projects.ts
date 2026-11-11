@@ -1,6 +1,7 @@
 import { NodeServices } from "@effect/platform-node"
 import {
   APPROACHES,
+  isRankingApproach,
   ApproachName,
   type ArtifactKind,
   CutPlan,
@@ -37,6 +38,7 @@ import { ViralHome } from "../home/viral-home.ts"
 import { arrangementKey } from "../music-bed/music-bed-settings.ts"
 import { MusicLibrary } from "../music-library/music-library.ts"
 import { DatabaseLive } from "../persistence/database.ts"
+import { RANKING_NARRATED_PRESET_NAME } from "../presets/built-in-presets.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
 import { Settings } from "../settings/settings.ts"
@@ -200,12 +202,17 @@ export class Projects extends Context.Service<Projects, {
       const create = Effect.fn("Projects.create")(function*(input: CreateProjectInput) {
         const brief = cleanBrief(input.brief)
         const problem = sourcesProblem(input.sourceIds, brief) ??
-          (input.approach === "ranking" && input.sourceIds.length < 2 ? "a ranking has an entry per video, so it needs at least two videos" : null)
+          (isRankingApproach(input.approach) && input.sourceIds.length < 2 ? "a ranking has an entry per video, so it needs at least two videos" : null)
         if (problem !== null) return yield* new ProjectSourcesInvalid({ message: problem })
         // Check references up front so callers get a typed error instead of a foreign-key failure.
         yield* Effect.forEach(input.sourceIds, (id) => sources.get(id), { discard: true })
         if (input.presetId !== null) yield* presets.get(input.presetId)
         if (input.musicTrackId !== null) yield* music.get(input.musicTrackId)
+        // a narrated ranking made without a style takes the built-in "Ranking narrated" (captions low, in the blur), when
+        // the library still has it
+        const presetId = input.presetId ?? (input.approach === "narrated-ranking"
+          ? (yield* presets.list).find((p) => p.name === RANKING_NARRATED_PRESET_NAME)?.id ?? null
+          : null)
 
         const id = ProjectId.make(yield* random.uuidV7())
         const now = DateTime.formatIso(yield* DateTime.now)
@@ -216,7 +223,7 @@ export class Projects extends Context.Service<Projects, {
             INSERT INTO projects (id, number, slug, title, approach, format, preset_id, music_track_id, brief, set_id,
                                   created_at, updated_at)
             VALUES (${id}, ${next}, ${projectSlug(next, input.title)}, ${input.title}, ${input.approach},
-                    ${APPROACHES[input.approach].format}, ${input.presetId}, ${input.musicTrackId}, ${brief},
+                    ${APPROACHES[input.approach].format}, ${presetId}, ${input.musicTrackId}, ${brief},
                     ${input.setId ?? null}, ${now}, ${now})
           `
           yield* Effect.forEach(input.sourceIds, (sourceId, position) =>
@@ -262,15 +269,15 @@ export class Projects extends Context.Service<Projects, {
         )
         if (Option.isNone(chosen)) return yield* new SetProposalNotFound({ setId, proposal })
         const as = approach ?? chosen.value.approach
-        // the proposal's videos in set order (one it names that the set no longer has is left out); a ranking has an
-        // entry for every video in the set
-        const used = as === "ranking" ? set.sourceIds : [...new Set(chosen.value.sources)].sort((a, b) => a - b).flatMap((i) => set.sourceIds[i] ?? [])
+        // the proposal's videos in set order (one it names that the set no longer has is left out); a ranking (narrated
+        // or a list) has an entry for every video in the set
+        const used = isRankingApproach(as) ? set.sourceIds : [...new Set(chosen.value.sources)].sort((a, b) => a - b).flatMap((i) => set.sourceIds[i] ?? [])
         const [first, ...rest] = used.length > 0 ? used : set.sourceIds
         if (first === undefined) return yield* new SetProposalNotFound({ setId, proposal })
         return yield* create({
           sourceIds: [first, ...rest],
           // made as a ranking from another proposal, it's named after the set (a research's idea)
-          title: as === "ranking" && chosen.value.approach !== "ranking" ? set.title : chosen.value.title,
+          title: isRankingApproach(as) && !isRankingApproach(chosen.value.approach) ? set.title : chosen.value.title,
           approach: as,
           presetId: null,
           musicTrackId: null,

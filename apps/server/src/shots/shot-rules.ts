@@ -1,4 +1,4 @@
-import type { ProposedShots, Script, ShotInsert, ShotPlan, ShotProposal, SourceIndex, TranscriptWord } from "@viral/contracts"
+import { type ProposedShots, rankingEntries, type Script, type ShotInsert, type ShotPlan, type ShotProposal, type SourceIndex, type TranscriptWord } from "@viral/contracts"
 import type { Checked } from "../agent-session/run-checked.ts"
 import { clipSource, type SourceContext, sourceField, sourceLabel } from "../projects/source-context.ts"
 
@@ -78,6 +78,33 @@ export const placeReals = (script: Script, words: ReadonlyArray<TranscriptWord>)
   return { inserts, outro }
 }
 
+// A narrated ranking's entries on the voiceover: each entry's rank, the voiceover word its opening "Number" is said on
+// (the rank card appears there), and its video (the one its real lines come from; null when it has none). In playing
+// order; empty when the script doesn't count down.
+export interface EntryOnTake {
+  readonly rank: number
+  readonly word: number
+  readonly source: number | null
+}
+
+export const entriesOnTake = (script: Script, words: ReadonlyArray<TranscriptWord>, count: number | null = null): ReadonlyArray<EntryOnTake> => {
+  const { entries } = rankingEntries(script.beats, count)
+  if (entries.length === 0) return []
+  const ends = narrationEnds(script, words)
+  // each narration beat's place among the narration beats
+  const narrationIndex = new Map(script.beats.flatMap((b, i) => b._tag === "Narration" ? [i] : []).map((beat, k) => [beat, k] as const))
+  return entries.flatMap((entry) => {
+    const k = narrationIndex.get(entry.start)
+    if (k === undefined) return []
+    const first = k === 0 ? 0 : ends[k - 1]! + 1
+    // the transcriber may split the line differently: the "Number" nearest the expected first word
+    const word = [first, first + 1, first - 1, first + 2].find((i) => i >= 0 && i < words.length && normalize(words[i]!.w) === "number") ?? first
+    if (word >= words.length) return []
+    const real = script.beats.slice(entry.start, entry.end).find((b) => b._tag === "Real")
+    return [{ rank: entry.rank, word, source: real?._tag === "Real" ? real.source ?? 0 : null }]
+  })
+}
+
 // The closing question's first voiceover word: the take says it after the last narrated line. null when the script has
 // no closing question (or the take ends before it).
 export const closingWord = (script: Script, words: ReadonlyArray<TranscriptWord>): number | null => {
@@ -123,6 +150,9 @@ export interface ShotContext {
   // the short's videos, V1 first: each shot plays from its own
   readonly sources: ReadonlyArray<Pick<SourceContext, "seconds" | "excluded">>
   readonly inserts: ReadonlyArray<ShotInsert>
+  // a narrated ranking: each entry's first word and video; every shot from an entry's first word to the next entry's
+  // plays from that entry's video (the hook's shots may come from any). Absent = not a ranking
+  readonly entries?: ReadonlyArray<EntryOnTake>
 }
 
 const fmt = (t: number) => t.toFixed(1)
@@ -168,6 +198,17 @@ export const checkShots = (proposal: ShotProposal, ctx: ShotContext): Checked<Pi
       problems.push(`${name} plays ${fmt(shot.src)}–${fmt(srcEnd)}s, inside an excluded range (${fmt(ad.start)}–${fmt(ad.end)}s)`)
     }
   })
+
+  const entries = ctx.entries ?? []
+  proposal.shots.forEach((shot, k) => {
+    const at = entries.findLastIndex((e) => e.word <= shot.word)
+    const entry = entries[at]
+    if (entry === undefined || entry.source === null || (shot.source ?? 0) === entry.source) return
+    problems.push(`shot ${k + 1} (word ${shot.word} "${wordAt(shot.word)}") is in entry #${entry.rank}, so it plays from ${sourceLabel(entry.source)} (that entry's video), not ${sourceLabel(shot.source ?? 0)}`)
+  })
+  for (const entry of entries) {
+    if (!starts.has(entry.word)) problems.push(`start a new shot on word ${entry.word} "${wordAt(entry.word)}", where entry #${entry.rank} begins (its rank card appears there)`)
+  }
 
   for (const shot of proposal.shots) {
     const over = ctx.inserts.find((x) => x.resumeWord !== undefined && shot.word > x.afterWord && shot.word < x.resumeWord)

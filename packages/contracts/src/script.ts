@@ -59,3 +59,50 @@ export const ProposedScriptBeat = Schema.Union([
 ])
 export const ProposedScript = Schema.Struct({ headline: Script.fields.headline, beats: Schema.Array(ProposedScriptBeat) })
 export type ProposedScript = typeof ProposedScript.Type
+
+// ---- The narrated ranking's entries ----
+
+const RANK_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+const OPENING_RANK = /^[\s"“'‘(]*(?:number|#)\s*(\d{1,2}|zero|one|two|three|four|five|six|seven|eight|nine|ten)\b/i
+
+// The rank a narrated line opens with: "Number five, a good Samaritan…" → 5, "Number 3." → 3; null when it doesn't open
+// on "Number N".
+export const openingRank = (text: string): number | null => {
+  const m = OPENING_RANK.exec(text)
+  if (m === null) return null
+  const said = m[1]!.toLowerCase()
+  const n = /^\d+$/.test(said) ? Number(said) : RANK_WORDS.indexOf(said)
+  return n >= 1 ? n : null
+}
+
+// One entry of a narrated ranking: its rank and its beats [start, end) in the script, from the narrated line that opens
+// on "Number N" up to the next entry (the last entry runs to the closing question, so #1's reveal is in it).
+export interface CountdownEntry {
+  readonly rank: number
+  readonly start: number
+  readonly end: number
+}
+
+// A narrated ranking's script as the countdown: the hook (beats before the first entry) and each entry in playing
+// order. The countdown starts on the first played narrated line that opens on "Number <count>" (so a hook like "Number
+// one had already given up." stays in the hook), or, when none does, on the first line that opens on any rank; after
+// that, every played line opening on "Number N" starts an entry.
+export const rankingEntries = (
+  beats: ReadonlyArray<ScriptBeat>,
+  count: number | null = null
+): { readonly hookEnd: number; readonly entries: ReadonlyArray<CountdownEntry> } => {
+  const rankAt = (i: number) => {
+    const beat = beats[i]
+    return beat?._tag === "Narration" && beat.skipped !== true ? openingRank(beat.text) : null
+  }
+  const indices = beats.map((_, i) => i)
+  const first = indices.find((i) => count !== null && rankAt(i) === count) ?? indices.find((i) => rankAt(i) !== null)
+  if (first === undefined) return { hookEnd: beats.length, entries: [] }
+  const storyEnd = beats.findIndex((b) => b._tag === "Cta")
+  const end = storyEnd < 0 ? beats.length : storyEnd
+  const starts = indices.filter((i) => i >= first && i < end && rankAt(i) !== null)
+  return {
+    hookEnd: first,
+    entries: starts.map((start, k) => ({ rank: rankAt(start)!, start, end: starts[k + 1] ?? end }))
+  }
+}

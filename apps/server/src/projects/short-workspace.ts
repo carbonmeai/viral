@@ -30,9 +30,9 @@ import { VideoSets } from "../video-sets/video-sets.ts"
 import { ThumbnailRenderer } from "../thumbnail/thumbnail-renderer.ts"
 import { Presets } from "../presets/presets.ts"
 import { RunStore } from "../runs/run-store.ts"
-import { checkScript as checkScriptRules, SCRIPT_LIMITS } from "../script/script-rules.ts"
+import { checkScript as checkScriptRules, scriptLimitsFor } from "../script/script-rules.ts"
 import { checkSections as checkSectionsRules, SECTION_LIMITS } from "../sections/section-rules.ts"
-import { checkShots as checkShotsRules, placeReals, storyTake } from "../shots/shot-rules.ts"
+import { checkShots as checkShotsRules, entriesOnTake, placeReals, storyTake } from "../shots/shot-rules.ts"
 import { type ProjectSource, ProjectSources } from "./project-sources.ts"
 import { Projects } from "./projects.ts"
 
@@ -140,7 +140,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
         const preset = project.presetId === null
           ? yield* presets.getDefault
           : yield* presets.get(project.presetId).pipe(Effect.catch(() => presets.getDefault))
-        const limits = SCRIPT_LIMITS[project.approach]
+        const limits = scriptLimitsFor(project.approach, project.sourceIds.length)
 
         const runs = yield* store.listRuns(owner)
         const run = [...runs].sort((a, b) => b.startedAt.epochMilliseconds - a.startedAt.epochMilliseconds)[0] ?? null
@@ -211,7 +211,10 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
               realsOnlyAtEnd: limits.realsOnlyAtEnd,
               realSeconds: [...limits.realSeconds],
               ending: limits.ending === null ? null : { seconds: [...limits.ending.seconds] },
-              wholeSentences: limits.wholeSentences
+              wholeSentences: limits.wholeSentences,
+              ...(limits.ranking === undefined
+                ? {}
+                : { ranking: { entries: limits.ranking.entries, realsPerEntry: [...limits.ranking.realsPerEntry], entrySeconds: [...limits.ranking.entrySeconds] } })
             },
           run,
           stages,
@@ -259,7 +262,7 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
 
       const checkScript = Effect.fn("ShortWorkspaces.checkScript")(function*(projectId: ProjectId, script: Script) {
         const project = yield* projects.get(projectId)
-        const limits = SCRIPT_LIMITS[project.approach]
+        const limits = scriptLimitsFor(project.approach, project.sourceIds.length)
         if (limits === undefined) return [`${project.approach} shorts don't have a narrated script`]
         const sources = yield* sourcesFor(project)
         if (sources.some((s) => Option.isNone(s.transcript))) return ["the video has no transcript to check the real lines against"]
@@ -287,7 +290,8 @@ export class ShortWorkspaces extends Context.Service<ShortWorkspaces, {
           words,
           voiceoverSeconds: take.seconds,
           sources: yield* sourcesFor(project),
-          inserts: reals.inserts
+          inserts: reals.inserts,
+          ...(project.approach === "narrated-ranking" ? { entries: entriesOnTake(script.value, words, project.sourceIds.length) } : {})
         }).problems
       })
 

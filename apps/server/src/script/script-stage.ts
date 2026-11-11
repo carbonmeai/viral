@@ -13,7 +13,7 @@ import { Transcripts } from "../transcribe/transcripts.ts"
 import { loadShortStory } from "../video-sets/short-story.ts"
 import { VideoSets } from "../video-sets/video-sets.ts"
 import { fitsInline } from "../projects/videos-brief.ts"
-import { checkScript, fromProposedScript, narrationWords, SCRIPT_LIMITS } from "./script-rules.ts"
+import { checkScript, fromProposedScript, narrationWords, scriptLimitsFor } from "./script-rules.ts"
 import { scriptTask } from "./script-task.ts"
 
 const fail = (code: string, message: string) => new StageFailure({ stage: "script", code, message })
@@ -43,7 +43,7 @@ export class ScriptStage extends Context.Service<ScriptStage, {
       // What the script is checked against: the approach's limits, and each video's transcript and ad ranges.
       const context = Effect.fn("ScriptStage.context")(function*(ctx: StageContext) {
         const project = yield* projects.get(projectOf(ctx)).pipe(Effect.mapError(() => fail("not-found", "no such project")))
-        const limits = SCRIPT_LIMITS[project.approach]
+        const limits = scriptLimitsFor(project.approach, project.sourceIds.length)
         if (limits === undefined) {
           return yield* fail("wrong-approach", `${project.approach} shorts don't have a narrated script`)
         }
@@ -100,11 +100,14 @@ export class ScriptStage extends Context.Service<ScriptStage, {
           excluded: v1.excluded,
           angle,
           closingQuestion: closing,
+          ranking: limits.ranking === undefined ? null : { entries: limits.ranking.entries },
           ...(several ? { videos, beats: story?.beats ?? [] } : {})
         })
         // long transcripts come as outlines, read further with the transcript tools
         const tools = several && !fitsInline(videos) ? transcriptTools(videos, "short") : []
-        const script = yield* runChecked(agent, ctx, tools.length === 0 ? task : { ...task, tools, maxTurns: 24 }, (proposed) => Effect.sync(() => {
+        // a ranking's countdown is long (five entries), so it gets a few more turns to fix
+        const turns = limits.ranking === undefined ? task.maxTurns ?? 4 : Math.max(task.maxTurns ?? 4, 8)
+        const script = yield* runChecked(agent, ctx, tools.length === 0 ? { ...task, maxTurns: turns } : { ...task, tools, maxTurns: 24 }, (proposed) => Effect.sync(() => {
           const checked = checkScript(fromProposedScript(proposed), limits, sources, closing)
           return { value: checked.script, problems: checked.problems }
         })).pipe(Effect.mapError((error) => fail(error.code, error.message)))

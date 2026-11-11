@@ -45,7 +45,7 @@ export interface SetStoryInput {
   readonly brief: string
   // a set found from an idea: the videos were picked from YouTube for it, so say which lack what it needs
   readonly fromIdea?: boolean
-  // that idea reads as a ranking ("top 10…"): one proposal (the first) must be a ranking, using every video
+  // that idea reads as a ranking ("top 5…"): the first proposal must be a narrated ranking, using every video
   readonly ranking?: boolean
   readonly videos: ReadonlyArray<SetStoryVideo>
   // folders the agent may read (each video's contact sheets)
@@ -55,7 +55,7 @@ export interface SetStoryInput {
 
 // The set-story stage's agent task, shared by the stage and its tests.
 export const setStoryTask = (input: SetStoryInput): CheckedTask<typeof ProposedSetStory> => {
-  const approaches: ReadonlyArray<ApproachName> = input.ranking === true ? [...SINGLE_VIDEO_APPROACHES, "ranking"] : SINGLE_VIDEO_APPROACHES
+  const approaches: ReadonlyArray<ApproachName> = input.ranking === true ? ["narrated-ranking", ...SINGLE_VIDEO_APPROACHES, "ranking"] : SINGLE_VIDEO_APPROACHES
   const catalog = approaches.map((name) => [name, APPROACHES[name]] as const)
     .map(([name, d]) => `- ${name}: hook ${d.hook}, voices ${d.voices}, shape ${d.shape}, format ${d.format}`)
     .join("\n")
@@ -85,7 +85,7 @@ export const setStoryTask = (input: SetStoryInput): CheckedTask<typeof ProposedS
       ? "These videos were found on YouTube for that idea. For each video, if it doesn't show what the idea needs (for a before/after idea: the before, the care or the after; otherwise the moment it was picked for), say what's missing in a few words in that video's `missing` (\"no after: it ends at the vet\"); leave `missing` out when the video has it all."
       : "",
     input.ranking === true
-      ? "The idea reads as a ranking, so your first proposal must be a ranking (approach-ranking skill): one entry per video, using every video, each a before → care → after story with the clips' own sound, #1 last. The other two use other approaches from the catalog."
+      ? "The idea reads as a ranking, so your first proposal must be a narrated-ranking (approach-narrated-ranking skill): a narrator counts down one entry per video, using every video, each a before → care → reveal story with 1–2 real lines, #1's reveal as the real ending. The other two use other approaches from the catalog; the list-style ranking (approach-ranking: each clip's own sound, no narrator) may be one of them when the clips explain themselves visually, and it too uses every video."
       : "",
     `Videos:\n${input.videos.map((v, i) => `- ${videoLabel(i + 1, v)}`).join("\n")}`,
     `Approach catalog:\n${catalog}`,

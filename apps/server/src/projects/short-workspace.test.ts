@@ -26,7 +26,7 @@ const script: Script = {
 
 test("a short's workspace gathers its style, voice, run, waiting gate and what the run has made", async () => {
   const rt = ManagedRuntime.make(Layer.mergeAll(ShortWorkspaces.layer, Sources.layer, Projects.layer, Artifacts.layer, RunStore.layer))
-  const { fresh, made } = await rt.runPromise(Effect.gen(function*() {
+  const { fresh, made, ranking } = await rt.runPromise(Effect.gen(function*() {
     const source = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/x" }, rights: "owned", rightsNote: null })
     const artifacts = yield* Artifacts
     const video = yield* artifacts.allocate({ _tag: "Source", id: source.id }, "source-video")
@@ -57,8 +57,16 @@ test("a short's workspace gathers its style, voice, run, waiting gate and what t
     yield* artifacts.record(tx, { data: null, path: join(tx.relDir, "transcript.json") })
     // an old shot plan that no longer decodes is left out instead of breaking the editor
     yield* artifacts.record(yield* artifacts.allocate(owner, "shot-plan"), { data: { shots: "old" }, path: null })
-    return { fresh, made: yield* workspaces.get(project.id) }
+    // a narrated ranking of two videos: its countdown limits, and the built-in Ranking narrated style
+    const other = yield* (yield* Sources).create({ origin: { _tag: "Url", url: "https://youtu.be/y" }, rights: "owned", rightsNote: null })
+    const ranked = yield* (yield* Projects).create({ sourceIds: [source.id, other.id], title: "Top 2", approach: "narrated-ranking", presetId: null, musicTrackId: null, brief: "Two comebacks" })
+    return { fresh, made: yield* workspaces.get(project.id), ranking: yield* workspaces.get(ranked.id) }
   }))
+
+  assert.deepEqual(ranking.scriptLimits?.ranking, { entries: 2, realsPerEntry: [1, 2], entrySeconds: [15, 32] })
+  assert.deepEqual(ranking.scriptLimits?.narrationWords, [52, 120])
+  assert.equal(ranking.preset.name, "Ranking narrated")
+  assert.equal(ranking.preset.config.captions.y, 0.855)
 
   assert.equal(fresh.run, null)
   assert.equal(fresh.pending, null)
